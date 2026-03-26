@@ -3,6 +3,7 @@
 > Project map for AI agents. Keep this file up-to-date as the project evolves.
 
 Все задачи по проекту читать и помечать сделанное в TASKS.md.
+Задачи можно считать выполненными, когда код для них написан и протестирован, а не просто когда они помечены как "готово" в таск-трекере.
 
 ## Project Overview
 Query2Table is a local-first desktop application (Tauri v2 + Rust + Svelte) that converts natural-language research queries into structured tables with row-level sources. Uses an orchestrator with fixed roles to search the internet, fetch/parse pages, extract entities via LLMs, and deduplicate results.
