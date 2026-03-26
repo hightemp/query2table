@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { PauseIcon, PlayIcon, XCircleIcon, RotateCcwIcon } from '@lucide/svelte';
+	import { PauseIcon, PlayIcon, XCircleIcon, RotateCcwIcon, DownloadIcon } from '@lucide/svelte';
 
 	interface Props {
 		status: string;
@@ -7,9 +7,11 @@
 		onresume: () => void;
 		oncancel: () => void;
 		onreset: () => void;
+		onexport?: () => void;
+		showExport?: boolean;
 	}
 
-	let { status, onpause, onresume, oncancel, onreset }: Props = $props();
+	let { status, onpause, onresume, oncancel, onreset, onexport, showExport = false }: Props = $props();
 
 	let isActive = $derived(
 		status === 'running' || status === 'paused' || status === 'pending' || status === 'schema_review'
@@ -47,6 +49,12 @@
 			<RotateCcwIcon size={16} />
 			New Query
 		</button>
+		{#if showExport && onexport}
+			<button class="ctrl-btn ctrl-export" onclick={onexport} aria-label="Export">
+				<DownloadIcon size={16} />
+				Export
+			</button>
+		{/if}
 	{/if}
 </div>
 
@@ -116,5 +124,14 @@
 
 	.ctrl-cancel:hover {
 		background: rgba(239, 68, 68, 0.1);
+	}
+
+	.ctrl-export {
+		color: var(--color-primary-500);
+		border-color: var(--color-primary-500);
+	}
+
+	.ctrl-export:hover {
+		background: var(--color-primary-100, rgba(59, 130, 246, 0.1));
 	}
 </style>

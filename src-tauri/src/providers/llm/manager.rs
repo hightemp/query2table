@@ -1,9 +1,11 @@
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::info;
 
 use super::types::*;
 use super::openrouter::OpenRouterProvider;
 use super::ollama::OllamaProvider;
+use crate::utils::retry::{retry_with_backoff, RetryAction, RetryConfig};
 
 /// Which LLM provider backend to use.
 #[derive(Debug, Clone, PartialEq)]
@@ -85,7 +87,7 @@ impl LlmManager {
             json_mode,
         };
 
-        self.provider.chat_completion(request).await
+        self.complete_with_retry(request).await
     }
 
     /// Send a chat completion with a specific model override.
@@ -103,7 +105,49 @@ impl LlmManager {
             json_mode,
         };
 
-        self.provider.chat_completion(request).await
+        self.complete_with_retry(request).await
+    }
+
+    /// Internal: execute a completion request with retry on transient errors.
+    async fn complete_with_retry(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, LlmError> {
+        let config = RetryConfig {
+            max_retries: 3,
+            initial_delay: Duration::from_secs(2),
+            max_delay: Duration::from_secs(60),
+            multiplier: 2.0,
+        };
+
+        let provider = self.provider.clone();
+
+        retry_with_backoff(&config, "llm_complete", || {
+            let req = CompletionRequest {
+                messages: request.messages.clone(),
+                model: request.model.clone(),
+                temperature: request.temperature,
+                max_tokens: request.max_tokens,
+                json_mode: request.json_mode,
+            };
+            let provider = provider.clone();
+            async move {
+                match provider.chat_completion(req).await {
+                    Ok(resp) => (Ok(resp), RetryAction::Success, None),
+                    Err(LlmError::RateLimited { retry_after_ms }) => {
+                        let hint = Duration::from_millis(retry_after_ms);
+                        (Err(LlmError::RateLimited { retry_after_ms }), RetryAction::Retry, Some(hint))
+                    }
+                    Err(LlmError::ConnectionError(msg)) => {
+                        (Err(LlmError::ConnectionError(msg)), RetryAction::Retry, None)
+                    }
+                    Err(LlmError::RequestFailed(msg)) => {
+                        (Err(LlmError::RequestFailed(msg)), RetryAction::Retry, None)
+                    }
+                    Err(e) => (Err(e), RetryAction::Fail, None),
+                }
+            }
+        }).await
     }
 
     /// Check if the configured provider is healthy.

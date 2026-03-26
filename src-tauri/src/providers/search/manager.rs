@@ -1,9 +1,11 @@
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::{info, warn};
 
 use super::types::*;
 use super::brave::BraveSearchProvider;
 use super::serper::SerperProvider;
+use crate::utils::retry::{retry_with_backoff, RetryAction, RetryConfig};
 
 /// Which search backend to use.
 #[derive(Debug, Clone, PartialEq)]
@@ -83,27 +85,9 @@ impl SearchManager {
         Ok(Self { primary, fallback, config })
     }
 
-    /// Execute a search, falling back to secondary provider on failure.
+    /// Execute a search, with retry on transient errors, then falling back to secondary provider.
     pub async fn search(&self, query: &str) -> Result<Vec<SearchResult>, SearchError> {
-        let search_query = SearchQuery::new(query, self.config.num_results);
-
-        match self.primary.search(search_query.clone()).await {
-            Ok(results) => Ok(results),
-            Err(e) => {
-                if let Some(ref fallback) = self.fallback {
-                    warn!(
-                        primary = self.primary.provider_name(),
-                        fallback = fallback.provider_name(),
-                        error = %e,
-                        "Primary search failed, trying fallback"
-                    );
-                    let fallback_query = SearchQuery::new(query, self.config.num_results);
-                    fallback.search(fallback_query).await
-                } else {
-                    Err(e)
-                }
-            }
-        }
+        self.search_provider_with_retry(query, self.config.num_results).await
     }
 
     /// Execute a search with custom result count.
@@ -112,9 +96,45 @@ impl SearchManager {
         query: &str,
         num_results: u32,
     ) -> Result<Vec<SearchResult>, SearchError> {
-        let search_query = SearchQuery::new(query, num_results);
+        self.search_provider_with_retry(query, num_results).await
+    }
 
-        match self.primary.search(search_query.clone()).await {
+    /// Internal: search with retry on the primary, then fallback.
+    async fn search_provider_with_retry(
+        &self,
+        query: &str,
+        num_results: u32,
+    ) -> Result<Vec<SearchResult>, SearchError> {
+        let retry_config = RetryConfig {
+            max_retries: 2,
+            initial_delay: Duration::from_secs(2),
+            max_delay: Duration::from_secs(30),
+            multiplier: 2.0,
+        };
+
+        let primary = self.primary.clone();
+        let q = query.to_string();
+
+        let primary_result = retry_with_backoff(&retry_config, "search_primary", || {
+            let primary = primary.clone();
+            let q = q.clone();
+            async move {
+                let search_query = SearchQuery::new(&q, num_results);
+                match primary.search(search_query).await {
+                    Ok(results) => (Ok(results), RetryAction::Success, None),
+                    Err(SearchError::RateLimited { retry_after_secs }) => {
+                        let hint = retry_after_secs.map(Duration::from_secs);
+                        (Err(SearchError::RateLimited { retry_after_secs }), RetryAction::Retry, hint)
+                    }
+                    Err(SearchError::ConnectionError(msg)) => {
+                        (Err(SearchError::ConnectionError(msg)), RetryAction::Retry, None)
+                    }
+                    Err(e) => (Err(e), RetryAction::Fail, None),
+                }
+            }
+        }).await;
+
+        match primary_result {
             Ok(results) => Ok(results),
             Err(e) => {
                 if let Some(ref fallback) = self.fallback {
@@ -122,7 +142,7 @@ impl SearchManager {
                         primary = self.primary.provider_name(),
                         fallback = fallback.provider_name(),
                         error = %e,
-                        "Primary search failed, trying fallback"
+                        "Primary search failed after retries, trying fallback"
                     );
                     let fallback_query = SearchQuery::new(query, num_results);
                     fallback.search(fallback_query).await

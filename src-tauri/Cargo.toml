@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
@@ -36,6 +36,8 @@ scraper = "0.22"
 ammonia = "4"
 strsim = "0.11"
 regex = "1"
+csv = "1.4.0"
+rust_xlsxwriter = "0.94.0"
 
 [dev-dependencies]
 tempfile = "3"

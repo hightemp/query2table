@@ -427,13 +427,13 @@ T001 (Tauri+Svelte scaffold)
 41. ~~T008 Log viewer~~ ✅
 
 **Sprint 6 — Export, History, Polish (Week 7-8)**
-42. T045 CSV export
-43. T046 JSON export
-44. T047 XLSX export
-45. T042 Export dialog
-46. T041 History page
-47. T043 System tray + notifications
-48. T048 Error handling + retries
+42. ~~T045 CSV export~~ ✅
+43. ~~T046 JSON export~~ ✅
+44. ~~T047 XLSX export~~ ✅
+45. ~~T042 Export dialog~~ ✅
+46. ~~T041 History page~~ ✅ (done in Sprint 5)
+47. ~~T043 System tray + notifications~~ ✅
+48. ~~T048 Error handling + retries~~ ✅
 
 **Sprint 7 — Testing + CI/CD (Week 8-9)**
 49. T049 Integration tests

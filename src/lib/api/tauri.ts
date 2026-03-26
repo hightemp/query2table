@@ -106,3 +106,9 @@ export function onSchemaProposed(cb: (e: SchemaProposedEvent) => void): Promise<
 export function onRunError(cb: (e: RunErrorEvent) => void): Promise<UnlistenFn> {
 	return listen<RunErrorEvent>('run:error', (event) => cb(event.payload));
 }
+
+// --- Export commands ---
+
+export async function exportRun(runId: string, format: string, path: string): Promise<void> {
+	return invoke('export_run', { request: { run_id: runId, format, path } });
+}

@@ -7,10 +7,12 @@
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
 	import ProgressBar from '$lib/components/run/ProgressBar.svelte';
 	import RunControls from '$lib/components/run/RunControls.svelte';
+	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
 
 	let query = $state('');
 	let selectedRow = $state<RunRow | null>(null);
 	let submitError = $state('');
+	let showExport = $state(false);
 
 	let isIdle = $derived($runState.status === 'idle');
 	let isSchemaReview = $derived($runState.status === 'schema_review');
@@ -47,6 +49,7 @@
 		query = '';
 		selectedRow = null;
 		submitError = '';
+		showExport = false;
 	}
 </script>
 
@@ -84,6 +87,8 @@
 				onresume={resumeCurrentRun}
 				oncancel={cancelCurrentRun}
 				onreset={handleReset}
+				onexport={() => { showExport = true; }}
+				showExport={isFinished && $runState.rows.length > 0}
 			/>
 		</div>
 
@@ -119,6 +124,13 @@
 			row={selectedRow}
 			columns={columnNames}
 			onclose={() => { selectedRow = null; }}
+		/>
+	{/if}
+
+	{#if showExport && $runState.runId}
+		<ExportDialog
+			runId={$runState.runId}
+			onclose={() => { showExport = false; }}
 		/>
 	{/if}
 </div>

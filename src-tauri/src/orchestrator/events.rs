@@ -23,6 +23,25 @@ impl EventPublisher {
             tracing::error!(error = %e, "Failed to emit status_changed event");
         }
         debug!(run_id = %self.run_id, status, "Emitted status_changed");
+
+        // Send desktop notification on terminal states
+        match status {
+            "completed" => self.send_notification("Research Complete", "Your query has finished and results are ready."),
+            "failed" => self.send_notification("Research Failed", "Your query encountered an error."),
+            "cancelled" => self.send_notification("Research Cancelled", "Your query was cancelled."),
+            _ => {}
+        }
+    }
+
+    fn send_notification(&self, title: &str, body: &str) {
+        use tauri_plugin_notification::NotificationExt;
+        if let Err(e) = self.app.notification().builder()
+            .title(title)
+            .body(body)
+            .show()
+        {
+            tracing::warn!(error = %e, "Failed to send notification");
+        }
     }
 
     pub fn emit_row_added(&self, row_id: &str, data: &serde_json::Value, confidence: f64) {
