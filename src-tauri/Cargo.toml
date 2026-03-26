@@ -28,7 +28,12 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 tracing-appender = "0.2"
+reqwest = { version = "0.12", features = ["json", "gzip", "brotli"] }
+governor = "0.8"
+url = "2"
+async-trait = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
+mockall = "0.13"
 

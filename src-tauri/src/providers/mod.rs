@@ -1,2 +1,3 @@
-// External API providers — LLM, search, HTTP clients.
-// Will contain: llm/, search/, http/
+pub mod llm;
+pub mod search;
+pub mod http;

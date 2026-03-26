@@ -386,16 +386,16 @@ T001 (Tauri+Svelte scaffold)
 9. ~~T008 Log viewer panel~~ ✅
 
 **Sprint 2 — Providers (Week 2-3)**
-9. T009 LLM trait
-10. T010 OpenRouter client
-11. T011 Ollama client
-12. T012 LLM provider manager
-13. T013 Search trait
-14. T014 Brave Search client
-15. T015 Serper client
-16. T016 Search provider manager
-17. T017 HTTP fetcher + rate limiter
-18. T018 robots.txt checker
+9. ~~T009 LLM trait~~ ✅
+10. ~~T010 OpenRouter client~~ ✅
+11. ~~T011 Ollama client~~ ✅
+12. ~~T012 LLM provider manager~~ ✅
+13. ~~T013 Search trait~~ ✅
+14. ~~T014 Brave Search client~~ ✅
+15. ~~T015 Serper client~~ ✅
+16. ~~T016 Search provider manager~~ ✅
+17. ~~T017 HTTP fetcher + rate limiter~~ ✅
+18. ~~T018 robots.txt checker~~ ✅
 
 **Sprint 3 — Pipeline Roles (Week 3-5)**
 19. T019 HTML cleaner / DocumentParser
