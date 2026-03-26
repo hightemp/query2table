@@ -55,3 +55,72 @@ export interface SettingDef {
 	options?: { label: string; value: string }[];
 	placeholder?: string;
 }
+
+// --- Run API response types ---
+
+export interface StartRunResponse {
+	run_id: string;
+}
+
+export interface RunInfo {
+	id: string;
+	query: string;
+	status: string;
+	stats: string | null;
+	error: string | null;
+	created_at: number;
+}
+
+export interface RunLogEntry {
+	id: string;
+	level: string;
+	role: string | null;
+	message: string;
+	created_at: number;
+}
+
+// --- Event payload types ---
+
+export interface StatusChangedEvent {
+	run_id: string;
+	status: string;
+}
+
+export interface RowAddedEvent {
+	run_id: string;
+	row_id: string;
+	data: Record<string, unknown>;
+	confidence: number;
+}
+
+export interface ProgressStats {
+	rows_found: number;
+	pages_fetched: number;
+	pages_total: number;
+	queries_executed: number;
+	queries_total: number;
+	elapsed_secs: number;
+	spent_usd: number;
+}
+
+export interface ProgressEvent {
+	run_id: string;
+	stats: ProgressStats;
+}
+
+export interface LogEntryEvent {
+	run_id: string;
+	level: string;
+	role: string;
+	message: string;
+}
+
+export interface SchemaProposedEvent {
+	run_id: string;
+	columns: SchemaColumn[];
+}
+
+export interface RunErrorEvent {
+	run_id: string;
+	error: string;
+}

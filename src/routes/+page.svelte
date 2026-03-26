@@ -1,44 +1,131 @@
 <script lang="ts">
-	let query = $state('');
-	let isRunning = $state(false);
+	import { runState, startNewRun, cancelCurrentRun, pauseCurrentRun, resumeCurrentRun, confirmCurrentSchema, resetRun } from '$lib/stores/run';
+	import type { SchemaColumn } from '$lib/types';
+	import type { RunRow } from '$lib/stores/run';
+	import SchemaEditor from '$lib/components/run/SchemaEditor.svelte';
+	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
+	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
+	import ProgressBar from '$lib/components/run/ProgressBar.svelte';
+	import RunControls from '$lib/components/run/RunControls.svelte';
 
-	function handleSubmit(e: Event) {
+	let query = $state('');
+	let selectedRow = $state<RunRow | null>(null);
+	let submitError = $state('');
+
+	let isIdle = $derived($runState.status === 'idle');
+	let isSchemaReview = $derived($runState.status === 'schema_review');
+	let isActive = $derived(
+		$runState.status === 'running' || $runState.status === 'paused' || $runState.status === 'pending'
+	);
+	let isFinished = $derived(
+		$runState.status === 'completed' || $runState.status === 'failed' || $runState.status === 'cancelled'
+	);
+	let showResults = $derived(isActive || isFinished || isSchemaReview);
+	let columnNames = $derived($runState.schema.map((c) => c.name));
+
+	async function handleSubmit(e: Event) {
 		e.preventDefault();
 		if (!query.trim()) return;
-		// TODO: invoke run_query command
-		isRunning = true;
+		submitError = '';
+		try {
+			await startNewRun(query);
+		} catch (err) {
+			submitError = String(err);
+		}
+	}
+
+	function handleSchemaConfirm(columns: SchemaColumn[]) {
+		confirmCurrentSchema(columns);
+	}
+
+	function handleSchemaCancel() {
+		cancelCurrentRun();
+	}
+
+	function handleReset() {
+		resetRun();
+		query = '';
+		selectedRow = null;
+		submitError = '';
 	}
 </script>
 
 <div class="query-page">
-	<h1>New Research Query</h1>
-	<p class="subtitle">Describe what you want to research. Query2Table will search, extract, and organize results into a structured table.</p>
+	{#if isIdle}
+		<h1>New Research Query</h1>
+		<p class="subtitle">Describe what you want to research. Query2Table will search, extract, and organize results into a structured table.</p>
 
-	<form class="query-form" onsubmit={handleSubmit}>
-		<textarea
-			class="query-input"
-			bind:value={query}
-			placeholder="e.g. Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website..."
-			rows={4}
-			disabled={isRunning}
-		></textarea>
-		<div class="query-actions">
-			<button type="submit" class="btn-primary" disabled={!query.trim() || isRunning}>
-				{isRunning ? 'Running...' : 'Start Research'}
-			</button>
-		</div>
-	</form>
+		<form class="query-form" onsubmit={handleSubmit}>
+			<textarea
+				class="query-input"
+				bind:value={query}
+				placeholder="e.g. Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website..."
+				rows={4}
+			></textarea>
+			{#if submitError}
+				<p class="error-msg">{submitError}</p>
+			{/if}
+			<div class="query-actions">
+				<button type="submit" class="btn-primary" disabled={!query.trim()}>
+					Start Research
+				</button>
+			</div>
+		</form>
+	{/if}
 
-	{#if isRunning}
-		<div class="status-panel">
-			<p>Pipeline running... Results will appear below.</p>
+	{#if showResults}
+		<div class="run-header">
+			<div class="run-query-display">
+				<h2>{$runState.query}</h2>
+			</div>
+			<RunControls
+				status={$runState.status}
+				onpause={pauseCurrentRun}
+				onresume={resumeCurrentRun}
+				oncancel={cancelCurrentRun}
+				onreset={handleReset}
+			/>
 		</div>
+
+		{#if $runState.error}
+			<div class="error-banner">
+				<strong>Error:</strong> {$runState.error}
+			</div>
+		{/if}
+
+		{#if isActive || isFinished}
+			<ProgressBar stats={$runState.progress} status={$runState.status} />
+		{/if}
+
+		{#if isSchemaReview}
+			<SchemaEditor
+				columns={$runState.schema}
+				onconfirm={handleSchemaConfirm}
+				oncancel={handleSchemaCancel}
+			/>
+		{/if}
+
+		{#if $runState.schema.length > 0 && !isSchemaReview}
+			<ResultsTable
+				schema={$runState.schema}
+				rows={$runState.rows}
+				onrowclick={(row) => { selectedRow = row; }}
+			/>
+		{/if}
+	{/if}
+
+	{#if selectedRow}
+		<RowDetailPanel
+			row={selectedRow}
+			columns={columnNames}
+			onclose={() => { selectedRow = null; }}
+		/>
 	{/if}
 </div>
 
 <style>
 	.query-page {
-		max-width: 800px;
+		max-width: 1000px;
 		margin: 0 auto;
 	}
 
@@ -103,11 +190,32 @@
 		cursor: not-allowed;
 	}
 
-	.status-panel {
-		margin-top: 24px;
-		padding: 16px;
-		border: 1px solid var(--color-surface-300);
+	.error-msg {
+		color: var(--color-error-500);
+		font-size: 0.9rem;
+	}
+
+	.run-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 16px;
+		margin-bottom: 16px;
+	}
+
+	.run-query-display h2 {
+		font-size: 1.3rem;
+		font-weight: 700;
+		margin: 0;
+	}
+
+	.error-banner {
+		padding: 10px 16px;
+		border: 1px solid var(--color-error-500);
 		border-radius: 8px;
-		background: var(--color-surface-100);
+		background: rgba(239, 68, 68, 0.1);
+		color: var(--color-error-500);
+		margin-bottom: 12px;
+		font-size: 0.9rem;
 	}
 </style>

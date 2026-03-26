@@ -4,7 +4,7 @@
 	import LogPanel from '$lib/components/layout/LogPanel.svelte';
 	import { settings } from '$lib/stores/settings';
 	import { onMount } from 'svelte';
-	import { onLogEvent } from '$lib/api/tauri';
+	import { onLogEvent, onRunLogEntry } from '$lib/api/tauri';
 	import { addLog } from '$lib/stores/logs';
 	import type { LogEntry } from '$lib/types';
 	import type { Snippet } from 'svelte';
@@ -14,15 +14,22 @@
 	onMount(() => {
 		settings.load();
 
-		let unlisten: (() => void) | undefined;
+		const unlisteners: (() => void)[] = [];
+
 		onLogEvent((entry) => {
 			addLog(entry as LogEntry);
-		}).then((fn) => {
-			unlisten = fn;
-		});
+		}).then((fn) => unlisteners.push(fn));
+
+		onRunLogEntry((e) => {
+			addLog({
+				timestamp: new Date().toISOString(),
+				level: e.level as 'DEBUG' | 'INFO' | 'WARN' | 'ERROR',
+				message: `[${e.role}] ${e.message}`,
+			});
+		}).then((fn) => unlisteners.push(fn));
 
 		return () => {
-			unlisten?.();
+			for (const fn of unlisteners) fn();
 		};
 	});
 </script>

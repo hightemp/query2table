@@ -418,13 +418,13 @@ T001 (Tauri+Svelte scaffold)
 34. ~~T035 Budget tracker~~ ✅
 
 **Sprint 5 — Frontend Integration (Week 6-7)**
-35. T036 Query input UI
-36. T022 Schema confirmation UI
-37. T037 Results table (TanStack)
-38. T038 Row detail panel
-39. T039 Run progress indicator
-40. T040 Run controls (pause/resume/cancel)
-41. T008 Log viewer
+35. ~~T036 Query input UI~~ ✅
+36. ~~T022 Schema confirmation UI~~ ✅
+37. ~~T037 Results table (TanStack)~~ ✅
+38. ~~T038 Row detail panel~~ ✅
+39. ~~T039 Run progress indicator~~ ✅
+40. ~~T040 Run controls (pause/resume/cancel)~~ ✅
+41. ~~T008 Log viewer~~ ✅
 
 **Sprint 6 — Export, History, Polish (Week 7-8)**
 42. T045 CSV export

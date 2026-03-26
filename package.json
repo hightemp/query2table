@@ -15,6 +15,8 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@tanstack/svelte-table": "^9.0.0-alpha.10",
+    "@tanstack/table-core": "^9.0.0-alpha.10",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-notification": "^2",
