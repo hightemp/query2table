@@ -42,6 +42,7 @@ impl RunStatus {
 
 /// Schema column definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq)]
 pub struct SchemaColumn {
     pub name: String,
     #[serde(rename = "type")]

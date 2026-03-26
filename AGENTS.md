@@ -80,3 +80,4 @@ query2table/
 | .ai-factory/DESCRIPTION.md | Project specification and tech stack |
 | .ai-factory/ARCHITECTURE.md | Architecture decisions and guidelines |
 | TASKS.md | Detailed implementation plan and subtask breakdown |
+| .ai-factory/PROMPT.md | Промпт главной задачи |

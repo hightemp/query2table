@@ -1,2 +1,5 @@
-// Orchestrator — pipeline state machine and control logic.
-// Will contain: pipeline.rs, stop_controller.rs, budget_tracker.rs
+pub mod pipeline;
+pub mod events;
+pub mod budget_tracker;
+pub mod fetch_pool;
+pub mod extract_pool;

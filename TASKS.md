@@ -398,24 +398,24 @@ T001 (Tauri+Svelte scaffold)
 18. ~~T018 robots.txt checker~~ ✅
 
 **Sprint 3 — Pipeline Roles (Week 3-5)**
-19. T019 HTML cleaner / DocumentParser
-20. T020 QueryInterpreter
-21. T021 SchemaPlanner
-22. T023 SearchPlanner
-23. T024 QueryExpander
-24. T025 SearchExecutor
-25. T026 Extractor
-26. T027 Validator
-27. T028 Deduplicator
-28. T029 StoppingController
+19. ~~T019 HTML cleaner / DocumentParser~~ ✅
+20. ~~T020 QueryInterpreter~~ ✅
+21. ~~T021 SchemaPlanner~~ ✅
+22. ~~T023 SearchPlanner~~ ✅
+23. ~~T024 QueryExpander~~ ✅
+24. ~~T025 SearchExecutor~~ ✅
+25. ~~T026 Extractor~~ ✅
+26. ~~T027 Validator~~ ✅
+27. ~~T028 Deduplicator~~ ✅
+28. ~~T029 StoppingController~~ ✅
 
 **Sprint 4 — Orchestrator + Streaming (Week 5-6)**
-29. T030 Pipeline state machine
-30. T031 Run state persistence (resume)
-31. T032 UIEventPublisher
-32. T033 Parallel fetch worker pool
-33. T034 Parallel extraction pool
-34. T035 Budget tracker
+29. ~~T030 Pipeline state machine~~ ✅
+30. ~~T031 Run state persistence (resume)~~ ✅
+31. ~~T032 UIEventPublisher~~ ✅
+32. ~~T033 Parallel fetch worker pool~~ ✅
+33. ~~T034 Parallel extraction pool~~ ✅
+34. ~~T035 Budget tracker~~ ✅
 
 **Sprint 5 — Frontend Integration (Week 6-7)**
 35. T036 Query input UI

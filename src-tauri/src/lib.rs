@@ -42,6 +42,8 @@ pub fn run() {
         db: Arc::new(db),
     };
 
+    let run_controller = commands::run::RunController::new();
+
     tracing::info!("Query2Table starting");
 
     tauri::Builder::default()
@@ -49,10 +51,20 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(app_state)
+        .manage(run_controller)
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings,
             commands::settings::update_setting,
             commands::settings::get_setting,
+            commands::run::start_run,
+            commands::run::cancel_run,
+            commands::run::pause_run,
+            commands::run::resume_run,
+            commands::run::confirm_schema,
+            commands::run::get_run,
+            commands::run::list_runs,
+            commands::run::delete_run,
+            commands::run::get_run_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
