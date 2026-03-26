@@ -375,14 +375,15 @@ T001 (Tauri+Svelte scaffold)
 ### Recommended Implementation Order
 
 **Sprint 1 — Scaffold + Foundation (Week 1-2)**
-1. T001 Initialize Tauri + SvelteKit
-2. T003 Rust module structure
-3. T002 Skeleton UI + theming
-4. T004 SQLite + migrations
-5. T005 Settings storage
-6. T007 Logging infrastructure
-7. T044 App layout + navigation
-8. T006 Settings UI
+1. ~~T001 Initialize Tauri + SvelteKit~~ ✅
+2. ~~T003 Rust module structure~~ ✅
+3. ~~T002 Skeleton UI + theming~~ ✅
+4. ~~T004 SQLite + migrations~~ ✅
+5. ~~T005 Settings storage~~ ✅
+6. ~~T007 Logging infrastructure~~ ✅
+7. ~~T044 App layout + navigation~~ ✅
+8. ~~T006 Settings UI~~ ✅
+9. ~~T008 Log viewer panel~~ ✅
 
 **Sprint 2 — Providers (Week 2-3)**
 9. T009 LLM trait
