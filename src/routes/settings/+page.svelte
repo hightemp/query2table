@@ -9,7 +9,17 @@
 	let showPasswords = $state(new Set<string>());
 
 	settings.subscribe((v) => {
-		settingsMap = new Map(v);
+		// Don't overwrite local edits while saving
+		if (saving) return;
+		const newMap = new Map(v);
+		// Preserve any unsaved local changes
+		for (const key of dirty) {
+			const localVal = settingsMap.get(key);
+			if (localVal !== undefined) {
+				newMap.set(key, localVal);
+			}
+		}
+		settingsMap = newMap;
 	});
 
 	const groups: SettingGroup[] = [
@@ -88,13 +98,20 @@
 	async function saveAll() {
 		saving = true;
 		try {
+			// Snapshot values before saving to avoid subscription race
+			const toSave = new Map<string, string>();
 			for (const key of dirty) {
 				const val = settingsMap.get(key);
 				if (val !== undefined) {
-					await settings.save(key, val);
+					toSave.set(key, val);
 				}
 			}
+			for (const [key, val] of toSave) {
+				await settings.save(key, val);
+			}
 			dirty = new Set();
+		} catch (e) {
+			console.error('Failed to save settings:', e);
 		} finally {
 			saving = false;
 		}
