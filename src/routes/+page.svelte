@@ -148,7 +148,7 @@
 	}
 
 	.subtitle {
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 		margin-bottom: 24px;
 	}
 
@@ -161,9 +161,9 @@
 	.query-input {
 		width: 100%;
 		padding: 12px 16px;
-		border: 2px solid var(--color-surface-300);
+		border: 2px solid var(--color-surface-300-700);
 		border-radius: 8px;
-		background: var(--color-surface-50);
+		background: var(--color-surface-100-900);
 		color: inherit;
 		font-size: 1rem;
 		font-family: inherit;

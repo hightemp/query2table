@@ -198,7 +198,7 @@
 	}
 
 	.subtitle {
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 	}
 
 	.btn-save {
@@ -228,9 +228,9 @@
 	.settings-section {
 		margin-bottom: 32px;
 		padding: 20px;
-		border: 1px solid var(--color-surface-300);
+		border: 1px solid var(--color-surface-300-700);
 		border-radius: 12px;
-		background: var(--color-surface-50);
+		background: var(--color-surface-100-900);
 	}
 
 	h2 {
@@ -240,7 +240,7 @@
 	}
 
 	.section-description {
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 		font-size: 0.9rem;
 		margin-bottom: 16px;
 	}
@@ -269,15 +269,15 @@
 
 	.setting-description {
 		font-size: 0.82rem;
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 	}
 
 	.setting-item input,
 	.setting-item select {
 		padding: 8px 12px;
-		border: 1px solid var(--color-surface-300);
+		border: 1px solid var(--color-surface-300-700);
 		border-radius: 6px;
-		background: var(--color-surface-100);
+		background: var(--color-surface-200-800);
 		color: inherit;
 		font-size: 0.95rem;
 	}
@@ -306,7 +306,7 @@
 		border: none;
 		background: transparent;
 		cursor: pointer;
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 		padding: 4px;
 	}
 </style>

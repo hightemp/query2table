@@ -94,7 +94,7 @@
 	}
 
 	.dialog {
-		background: var(--color-surface-50);
+		background: var(--color-surface-50-950);
 		border-radius: 12px;
 		width: 420px;
 		max-width: 90vw;
@@ -106,7 +106,7 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 16px 20px;
-		border-bottom: 1px solid var(--color-surface-200);
+		border-bottom: 1px solid var(--color-surface-200-800);
 	}
 
 	.dialog-header h3 {
@@ -118,13 +118,13 @@
 		background: none;
 		border: none;
 		cursor: pointer;
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 		padding: 4px;
 		border-radius: 4px;
 	}
 
 	.close-btn:hover {
-		background: var(--color-surface-200);
+		background: var(--color-surface-200-800);
 	}
 
 	.dialog-body {
@@ -136,7 +136,7 @@
 		font-weight: 600;
 		font-size: 0.85rem;
 		margin-bottom: 8px;
-		color: var(--color-surface-600);
+		color: var(--color-surface-600-400);
 	}
 
 	.format-options {
@@ -150,14 +150,14 @@
 		align-items: center;
 		gap: 12px;
 		padding: 12px;
-		border: 2px solid var(--color-surface-200);
+		border: 2px solid var(--color-surface-200-800);
 		border-radius: 8px;
 		cursor: pointer;
 		transition: border-color 0.15s;
 	}
 
 	.format-option:hover {
-		border-color: var(--color-surface-400);
+		border-color: var(--color-surface-400-600);
 	}
 
 	.format-option.selected {
@@ -181,7 +181,7 @@
 
 	.format-desc {
 		font-size: 0.8rem;
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 	}
 
 	.error-msg {
@@ -195,7 +195,7 @@
 		justify-content: flex-end;
 		gap: 8px;
 		padding: 16px 20px;
-		border-top: 1px solid var(--color-surface-200);
+		border-top: 1px solid var(--color-surface-200-800);
 	}
 
 	.btn-primary,
@@ -226,11 +226,11 @@
 	}
 
 	.btn-secondary {
-		background: var(--color-surface-200);
+		background: var(--color-surface-200-800);
 		color: inherit;
 	}
 
 	.btn-secondary:hover:not(:disabled) {
-		background: var(--color-surface-300);
+		background: var(--color-surface-300-700);
 	}
 </style>

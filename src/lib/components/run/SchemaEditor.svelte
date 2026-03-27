@@ -88,7 +88,7 @@
 		border: 2px solid var(--color-primary-500);
 		border-radius: 12px;
 		padding: 20px;
-		background: var(--color-surface-50);
+		background: var(--color-surface-100-900);
 	}
 
 	h2 {
@@ -98,7 +98,7 @@
 	}
 
 	.hint {
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 		font-size: 0.9rem;
 		margin-bottom: 16px;
 	}
@@ -118,9 +118,9 @@
 
 	.col-input {
 		padding: 6px 10px;
-		border: 1px solid var(--color-surface-300);
+		border: 1px solid var(--color-surface-300-700);
 		border-radius: 6px;
-		background: var(--color-surface-50);
+		background: var(--color-surface-200-800);
 		color: inherit;
 		font-size: 0.9rem;
 	}
@@ -160,7 +160,7 @@
 	}
 
 	.btn-icon-sm:hover {
-		background: var(--color-surface-200);
+		background: var(--color-surface-200-800);
 	}
 
 	.schema-actions {
@@ -179,8 +179,8 @@
 		align-items: center;
 		gap: 6px;
 		padding: 8px 16px;
-		background: var(--color-surface-200);
-		border: 1px solid var(--color-surface-300);
+		background: var(--color-surface-200-800);
+		border: 1px solid var(--color-surface-300-700);
 		border-radius: 8px;
 		cursor: pointer;
 		font-size: 0.9rem;
@@ -188,7 +188,7 @@
 	}
 
 	.btn-secondary:hover {
-		background: var(--color-surface-300);
+		background: var(--color-surface-300-700);
 	}
 
 	.btn-primary {
@@ -220,7 +220,7 @@
 		gap: 6px;
 		padding: 8px 16px;
 		background: transparent;
-		border: 1px solid var(--color-surface-300);
+		border: 1px solid var(--color-surface-300-700);
 		border-radius: 8px;
 		cursor: pointer;
 		font-size: 0.9rem;

@@ -103,16 +103,16 @@
 	}
 
 	.subtitle {
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 		margin-bottom: 24px;
 	}
 
 	.empty-state {
 		text-align: center;
 		padding: 48px 24px;
-		border: 2px dashed var(--color-surface-300);
+		border: 2px dashed var(--color-surface-300-700);
 		border-radius: 12px;
-		color: var(--color-surface-400);
+		color: var(--color-surface-400-600);
 	}
 
 	.error-msg {
@@ -127,10 +127,10 @@
 	}
 
 	.run-card {
-		border: 1px solid var(--color-surface-300);
+		border: 1px solid var(--color-surface-300-700);
 		border-radius: 10px;
 		padding: 16px;
-		background: var(--color-surface-50);
+		background: var(--color-surface-100-900);
 	}
 
 	.run-card-header {
@@ -154,8 +154,8 @@
 		font-weight: 600;
 		text-transform: capitalize;
 		white-space: nowrap;
-		background: var(--color-surface-200);
-		color: var(--color-surface-600);
+		background: var(--color-surface-200-800);
+		color: var(--color-surface-600-400);
 	}
 
 	.badge-success {
@@ -174,13 +174,13 @@
 	}
 
 	.badge-cancelled {
-		background: var(--color-surface-200);
-		color: var(--color-surface-500);
+		background: var(--color-surface-200-800);
+		color: var(--color-surface-600-400);
 	}
 
 	.run-card-meta {
 		font-size: 0.85rem;
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 		margin-bottom: 10px;
 		display: flex;
 		gap: 16px;

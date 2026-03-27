@@ -23,7 +23,7 @@
 			case 'INFO':
 				return 'var(--color-primary-500)';
 			case 'DEBUG':
-				return 'var(--color-surface-500)';
+				return 'var(--color-surface-600-400)';
 			default:
 				return 'inherit';
 		}
@@ -72,8 +72,8 @@
 
 <style>
 	.log-panel {
-		border-top: 1px solid var(--color-surface-300);
-		background: var(--color-surface-50);
+		border-top: 1px solid var(--color-surface-300-700);
+		background: var(--color-surface-50-950);
 		flex-shrink: 0;
 	}
 
@@ -88,7 +88,7 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 6px 12px;
-		background: var(--color-surface-100);
+		background: var(--color-surface-100-900);
 	}
 
 	.log-toggle {
@@ -112,9 +112,9 @@
 	.log-filter {
 		font-size: 0.8rem;
 		padding: 2px 6px;
-		border: 1px solid var(--color-surface-300);
+		border: 1px solid var(--color-surface-300-700);
 		border-radius: 4px;
-		background: var(--color-surface-50);
+		background: var(--color-surface-50-950);
 		color: inherit;
 	}
 
@@ -131,7 +131,7 @@
 	}
 
 	.btn-icon-sm:hover {
-		background: var(--color-surface-200);
+		background: var(--color-surface-200-800);
 	}
 
 	.log-body {
@@ -146,11 +146,11 @@
 		display: flex;
 		gap: 8px;
 		padding: 2px 0;
-		border-bottom: 1px solid var(--color-surface-200);
+		border-bottom: 1px solid var(--color-surface-200-800);
 	}
 
 	.log-time {
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 		flex-shrink: 0;
 	}
 
@@ -165,7 +165,7 @@
 	}
 
 	.log-empty {
-		color: var(--color-surface-400);
+		color: var(--color-surface-400-600);
 		text-align: center;
 		padding: 20px;
 	}

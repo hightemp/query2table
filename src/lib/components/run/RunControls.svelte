@@ -71,8 +71,8 @@
 		font-size: 0.8rem;
 		font-weight: 600;
 		text-transform: capitalize;
-		background: var(--color-surface-200);
-		color: var(--color-surface-600);
+		background: var(--color-surface-200-800);
+		color: var(--color-surface-600-400);
 	}
 
 	.status-badge.running {
@@ -96,8 +96,8 @@
 	}
 
 	.status-badge.cancelled {
-		background: var(--color-surface-200);
-		color: var(--color-surface-500);
+		background: var(--color-surface-200-800);
+		color: var(--color-surface-600-400);
 	}
 
 	.ctrl-btn {
@@ -105,16 +105,16 @@
 		align-items: center;
 		gap: 4px;
 		padding: 6px 12px;
-		border: 1px solid var(--color-surface-300);
+		border: 1px solid var(--color-surface-300-700);
 		border-radius: 6px;
-		background: var(--color-surface-50);
+		background: var(--color-surface-50-950);
 		cursor: pointer;
 		font-size: 0.85rem;
 		color: inherit;
 	}
 
 	.ctrl-btn:hover {
-		background: var(--color-surface-200);
+		background: var(--color-surface-200-800);
 	}
 
 	.ctrl-cancel {

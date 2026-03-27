@@ -79,12 +79,12 @@
 	}
 
 	.progress-pct {
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 	}
 
 	.progress-track {
 		height: 8px;
-		background: var(--color-surface-200);
+		background: var(--color-surface-200-800);
 		border-radius: 4px;
 		overflow: hidden;
 	}
@@ -113,7 +113,7 @@
 		gap: 16px;
 		margin-top: 8px;
 		font-size: 0.8rem;
-		color: var(--color-surface-500);
+		color: var(--color-surface-600-400);
 		flex-wrap: wrap;
 	}
 </style>

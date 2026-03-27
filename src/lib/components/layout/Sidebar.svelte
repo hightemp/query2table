@@ -44,8 +44,8 @@
 		flex-direction: column;
 		width: 220px;
 		min-height: 100vh;
-		background: var(--color-surface-100);
-		border-right: 1px solid var(--color-surface-300);
+		background: var(--color-surface-100-900);
+		border-right: 1px solid var(--color-surface-300-700);
 		transition: width 0.2s ease;
 		flex-shrink: 0;
 	}
@@ -82,7 +82,7 @@
 	}
 
 	.btn-icon:hover {
-		background: var(--color-surface-200);
+		background: var(--color-surface-200-800);
 	}
 
 	.sidebar-nav {
@@ -99,13 +99,13 @@
 		padding: 10px 12px;
 		border-radius: 8px;
 		text-decoration: none;
-		color: var(--color-surface-900);
+		color: var(--color-surface-900-100);
 		font-size: 0.95rem;
 		transition: background 0.15s;
 	}
 
 	.nav-item:hover {
-		background: var(--color-surface-200);
+		background: var(--color-surface-200-800);
 	}
 
 	.nav-item.active {

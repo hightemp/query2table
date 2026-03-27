@@ -95,10 +95,10 @@
 
 <style>
 	.results-table-wrap {
-		border: 1px solid var(--color-surface-300);
+		border: 1px solid var(--color-surface-300-700);
 		border-radius: 8px;
 		overflow: hidden;
-		background: var(--color-surface-50);
+		background: var(--color-surface-50-950);
 	}
 
 	.table-scroll {
@@ -112,7 +112,7 @@
 	}
 
 	.results-table thead {
-		background: var(--color-surface-100);
+		background: var(--color-surface-100-900);
 	}
 
 	.results-table th {
@@ -121,7 +121,7 @@
 		font-weight: 600;
 		font-size: 0.85rem;
 		white-space: nowrap;
-		border-bottom: 2px solid var(--color-surface-300);
+		border-bottom: 2px solid var(--color-surface-300-700);
 		user-select: none;
 	}
 
@@ -130,7 +130,7 @@
 	}
 
 	.results-table th.sortable:hover {
-		background: var(--color-surface-200);
+		background: var(--color-surface-200-800);
 	}
 
 	.sort-indicator {
@@ -139,7 +139,7 @@
 
 	.results-table td {
 		padding: 8px 14px;
-		border-bottom: 1px solid var(--color-surface-200);
+		border-bottom: 1px solid var(--color-surface-200-800);
 		max-width: 300px;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -151,19 +151,19 @@
 	}
 
 	.data-row:hover {
-		background: var(--color-surface-100);
+		background: var(--color-surface-100-900);
 	}
 
 	.row-count {
 		padding: 8px 14px;
 		font-size: 0.8rem;
-		color: var(--color-surface-500);
-		border-top: 1px solid var(--color-surface-200);
+		color: var(--color-surface-600-400);
+		border-top: 1px solid var(--color-surface-200-800);
 	}
 
 	.empty-state {
 		text-align: center;
 		padding: 40px 20px;
-		color: var(--color-surface-400);
+		color: var(--color-surface-400-600);
 	}
 </style>
