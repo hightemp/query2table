@@ -196,30 +196,41 @@ impl Database {
             .execute(&self.pool).await?;
 
         // Insert default settings if not present
+        // Keys must match what backend reads in providers/ and orchestrator/
         let defaults = vec![
             ("theme", "system"),
+            // LLM
             ("llm_provider", "openrouter"),
-            ("default_model", "openai/gpt-5.4-mini"),
-            ("primary_search_provider", "brave"),
+            ("openrouter_model", "openai/gpt-4.1-mini"),
+            ("llm_temperature", "0.7"),
+            ("llm_max_tokens", "4096"),
+            ("ollama_url", "http://localhost:11434"),
+            ("ollama_model", "llama3"),
+            // Search
+            ("search_provider", "brave"),
             ("search_fallback_enabled", "true"),
-            ("max_results_per_query", "20"),
+            ("search_results_per_query", "20"),
+            ("max_pages_per_query", "10"),
+            // Execution
             ("max_parallel_fetches", "8"),
             ("max_parallel_extractions", "3"),
             ("fetch_timeout_seconds", "15"),
             ("rate_limit_per_domain_ms", "2000"),
             ("respect_robots_txt", "true"),
             ("max_page_size_kb", "5000"),
+            // Quality
             ("precision_recall", "balanced"),
             ("evidence_strictness", "moderate"),
             ("min_confidence_threshold", "0.5"),
             ("enable_semantic_validation", "true"),
             ("dedup_similarity_threshold", "0.85"),
+            // Stop conditions
             ("target_row_count", "50"),
             ("max_budget_usd", "1.00"),
             ("max_duration_seconds", "600"),
             ("saturation_threshold", "0.05"),
+            // Export
             ("default_export_format", "csv"),
-            ("ollama_base_url", "http://localhost:11434"),
         ];
 
         for (key, value) in defaults {
@@ -230,6 +241,28 @@ impl Database {
             .bind(value)
             .execute(&self.pool)
             .await?;
+        }
+
+        // Rename legacy keys from older databases
+        let renames = vec![
+            ("default_model", "openrouter_model"),
+            ("primary_search_provider", "search_provider"),
+            ("ollama_base_url", "ollama_url"),
+            ("max_results_per_query", "search_results_per_query"),
+        ];
+        for (old_key, new_key) in renames {
+            sqlx::query(
+                "UPDATE OR IGNORE settings SET key = ? WHERE key = ?"
+            )
+            .bind(new_key)
+            .bind(old_key)
+            .execute(&self.pool)
+            .await?;
+            // Clean up old key if rename failed due to new key already existing
+            sqlx::query("DELETE FROM settings WHERE key = ?")
+                .bind(old_key)
+                .execute(&self.pool)
+                .await?;
         }
 
         Ok(())
@@ -364,9 +397,10 @@ mod tests {
     async fn test_all_default_settings_present() {
         let db = test_db().await;
         let expected_keys = vec![
-            "theme", "llm_provider", "default_model", "primary_search_provider",
+            "theme", "llm_provider", "openrouter_model", "search_provider",
             "target_row_count", "max_budget_usd", "max_duration_seconds",
-            "ollama_base_url",
+            "ollama_url", "llm_temperature", "llm_max_tokens", "ollama_model",
+            "search_results_per_query", "max_pages_per_query",
         ];
         for key in expected_keys {
             let val = db.get_setting(key).await.unwrap();

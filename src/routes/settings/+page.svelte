@@ -41,7 +41,7 @@
 			settings: [
 				{ key: 'max_parallel_fetches', label: 'Max Parallel Fetches', description: 'Concurrent page fetches (1-20)', type: 'number' },
 				{ key: 'fetch_timeout_seconds', label: 'Fetch Timeout (s)', description: 'HTTP fetch timeout in seconds', type: 'number' },
-				{ key: 'max_search_queries', label: 'Max Search Queries', description: 'Maximum search queries per run', type: 'number' },
+				{ key: 'search_results_per_query', label: 'Results per Query', description: 'Search results to fetch per query', type: 'number' },
 				{ key: 'max_pages_per_query', label: 'Pages per Query', description: 'Max pages to fetch per search query', type: 'number' },
 			]
 		},
@@ -49,8 +49,8 @@
 			label: 'Quality',
 			description: 'Result quality thresholds',
 			settings: [
-				{ key: 'quality_precision', label: 'Precision', description: 'How strict to be with data accuracy (low/medium/high)', type: 'select', options: [{ label: 'Low', value: 'low' }, { label: 'Medium', value: 'medium' }, { label: 'High', value: 'high' }] },
-				{ key: 'quality_recall', label: 'Recall', description: 'How many results to try to find (low/medium/high)', type: 'select', options: [{ label: 'Low', value: 'low' }, { label: 'Medium', value: 'medium' }, { label: 'High', value: 'high' }] },
+				{ key: 'precision_recall', label: 'Precision / Recall', description: 'Balance between accuracy and coverage', type: 'select', options: [{ label: 'Favor Recall', value: 'recall' }, { label: 'Balanced', value: 'balanced' }, { label: 'Favor Precision', value: 'precision' }] },
+				{ key: 'evidence_strictness', label: 'Evidence Strictness', description: 'How strictly to require source evidence', type: 'select', options: [{ label: 'Low', value: 'low' }, { label: 'Moderate', value: 'moderate' }, { label: 'Strict', value: 'strict' }] },
 				{ key: 'dedup_similarity_threshold', label: 'Dedup Threshold', description: 'Similarity threshold for deduplication (0.0-1.0)', type: 'number' },
 			]
 		},
@@ -58,9 +58,9 @@
 			label: 'Stop Conditions',
 			description: 'When to stop searching',
 			settings: [
-				{ key: 'stop_max_rows', label: 'Max Rows', description: 'Stop after this many rows', type: 'number' },
-				{ key: 'stop_max_cost_usd', label: 'Max Cost ($)', description: 'Stop after spending this amount', type: 'number' },
-				{ key: 'stop_max_duration_minutes', label: 'Max Duration (min)', description: 'Stop after this many minutes', type: 'number' },
+				{ key: 'target_row_count', label: 'Target Rows', description: 'Stop after this many rows', type: 'number' },
+				{ key: 'max_budget_usd', label: 'Max Cost ($)', description: 'Stop after spending this amount', type: 'number' },
+				{ key: 'max_duration_seconds', label: 'Max Duration (s)', description: 'Stop after this many seconds', type: 'number' },
 			]
 		}
 	];
