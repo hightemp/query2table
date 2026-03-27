@@ -14,8 +14,13 @@ pub struct OpenRouterProvider {
 
 impl OpenRouterProvider {
     pub fn new(api_key: String) -> Self {
+        let client = reqwest::ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(120))
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .build()
+            .expect("Failed to build OpenRouter HTTP client");
         Self {
-            client: Client::new(),
+            client,
             api_key,
             base_url: "https://openrouter.ai/api/v1".to_string(),
         }

@@ -13,8 +13,13 @@ pub struct OllamaProvider {
 
 impl OllamaProvider {
     pub fn new(base_url: String) -> Self {
+        let client = reqwest::ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(300))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("Failed to build Ollama HTTP client");
         Self {
-            client: Client::new(),
+            client,
             base_url,
         }
     }

@@ -369,7 +369,7 @@ impl Pipeline {
                 break;
             }
 
-            // Try to receive fetch results
+            // Try to receive fetch results (with timeout to keep UI responsive)
             tokio::select! {
                 fetch_result = fetch_rx.recv(), if !fetch_done => {
                     match fetch_result {
@@ -476,6 +476,10 @@ impl Pipeline {
                             }
                         }
                     }
+                }
+                // Periodic heartbeat to keep UI responsive and check stop conditions
+                _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
+                    self.emit_progress(pages_fetched, total_pages as u64, all_valid_rows.len() as u64, all_queries.len() as u64);
                 }
             }
         }

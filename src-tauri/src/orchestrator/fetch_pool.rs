@@ -76,6 +76,9 @@ pub fn spawn_fetch_pool(
                 let start = Instant::now();
                 let result = fetch_and_parse(&fetcher, &job).await;
                 let duration_ms = start.elapsed().as_millis() as u64;
+                if duration_ms > 30_000 {
+                    warn!(worker_id, url = %job.url, duration_ms, "Slow fetch detected");
+                }
 
                 let fetch_result = match result {
                     Ok((page_body, http_status)) => {

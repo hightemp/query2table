@@ -53,8 +53,8 @@ pub struct HttpFetcher {
 impl HttpFetcher {
     pub fn new(rate_limiter: RateLimiter) -> Self {
         let client = ClientBuilder::new()
-            .timeout(Duration::from_secs(30))
-            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(8))
             .redirect(reqwest::redirect::Policy::limited(5))
             .gzip(true)
             .brotli(true)

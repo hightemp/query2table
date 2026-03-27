@@ -15,11 +15,11 @@ pub struct RateLimiter {
 impl RateLimiter {
     /// Create a rate limiter with the given minimum interval between requests per domain.
     pub fn new(interval: Duration) -> Self {
-        // Convert interval to a rate: 1 request per interval
+        // Allow a small burst so parallel workers don't serialize on the same domain
         let period = interval;
         let quota = Quota::with_period(period)
             .expect("Rate limit period must be non-zero")
-            .allow_burst(NonZeroU32::new(1).unwrap());
+            .allow_burst(NonZeroU32::new(3).unwrap());
 
         Self {
             limiter: Arc::new(GovLimiter::keyed(quota)),
@@ -69,8 +69,11 @@ mod tests {
     #[test]
     fn test_rate_limiter_blocks_rapid() {
         let limiter = RateLimiter::new(Duration::from_secs(10));
+        // Burst of 3 allowed
         assert!(limiter.try_acquire("example.com"));
-        // Second immediate request should be blocked
+        assert!(limiter.try_acquire("example.com"));
+        assert!(limiter.try_acquire("example.com"));
+        // 4th immediate request should be blocked
         assert!(!limiter.try_acquire("example.com"));
     }
 
