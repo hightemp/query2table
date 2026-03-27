@@ -333,19 +333,23 @@ impl Pipeline {
             self.config.max_parallel_extractions,
         );
 
-        // Submit fetch jobs
-        for sr in &pending_results {
-            let job = FetchJob {
-                search_result_id: sr.id.clone(),
-                url: sr.url.clone(),
-                title: sr.title.clone().unwrap_or_default(),
-            };
-            if fetch_tx.send(job).await.is_err() {
-                break;
+        // Submit fetch jobs in a background task to avoid deadlock:
+        // If we submit all jobs synchronously before reading results, the result
+        // channel can fill up, blocking workers, which blocks job submission.
+        tokio::spawn(async move {
+            for sr in pending_results {
+                let job = FetchJob {
+                    search_result_id: sr.id.clone(),
+                    url: sr.url.clone(),
+                    title: sr.title.clone().unwrap_or_default(),
+                };
+                if fetch_tx.send(job).await.is_err() {
+                    break;
+                }
             }
-        }
-        // Drop the sender to signal no more jobs
-        drop(fetch_tx);
+            // Drop the sender to signal no more jobs
+            drop(fetch_tx);
+        });
 
         // Process fetched pages → extraction → validation → dedup
         let mut all_valid_rows: Vec<ExtractedRow> = Vec::new();
@@ -354,6 +358,8 @@ impl Pipeline {
         let mut fetch_done = false;
         let mut extract_pending: u64 = 0;
         let mut extract_tx = Some(extract_tx);
+        let mut last_batch_new_rows: usize = 0;
+        let mut last_batch_total_rows: usize = 0;
 
         loop {
             // Check for commands (non-blocking)
@@ -393,8 +399,8 @@ impl Pipeline {
                 row_count: all_valid_rows.len(),
                 estimated_cost_usd: self.budget.spent_usd(),
                 start_time: self.start_time,
-                last_batch_new_rows: 0,
-                last_batch_total_rows: all_valid_rows.len(),
+                last_batch_new_rows,
+                last_batch_total_rows,
             };
             if let Some(reason) = StoppingController::should_stop(&self.config.stop, &stats) {
                 self.log("INFO", "stopping_controller", &format!("Stopping: {:?}", reason)).await;
@@ -493,6 +499,11 @@ impl Pipeline {
                                     events.emit_row_added(&row_id, &row.data, row.confidence);
                                 }
                             }
+
+                            // Update saturation tracking
+                            let new_count = valid_rows.len();
+                            last_batch_new_rows = new_count;
+                            last_batch_total_rows = output.rows.len();
 
                             all_valid_rows.extend(valid_rows);
                             self.emit_progress(pages_fetched, total_pages as u64, all_valid_rows.len() as u64, all_queries.len() as u64);

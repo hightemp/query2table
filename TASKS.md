@@ -436,10 +436,10 @@ T001 (Tauri+Svelte scaffold)
 48. ~~T048 Error handling + retries~~ ✅
 
 **Sprint 7 — Testing + CI/CD (Week 8-9)**
-49. T049 Integration tests
+49. ~~T049 Integration tests~~ ✅
 50. T050 CI/CD setup
 51. T051 Auto-updater
-52. T052 E2E tests
+52. ~~T052 E2E tests~~ ✅
 
 ---
 

@@ -46,9 +46,9 @@ pub enum FetchResult {
 pub fn spawn_fetch_pool(
     fetcher: Arc<HttpFetcher>,
     num_workers: usize,
-) -> (mpsc::Sender<FetchJob>, mpsc::Receiver<FetchResult>) {
+) -> (mpsc::Sender<FetchJob>, mpsc::UnboundedReceiver<FetchResult>) {
     let (job_tx, job_rx) = mpsc::channel::<FetchJob>(num_workers * 4);
-    let (result_tx, result_rx) = mpsc::channel::<FetchResult>(num_workers * 4);
+    let (result_tx, result_rx) = mpsc::unbounded_channel::<FetchResult>();
 
     // Wrap receiver in Arc<Mutex> so multiple workers can pull from it
     let job_rx = Arc::new(tokio::sync::Mutex::new(job_rx));
@@ -113,7 +113,7 @@ pub fn spawn_fetch_pool(
                     }
                 };
 
-                if result_tx.send(fetch_result).await.is_err() {
+                if result_tx.send(fetch_result).is_err() {
                     debug!(worker_id, "Result channel closed, stopping worker");
                     break;
                 }

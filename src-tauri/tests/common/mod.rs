@@ -43,7 +43,7 @@ pub fn setup_test_logs(test_name: &str) -> tracing::subscriber::DefaultGuard {
 
     let file = fs::File::create(&log_path).expect("Failed to create log file");
     let file_layer = fmt::layer()
-        .with_writer(file)
+        .with_writer(std::sync::Mutex::new(file))
         .with_ansi(false)
         .with_target(true)
         .with_level(true);
@@ -52,6 +52,9 @@ pub fn setup_test_logs(test_name: &str) -> tracing::subscriber::DefaultGuard {
         .with(file_layer)
         .with(tracing_subscriber::filter::LevelFilter::DEBUG);
 
+    // Use set_default for thread-local (works for single-thread runtime).
+    // For multi_thread tests, logs from spawned tasks on other threads
+    // may not appear in this file — use set_global_default instead if needed.
     let guard = tracing::subscriber::set_default(subscriber);
 
     eprintln!("Test logs: {}", log_path.display());

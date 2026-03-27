@@ -43,9 +43,9 @@ pub fn spawn_extract_pool(
     llm: Arc<LlmManager>,
     columns: Vec<SchemaColumn>,
     num_workers: usize,
-) -> (mpsc::Sender<ExtractionJob>, mpsc::Receiver<ExtractResult>) {
+) -> (mpsc::Sender<ExtractionJob>, mpsc::UnboundedReceiver<ExtractResult>) {
     let (job_tx, job_rx) = mpsc::channel::<ExtractionJob>(num_workers * 4);
-    let (result_tx, result_rx) = mpsc::channel::<ExtractResult>(num_workers * 4);
+    let (result_tx, result_rx) = mpsc::unbounded_channel::<ExtractResult>();
 
     let job_rx = Arc::new(tokio::sync::Mutex::new(job_rx));
     let columns = Arc::new(columns);
@@ -103,7 +103,7 @@ pub fn spawn_extract_pool(
                     }
                 };
 
-                if result_tx.send(extract_result).await.is_err() {
+                if result_tx.send(extract_result).is_err() {
                     debug!(worker_id, "Result channel closed, stopping worker");
                     break;
                 }
