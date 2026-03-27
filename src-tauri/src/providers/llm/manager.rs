@@ -165,6 +165,11 @@ impl LlmManager {
         &self.config
     }
 
+    /// Create an LlmManager with a custom provider (for testing).
+    pub fn with_provider(provider: Arc<dyn LlmProvider>, config: LlmConfig) -> Self {
+        Self { provider, config }
+    }
+
     /// Build LlmConfig from settings stored in the database.
     pub fn config_from_settings(settings: &std::collections::HashMap<String, String>) -> LlmConfig {
         let backend = match settings.get("llm_provider").map(|s| s.as_str()) {

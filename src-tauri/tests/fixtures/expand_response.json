@@ -1,0 +1,6 @@
+{
+  "queries": [
+    {"query_text": "Technologieunternehmen Deutschland Liste", "language": "de", "geo_target": "DE", "priority": 1},
+    {"query_text": "German software companies directory", "language": "en", "geo_target": "DE", "priority": 2}
+  ]
+}

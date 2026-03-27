@@ -1,0 +1,7 @@
+{
+  "entity_type": "companies",
+  "attributes": ["name", "website", "industry", "employee_count"],
+  "constraints": ["located in Germany", "technology sector"],
+  "geo": "Germany",
+  "languages": ["en", "de"]
+}

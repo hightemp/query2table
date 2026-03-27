@@ -153,6 +153,15 @@ impl SearchManager {
         }
     }
 
+    /// Create a SearchManager with custom providers (for testing).
+    pub fn with_providers(
+        primary: Arc<dyn SearchProvider>,
+        fallback: Option<Arc<dyn SearchProvider>>,
+        config: SearchConfig,
+    ) -> Self {
+        Self { primary, fallback, config }
+    }
+
     pub fn primary_name(&self) -> &str {
         self.primary.provider_name()
     }

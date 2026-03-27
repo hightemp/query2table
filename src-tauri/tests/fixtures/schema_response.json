@@ -1,0 +1,9 @@
+{
+  "columns": [
+    {"name": "name", "type": "text", "description": "Company name", "required": true},
+    {"name": "website", "type": "url", "description": "Company website URL", "required": false},
+    {"name": "industry", "type": "text", "description": "Industry sector", "required": false},
+    {"name": "employee_count", "type": "number", "description": "Number of employees", "required": false},
+    {"name": "source_url", "type": "url", "description": "Source URL where entity was found", "required": true}
+  ]
+}

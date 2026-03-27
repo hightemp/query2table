@@ -69,6 +69,27 @@ impl HttpFetcher {
         }
     }
 
+    /// Create a fetcher that bypasses system proxy settings.
+    /// Useful for tests that use local mock servers.
+    pub fn new_no_proxy(rate_limiter: RateLimiter) -> Self {
+        let client = ClientBuilder::new()
+            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(8))
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .gzip(true)
+            .brotli(true)
+            .no_proxy()
+            .build()
+            .expect("Failed to build HTTP client");
+
+        Self {
+            client,
+            rate_limiter,
+            max_body_bytes: 5 * 1024 * 1024,
+            ua_index: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
     /// Set max body size in bytes.
     pub fn with_max_body_bytes(mut self, max: u64) -> Self {
         self.max_body_bytes = max;

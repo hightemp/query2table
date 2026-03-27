@@ -1609,3 +1609,61 @@ anyhow = "1"
   }
 }
 ```
+
+---
+
+## E2E Pipeline Tests Plan
+
+### Goal
+Comprehensive e2e/integration tests covering the full pipeline (search → fetch → extract → dedup), with mock LLM/Search providers and a log capture system that saves test logs to files for later analysis. Tests go in `src-tauri/tests/` as Rust integration tests.
+
+### Phase 1: Test Infrastructure Setup
+
+- [x] **1.1** Add `wiremock = "0.6"` to `src-tauri/Cargo.toml` dev-deps; add `e2e` feature flag
+- [x] **1.2** Add `pub fn with_provider(provider, config)` to `LlmManager` (`src-tauri/src/providers/llm/manager.rs`)
+- [x] **1.3** Add `pub fn with_providers(primary, fallback, config)` to `SearchManager` (`src-tauri/src/providers/search/manager.rs`)
+- [x] **1.4** Create test helpers module (`src-tauri/tests/common/mod.rs`):
+  - `setup_test_db()` — in-memory SQLite with full migration
+  - `TestLogCapture` — captures tracing events to per-test log files in `src-tauri/tests/logs/`
+  - `MockLlmProvider` — content-based routing: detects role from system prompt, returns fixture JSON
+  - `MockSearchProvider` — returns configurable fixture search results
+  - `test_pipeline_config()` — returns PipelineConfig with sensible test defaults
+  - `test_fetcher()` — returns HttpFetcher with no_proxy for local wiremock servers
+- [x] **1.5** Create JSON fixture files in `src-tauri/tests/fixtures/`:
+  - `interpret_response.json`, `schema_response.json`, `search_plan_response.json`
+  - `expand_response.json`, `extract_response.json`, `extract_response_duplicates.json`
+
+### Phase 2: Integration Tests (Mock Providers)
+
+All tests use mock LLM/Search providers. No real API calls.
+
+- [x] **2.1** Full pipeline happy path — mock LLM returns scripted responses, mock Search returns 3 URLs to wiremock, verify: run status=Completed, entity_rows > 0, schema confirmed
+- [x] **2.2** Pipeline cancellation — send Cancel during running, verify: status=Cancelled or Completed
+- [x] **2.3** Pipeline pause/resume — Pause during Running, Resume after 200ms, verify: completes normally
+- [x] **2.4** Schema auto-confirmation — no events (auto-confirm), verify: DB schema confirmed with correct columns
+- [x] **2.5** Budget stop condition — set max_budget_usd very low, verify: stops early
+- [x] **2.6** Duration stop condition — set max_duration_seconds=1, verify: stops early  
+- [x] **2.7** Row count stop condition — set target_row_count=1, verify: stops after reaching target
+- [x] **2.8** LLM failure handling — mock LLM returns error for interpreter, verify: pipeline returns Err
+- [x] **2.9** Search failure handling — mock Search returns error, verify: pipeline completes with 0 rows (graceful degradation)
+- [x] **2.10** Empty search results — mock Search returns 0 results, verify: completes with 0 rows
+- [x] **2.11** Extraction failure — mock LLM returns invalid JSON for extraction, verify: continues, 0 rows
+- [x] **2.12** Deduplication — mock extractor returns same entities from 5 pages, verify: dedup stats recorded
+
+### Phase 3: Log Capture System
+
+- [x] **3.1** Implement `setup_test_logs()` using `tracing_subscriber` file writer layer
+- [x] **3.2** Each test creates log file: `tests/logs/{test_name}_{timestamp}.log`
+- [x] **3.3** DEBUG-level capture with target and level info
+- [x] **3.4** Add `tests/logs/*.log` to `.gitignore`
+
+### Phase 4: Real API E2E Tests (feature-gated)
+
+- [ ] **4.1** Real search+extract test behind `#[cfg(feature = "e2e")]` + `#[ignore]`
+- [ ] **4.2** Provider fallback test with invalid primary + valid secondary key
+
+### Verification
+
+1. `cd src-tauri && cargo test --test pipeline_integration -- --test-threads=1` — all 12 integration tests pass ✅
+2. `cargo test --lib` — existing 144 unit tests still pass (regression) ✅
+3. Log files created in `tests/logs/` with full pipeline traces ✅

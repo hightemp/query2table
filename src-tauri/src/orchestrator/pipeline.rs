@@ -117,6 +117,12 @@ pub struct Pipeline {
     state: PipelineState,
     budget: BudgetTracker,
     start_time: Instant,
+    /// Pre-built LLM manager to use instead of creating from config.
+    llm_override: Option<Arc<LlmManager>>,
+    /// Pre-built Search manager to use instead of creating from config.
+    search_override: Option<Arc<SearchManager>>,
+    /// Pre-built HTTP fetcher to use instead of creating a default one.
+    fetcher_override: Option<Arc<HttpFetcher>>,
 }
 
 impl Pipeline {
@@ -141,9 +147,23 @@ impl Pipeline {
             state: PipelineState::Pending,
             budget,
             start_time: Instant::now(),
+            llm_override: None,
+            search_override: None,
+            fetcher_override: None,
         };
 
         (pipeline, cmd_tx)
+    }
+
+    /// Set pre-built providers to avoid creating real ones from config.
+    pub fn set_providers(&mut self, llm: Arc<LlmManager>, search: Arc<SearchManager>) {
+        self.llm_override = Some(llm);
+        self.search_override = Some(search);
+    }
+
+    /// Set a pre-built HTTP fetcher (e.g. one configured with no_proxy for tests).
+    pub fn set_fetcher(&mut self, fetcher: Arc<HttpFetcher>) {
+        self.fetcher_override = Some(fetcher);
     }
 
     /// Run the full pipeline to completion.
@@ -160,15 +180,23 @@ impl Pipeline {
         self.repo.create_run(&self.run_id, &self.query, &config_json.to_string()).await
             .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
-        // Initialize providers
-        let llm = Arc::new(
-            LlmManager::from_config(self.config.llm.clone())
-                .map_err(|e| PipelineError::Config(format!("LLM: {e}")))?
-        );
-        let search = Arc::new(
-            SearchManager::from_config(self.config.search.clone())
-                .map_err(|e| PipelineError::Config(format!("Search: {e}")))?
-        );
+        // Initialize providers (use overrides if set, otherwise create from config)
+        let llm = if let Some(llm) = self.llm_override.take() {
+            llm
+        } else {
+            Arc::new(
+                LlmManager::from_config(self.config.llm.clone())
+                    .map_err(|e| PipelineError::Config(format!("LLM: {e}")))?
+            )
+        };
+        let search = if let Some(search) = self.search_override.take() {
+            search
+        } else {
+            Arc::new(
+                SearchManager::from_config(self.config.search.clone())
+                    .map_err(|e| PipelineError::Config(format!("Search: {e}")))?
+            )
+        };
 
         // --- Phase 1: Interpret query ---
         self.set_state(PipelineState::Interpreting).await;
@@ -287,8 +315,12 @@ impl Pipeline {
             .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
         let total_pages = pending_results.len();
-        let rate_limiter = RateLimiter::new(std::time::Duration::from_millis(self.config.rate_limit_ms));
-        let fetcher = Arc::new(HttpFetcher::new(rate_limiter));
+        let fetcher = if let Some(f) = self.fetcher_override.take() {
+            f
+        } else {
+            let rate_limiter = RateLimiter::new(std::time::Duration::from_millis(self.config.rate_limit_ms));
+            Arc::new(HttpFetcher::new(rate_limiter))
+        };
 
         // Spawn worker pools
         let (fetch_tx, mut fetch_rx) = fetch_pool::spawn_fetch_pool(

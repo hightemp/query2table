@@ -1,0 +1,7 @@
+{
+  "queries": [
+    {"query_text": "top technology companies in Germany", "language": "en", "geo_target": "DE", "priority": 1},
+    {"query_text": "German tech startups list", "language": "en", "geo_target": "DE", "priority": 1},
+    {"query_text": "biggest IT firms Germany", "language": "en", "geo_target": "DE", "priority": 2}
+  ]
+}

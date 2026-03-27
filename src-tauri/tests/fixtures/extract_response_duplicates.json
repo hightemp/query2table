@@ -1,0 +1,34 @@
+{
+  "rows": [
+    {
+      "data": {
+        "name": "SAP SE",
+        "website": "https://www.sap.com",
+        "industry": "Enterprise Software",
+        "employee_count": "107000",
+        "source_url": "https://example.com/page1"
+      },
+      "confidence": 0.95
+    },
+    {
+      "data": {
+        "name": "SAP",
+        "website": "https://www.sap.com",
+        "industry": "Enterprise Software",
+        "employee_count": "107000",
+        "source_url": "https://example.com/page2"
+      },
+      "confidence": 0.88
+    },
+    {
+      "data": {
+        "name": "Siemens AG",
+        "website": "https://www.siemens.com",
+        "industry": "Technology",
+        "employee_count": "303000",
+        "source_url": "https://example.com/page1"
+      },
+      "confidence": 0.90
+    }
+  ]
+}
