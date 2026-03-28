@@ -141,6 +141,10 @@ export async function getImageResults(runId: string): Promise<ImageResult[]> {
 	return invoke('get_image_results', { runId });
 }
 
+export async function proxyImage(url: string): Promise<string> {
+	return invoke('proxy_image', { url });
+}
+
 export function onImageAdded(cb: (e: ImageAddedEvent) => void): Promise<UnlistenFn> {
 	return listen<ImageAddedEvent>('run:image_added', (event) => cb(event.payload));
 }

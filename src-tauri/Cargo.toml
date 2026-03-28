@@ -39,6 +39,7 @@ regex = "1"
 csv = "1.4.0"
 rust_xlsxwriter = "0.94.0"
 pdf-extract = "0.10.0"
+base64 = "0.22.1"
 
 [dev-dependencies]
 tempfile = "3"

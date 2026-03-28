@@ -110,6 +110,7 @@ pub fn run() {
             commands::run::get_run_schema,
             commands::run::get_run_rows,
             commands::run::get_image_results,
+            commands::run::proxy_image,
             commands::export::export_run,
         ])
         .run(tauri::generate_context!())

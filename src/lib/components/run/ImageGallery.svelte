@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { ImageResult } from '$lib/types';
 	import ImageCard from './ImageCard.svelte';
-	import { Grid2x2, List, Image, X, ExternalLink, ChevronLeft, ChevronRight } from '@lucide/svelte';
+	import { Grid2x2, List, Image, X, ExternalLink, ChevronLeft, ChevronRight, Loader2 } from '@lucide/svelte';
 	import { openUrl } from '@tauri-apps/plugin-opener';
+	import { proxyImage } from '$lib/api/tauri';
 
 	interface Props {
 		images: ImageResult[];
@@ -15,28 +16,46 @@
 	// Preview modal state
 	let previewIndex = $state<number | null>(null);
 	let previewImage = $derived(previewIndex !== null ? images[previewIndex] : null);
-	let previewImgError = $state(false);
+	let proxiedSrc = $state<string | null>(null);
+	let proxyLoading = $state(false);
+	let proxyFailed = $state(false);
 
-	function openPreview(index: number) {
+	async function openPreview(index: number) {
 		previewIndex = index;
-		previewImgError = false;
+		proxiedSrc = null;
+		proxyLoading = true;
+		proxyFailed = false;
+
+		const img = images[index];
+		try {
+			proxiedSrc = await proxyImage(img.image_url);
+		} catch {
+			// Fallback: try thumbnail via proxy
+			try {
+				proxiedSrc = await proxyImage(img.thumbnail_url);
+			} catch {
+				// Final fallback: use thumbnail URL directly (works for CDN-hosted thumbnails)
+				proxiedSrc = img.thumbnail_url || img.image_url;
+				proxyFailed = true;
+			}
+		}
+		proxyLoading = false;
 	}
 
 	function closePreview() {
 		previewIndex = null;
+		proxiedSrc = null;
 	}
 
-	function prevImage() {
+	async function prevImage() {
 		if (previewIndex !== null && previewIndex > 0) {
-			previewIndex--;
-			previewImgError = false;
+			await openPreview(previewIndex - 1);
 		}
 	}
 
-	function nextImage() {
+	async function nextImage() {
 		if (previewIndex !== null && previewIndex < images.length - 1) {
-			previewIndex++;
-			previewImgError = false;
+			await openPreview(previewIndex + 1);
 		}
 	}
 
@@ -134,12 +153,16 @@
 				{/if}
 
 				<div class="preview-image-wrapper">
-					{#if !previewImgError}
+					{#if proxyLoading}
+						<div class="preview-loading">
+							<Loader2 size={32} class="spinner" />
+							<span>Loading image...</span>
+						</div>
+					{:else if proxiedSrc}
 						<img
-							src={previewImage.image_url}
-							alt={previewImage.title}
+							src={proxiedSrc}
+							alt={previewImage?.title ?? ''}
 							class="preview-img"
-							onerror={() => { previewImgError = true; }}
 						/>
 					{:else}
 						<div class="preview-img-error">Failed to load image</div>
@@ -229,8 +252,8 @@
 
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: 12px;
+		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		gap: 16px;
 		overflow-y: auto;
 		min-height: 0;
 		flex: 1;
@@ -366,6 +389,24 @@
 	.preview-img-error {
 		color: var(--color-surface-500);
 		font-size: 0.9rem;
+	}
+
+	.preview-loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+		color: var(--color-surface-500);
+		font-size: 0.9rem;
+	}
+
+	.preview-loading :global(.spinner) {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
 	}
 
 	.nav-btn {
