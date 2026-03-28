@@ -218,6 +218,10 @@ impl Database {
             ("rate_limit_per_domain_ms", "2000"),
             ("respect_robots_txt", "true"),
             ("max_page_size_kb", "5000"),
+            // Content processing
+            ("enable_content_truncation", "true"),
+            ("max_extraction_text_chars", "12000"),
+            ("max_pdf_text_chars", "500000"),
             // Quality
             ("precision_recall", "balanced"),
             ("evidence_strictness", "moderate"),

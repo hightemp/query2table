@@ -303,6 +303,10 @@ pub fn test_pipeline_config() -> PipelineConfig {
         dedup_similarity: 0.85,
         max_budget_usd: 10.0,
         rate_limit_ms: 100, // Fast for tests
+        enable_content_truncation: true,
+        max_extraction_text_chars: 12000,
+        max_pdf_text_chars: 500_000,
+        max_page_size_bytes: 5 * 1024 * 1024,
     }
 }
 

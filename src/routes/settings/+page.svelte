@@ -64,6 +64,16 @@
 				{ key: 'dedup_similarity_threshold', label: 'Dedup Threshold', description: 'Similarity threshold for deduplication (0.0-1.0)', type: 'number' },
 			]
 		},
+		{
+			label: 'Content Processing',
+			description: 'Configure document truncation and size limits',
+			settings: [
+				{ key: 'enable_content_truncation', label: 'Enable Truncation', description: 'Enable or disable document text truncation', type: 'select', options: [{ label: 'Enabled', value: 'true' }, { label: 'Disabled', value: 'false' }] },
+				{ key: 'max_extraction_text_chars', label: 'Max Extraction Text (chars)', description: 'Max characters of page text sent to LLM for extraction', type: 'number' },
+				{ key: 'max_pdf_text_chars', label: 'Max PDF Text (chars)', description: 'Max characters extracted from PDF documents', type: 'number' },
+				{ key: 'max_page_size_kb', label: 'Max Page Size (KB)', description: 'Max download size for a single page in kilobytes', type: 'number' },
+			]
+		},
 
 	];
 

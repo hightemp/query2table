@@ -38,6 +38,10 @@ pub struct PipelineConfig {
     pub dedup_similarity: f64,
     pub max_budget_usd: f64,
     pub rate_limit_ms: u64,
+    pub enable_content_truncation: bool,
+    pub max_extraction_text_chars: usize,
+    pub max_pdf_text_chars: usize,
+    pub max_page_size_bytes: u64,
 }
 
 impl PipelineConfig {
@@ -64,6 +68,19 @@ impl PipelineConfig {
             rate_limit_ms: settings.get("rate_limit_per_domain_ms")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(2000),
+            enable_content_truncation: settings.get("enable_content_truncation")
+                .map(|v| v == "true")
+                .unwrap_or(true),
+            max_extraction_text_chars: settings.get("max_extraction_text_chars")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(12000),
+            max_pdf_text_chars: settings.get("max_pdf_text_chars")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(500_000),
+            max_page_size_bytes: settings.get("max_page_size_kb")
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(|kb| kb * 1024)
+                .unwrap_or(5 * 1024 * 1024),
         }
     }
 }
@@ -331,18 +348,32 @@ impl Pipeline {
             f
         } else {
             let rate_limiter = RateLimiter::new(std::time::Duration::from_millis(self.config.rate_limit_ms));
-            Arc::new(HttpFetcher::new(rate_limiter))
+            Arc::new(HttpFetcher::new(rate_limiter).with_max_body_bytes(self.config.max_page_size_bytes))
+        };
+
+        // Compute truncation limits (None means no truncation)
+        let max_pdf_chars = if self.config.enable_content_truncation {
+            Some(self.config.max_pdf_text_chars)
+        } else {
+            None
+        };
+        let max_extraction_chars = if self.config.enable_content_truncation {
+            Some(self.config.max_extraction_text_chars)
+        } else {
+            None
         };
 
         // Spawn worker pools
         let (fetch_tx, mut fetch_rx) = fetch_pool::spawn_fetch_pool(
             fetcher,
             self.config.max_parallel_fetches,
+            max_pdf_chars,
         );
         let (extract_tx, mut extract_rx) = extract_pool::spawn_extract_pool(
             llm.clone(),
             confirmed_columns.clone(),
             self.config.max_parallel_extractions,
+            max_extraction_chars,
         );
 
         // Submit fetch jobs in a background task to avoid deadlock:

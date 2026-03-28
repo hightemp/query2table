@@ -43,6 +43,7 @@ pub fn spawn_extract_pool(
     llm: Arc<LlmManager>,
     columns: Vec<SchemaColumn>,
     num_workers: usize,
+    max_text_chars: Option<usize>,
 ) -> (mpsc::Sender<ExtractionJob>, mpsc::UnboundedReceiver<ExtractResult>) {
     let (job_tx, job_rx) = mpsc::channel::<ExtractionJob>(num_workers * 4);
     let (result_tx, result_rx) = mpsc::unbounded_channel::<ExtractResult>();
@@ -72,7 +73,7 @@ pub fn spawn_extract_pool(
                 };
 
                 let page_url = job.document.url.clone();
-                let result = Extractor::extract(&job.document, &columns, &llm).await;
+                let result = Extractor::extract(&job.document, &columns, &llm, max_text_chars).await;
 
                 let extract_result = match result {
                     Ok(extraction) => {

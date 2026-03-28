@@ -52,16 +52,22 @@ pub struct Extractor;
 
 impl Extractor {
     /// Extract entities from a single parsed document.
+    /// If `max_text_chars` is `Some(n)`, the document text is truncated to `n` characters before sending to LLM.
     pub async fn extract(
         document: &ParsedDocument,
         columns: &[SchemaColumn],
         llm: &LlmManager,
+        max_text_chars: Option<usize>,
     ) -> Result<ExtractionResult, LlmError> {
         debug!(url = %document.url, text_len = document.text.len(), "Extracting entities");
 
         // Truncate text to avoid exceeding token limits
-        let text = if document.text.len() > 12000 {
-            &document.text[..12000]
+        let text = if let Some(max) = max_text_chars {
+            if document.text.len() > max {
+                &document.text[..max]
+            } else {
+                &document.text
+            }
         } else {
             &document.text
         };
@@ -164,9 +170,26 @@ mod tests {
     }
 
     #[test]
-    fn test_text_truncation_threshold() {
+    fn test_text_truncation_with_limit() {
         let long_text = "a".repeat(15000);
-        let truncated = if long_text.len() > 12000 { &long_text[..12000] } else { &long_text };
+        let max = Some(12000usize);
+        let truncated = if let Some(m) = max {
+            if long_text.len() > m { &long_text[..m] } else { &long_text }
+        } else {
+            &long_text
+        };
         assert_eq!(truncated.len(), 12000);
+    }
+
+    #[test]
+    fn test_text_truncation_disabled() {
+        let long_text = "a".repeat(15000);
+        let max: Option<usize> = None;
+        let truncated = if let Some(m) = max {
+            if long_text.len() > m { &long_text[..m] } else { &long_text }
+        } else {
+            &long_text
+        };
+        assert_eq!(truncated.len(), 15000);
     }
 }

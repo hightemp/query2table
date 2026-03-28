@@ -47,6 +47,7 @@ pub enum FetchResult {
 pub fn spawn_fetch_pool(
     fetcher: Arc<HttpFetcher>,
     num_workers: usize,
+    max_pdf_chars: Option<usize>,
 ) -> (mpsc::Sender<FetchJob>, mpsc::UnboundedReceiver<FetchResult>) {
     let (job_tx, job_rx) = mpsc::channel::<FetchJob>(num_workers * 4);
     let (result_tx, result_rx) = mpsc::unbounded_channel::<FetchResult>();
@@ -85,7 +86,7 @@ pub fn spawn_fetch_pool(
                     Ok(page) => {
                         let doc = if page.is_pdf() {
                             debug!(worker_id, url = %job.url, bytes = page.body_bytes.len(), "Parsing PDF document");
-                            PdfParser::parse(&page.body_bytes, &job.url)
+                            PdfParser::parse(&page.body_bytes, &job.url, max_pdf_chars)
                         } else {
                             DocumentParser::parse(&page.body, &job.url)
                         };

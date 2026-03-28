@@ -8,8 +8,9 @@ pub struct PdfParser;
 impl PdfParser {
     /// Parse PDF bytes and extract clean text.
     /// Returns a `ParsedDocument` with extracted title and text.
-    pub fn parse(bytes: &[u8], url: &str) -> ParsedDocument {
-        match Self::extract_text(bytes) {
+    /// If `max_chars` is `Some(n)`, the extracted text is truncated to `n` characters.
+    pub fn parse(bytes: &[u8], url: &str, max_chars: Option<usize>) -> ParsedDocument {
+        match Self::extract_text(bytes, max_chars) {
             Ok(text) => {
                 let title = Self::extract_title(&text, url);
                 let cleaned = Self::clean_text(&text);
@@ -31,16 +32,16 @@ impl PdfParser {
         }
     }
 
-    fn extract_text(bytes: &[u8]) -> Result<String, String> {
+    fn extract_text(bytes: &[u8], max_chars: Option<usize>) -> Result<String, String> {
         let text = pdf_extract::extract_text_from_mem(bytes)
             .map_err(|e| format!("PDF extraction error: {}", e))?;
 
-        if text.len() > 500_000 {
-            // Truncate very large PDFs to avoid overwhelming the LLM
-            Ok(text[..500_000].to_string())
-        } else {
-            Ok(text)
+        if let Some(max) = max_chars {
+            if text.len() > max {
+                return Ok(text[..max].to_string());
+            }
         }
+        Ok(text)
     }
 
     /// Try to derive a title from the first line of text or the URL filename.
@@ -129,7 +130,7 @@ mod tests {
     #[test]
     fn test_parse_invalid_pdf_returns_empty() {
         let invalid_bytes = b"This is not a PDF file at all";
-        let doc = PdfParser::parse(invalid_bytes, "https://example.com/fake.pdf");
+        let doc = PdfParser::parse(invalid_bytes, "https://example.com/fake.pdf", None);
         assert!(doc.text.is_empty());
     }
 
@@ -195,7 +196,7 @@ mod tests {
         doc.save_to(&mut buf).unwrap();
 
         // Now test PdfParser
-        let parsed = PdfParser::parse(&buf, "https://example.com/test.pdf");
+        let parsed = PdfParser::parse(&buf, "https://example.com/test.pdf", None);
         assert!(
             parsed.text.contains("Hello PDF World"),
             "Expected 'Hello PDF World' in parsed text, got: {:?}",
