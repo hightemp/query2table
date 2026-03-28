@@ -1,6 +1,6 @@
 [package]
 name = "query2table"
-version = "0.1.0"
+version = "0.2.0"
 description = "Natural-language research queries to structured tables"
 authors = ["hightemp"]
 edition = "2021"
