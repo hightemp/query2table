@@ -83,26 +83,22 @@
 
 	.thumb-wrapper {
 		width: 100%;
-		height: 0;
-		padding-bottom: 75%; /* 4:3 aspect ratio */
-		position: relative;
+		height: 200px;
 		overflow: hidden;
 		background: var(--color-surface-200-800);
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 
 	.thumb {
-		position: absolute;
-		top: 0;
-		left: 0;
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+		display: block;
 	}
 
 	.thumb-placeholder {
-		position: absolute;
-		top: 0;
-		left: 0;
 		width: 100%;
 		height: 100%;
 		display: flex;
@@ -151,8 +147,8 @@
 	}
 
 	.thumb-compact {
-		width: 80px;
-		height: 60px;
+		width: 100px;
+		height: 75px;
 		object-fit: cover;
 		border-radius: 4px;
 		flex-shrink: 0;

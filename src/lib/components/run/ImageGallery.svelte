@@ -252,11 +252,13 @@
 
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+		grid-auto-rows: min-content;
 		gap: 16px;
 		overflow-y: auto;
 		min-height: 0;
 		flex: 1;
+		align-content: start;
 	}
 
 	.list {
