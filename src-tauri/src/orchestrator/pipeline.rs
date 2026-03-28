@@ -225,12 +225,14 @@ impl Pipeline {
         self.log("INFO", "planner", &format!("Proposed {} columns", proposed_schema.columns.len())).await;
 
         // --- Phase 3: Schema review (wait for confirmation or auto-confirm) ---
-        self.set_state(PipelineState::SchemaReview).await;
+        // Emit schema_proposed BEFORE status change so the frontend has columns
+        // when SchemaEditor mounts (status_changed triggers the mount).
         if let Some(ref events) = self.events {
             let columns_val = serde_json::to_value(&proposed_schema.columns)
                 .unwrap_or(serde_json::Value::Array(vec![]));
             events.emit_schema_proposed(&columns_val);
         }
+        self.set_state(PipelineState::SchemaReview).await;
 
         // Wait for schema confirmation or timeout (auto-confirm after checking for command)
         let confirmed_columns = self.wait_for_schema_confirmation(proposed_schema.columns).await?;

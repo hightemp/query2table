@@ -12,6 +12,13 @@
 
 	let columns = $state<SchemaColumn[]>(initialColumns.map((c) => ({ ...c })));
 
+	// Keep local state in sync when prop changes (e.g. late-arriving event)
+	$effect(() => {
+		if (initialColumns.length > 0 && columns.length === 0) {
+			columns = initialColumns.map((c) => ({ ...c }));
+		}
+	});
+
 	function addColumn() {
 		columns = [
 			...columns,
