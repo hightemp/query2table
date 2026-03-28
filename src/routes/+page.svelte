@@ -137,8 +137,7 @@
 
 <style>
 	.query-page {
-		max-width: 1000px;
-		margin: 0 auto;
+		width: 100%;
 	}
 
 	h1 {
