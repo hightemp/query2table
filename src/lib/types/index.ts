@@ -145,4 +145,8 @@ export interface ImageAddedEvent {
 	image_url: string;
 	thumbnail_url: string;
 	title: string;
+	source_url: string;
+	width: number | null;
+	height: number | null;
+	relevance_score: number | null;
 }

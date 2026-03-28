@@ -140,7 +140,7 @@ impl ImagePipeline {
         // Optional LLM ranking
         let ranked_results = if let Some(ref llm_mgr) = llm {
             self.log("INFO", "image_ranker", "Ranking images with LLM...").await;
-            match ImageRanker::rank(&self.query, collected.results, llm_mgr, 0.3).await {
+            match ImageRanker::rank(&self.query, collected.results, llm_mgr, 0.5).await {
                 Ok(ranked) => {
                     self.budget.record_llm_call(1000, 500);
                     self.log("INFO", "image_ranker", &format!("Ranked: {} images passed relevance filter", ranked.len())).await;
@@ -193,7 +193,7 @@ impl ImagePipeline {
 
             // Emit event for real-time UI updates
             if let Some(ref events) = self.events {
-                events.emit_image_added(&image_id, &img.image_url, &img.thumbnail_url, &img.title);
+                events.emit_image_added(&image_id, &img.image_url, &img.thumbnail_url, &img.title, &img.source_url, img.width, img.height, Some(ranked.relevance_score));
                 events.emit_progress(ProgressStats {
                     rows_found: stored_count,
                     pages_fetched: 0,

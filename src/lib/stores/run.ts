@@ -113,10 +113,10 @@ async function subscribeEvents() {
 					image_url: e.image_url,
 					thumbnail_url: e.thumbnail_url,
 					title: e.title,
-					source_url: '',
-					width: null,
-					height: null,
-					relevance_score: null,
+					source_url: e.source_url,
+					width: e.width,
+					height: e.height,
+					relevance_score: e.relevance_score,
 				};
 				return { ...s, imageResults: [...s.imageResults, img] };
 			});

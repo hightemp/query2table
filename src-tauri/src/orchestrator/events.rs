@@ -100,13 +100,17 @@ impl EventPublisher {
         }
     }
 
-    pub fn emit_image_added(&self, image_id: &str, image_url: &str, thumbnail_url: &str, title: &str) {
+    pub fn emit_image_added(&self, image_id: &str, image_url: &str, thumbnail_url: &str, title: &str, source_url: &str, width: Option<u32>, height: Option<u32>, relevance_score: Option<f64>) {
         let payload = ImageAddedEvent {
             run_id: self.run_id.clone(),
             image_id: image_id.to_string(),
             image_url: image_url.to_string(),
             thumbnail_url: thumbnail_url.to_string(),
             title: title.to_string(),
+            source_url: source_url.to_string(),
+            width,
+            height,
+            relevance_score,
         };
         if let Err(e) = self.app.emit("run:image_added", &payload) {
             tracing::error!(error = %e, "Failed to emit image_added event");
@@ -175,6 +179,10 @@ pub struct ImageAddedEvent {
     pub image_url: String,
     pub thumbnail_url: String,
     pub title: String,
+    pub source_url: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub relevance_score: Option<f64>,
 }
 
 #[cfg(test)]
