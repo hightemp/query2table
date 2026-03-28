@@ -1,67 +1,65 @@
 <script lang="ts">
 	import type { ImageResult } from '$lib/types';
-	import { openUrl } from '@tauri-apps/plugin-opener';
 
 	interface Props {
 		image: ImageResult;
 		compact?: boolean;
+		onclick?: () => void;
 	}
 
-	let { image, compact = false }: Props = $props();
-
-	function handleOpenUrl(url: string) {
-		if (url) openUrl(url);
-	}
+	let { image, compact = false, onclick }: Props = $props();
 
 	let dimensions = $derived(
 		image.width && image.height ? `${image.width}×${image.height}` : ''
 	);
+
+	let imgError = $state(false);
 </script>
 
 {#if compact}
-	<div class="image-card-compact">
-		<img
-			src={image.thumbnail_url}
-			alt={image.title}
-			class="thumb-compact"
-			loading="lazy"
-			onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-		/>
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="image-card-compact" onclick={onclick}>
+		{#if !imgError}
+			<img
+				src={image.thumbnail_url || image.image_url}
+				alt={image.title}
+				class="thumb-compact"
+				loading="lazy"
+				onerror={() => { imgError = true; }}
+			/>
+		{:else}
+			<div class="thumb-compact thumb-placeholder">No img</div>
+		{/if}
 		<div class="info-compact">
 			<span class="title-compact" title={image.title}>{image.title || 'Untitled'}</span>
 			{#if dimensions}
 				<span class="dim-compact">{dimensions}</span>
 			{/if}
-			<div class="links-compact">
-				<button class="link-btn" onclick={() => handleOpenUrl(image.image_url)}>Image</button>
-				{#if image.source_url}
-					<button class="link-btn" onclick={() => handleOpenUrl(image.source_url)}>Source</button>
-				{/if}
-			</div>
 		</div>
 	</div>
 {:else}
-	<div class="image-card">
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="image-card" onclick={onclick}>
 		<div class="thumb-wrapper">
-			<img
-				src={image.thumbnail_url}
-				alt={image.title}
-				class="thumb"
-				loading="lazy"
-				onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-			/>
+			{#if !imgError}
+				<img
+					src={image.thumbnail_url || image.image_url}
+					alt={image.title}
+					class="thumb"
+					loading="lazy"
+					onerror={() => { imgError = true; }}
+				/>
+			{:else}
+				<div class="thumb-placeholder">No image</div>
+			{/if}
 		</div>
 		<div class="info">
 			<span class="title" title={image.title}>{image.title || 'Untitled'}</span>
 			{#if dimensions}
 				<span class="dim">{dimensions}</span>
 			{/if}
-			<div class="links">
-				<button class="link-btn" onclick={() => handleOpenUrl(image.image_url)}>Open Image</button>
-				{#if image.source_url}
-					<button class="link-btn" onclick={() => handleOpenUrl(image.source_url)}>Source</button>
-				{/if}
-			</div>
 		</div>
 	</div>
 {/if}
@@ -72,24 +70,47 @@
 		border-radius: 8px;
 		overflow: hidden;
 		background: var(--color-surface-100-900);
-		transition: box-shadow 0.15s;
+		transition: box-shadow 0.15s, transform 0.15s;
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.image-card:hover {
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+		transform: translateY(-1px);
 	}
 
 	.thumb-wrapper {
 		width: 100%;
-		aspect-ratio: 4 / 3;
+		height: 0;
+		padding-bottom: 75%; /* 4:3 aspect ratio */
+		position: relative;
 		overflow: hidden;
 		background: var(--color-surface-200-800);
 	}
 
 	.thumb {
+		position: absolute;
+		top: 0;
+		left: 0;
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+
+	.thumb-placeholder {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.8rem;
+		color: var(--color-surface-500);
+		background: var(--color-surface-200-800);
 	}
 
 	.info {
@@ -112,12 +133,6 @@
 		color: var(--color-surface-500);
 	}
 
-	.links {
-		display: flex;
-		gap: 8px;
-		margin-top: 4px;
-	}
-
 	/* Compact (list) styles */
 	.image-card-compact {
 		display: flex;
@@ -127,6 +142,12 @@
 		border-radius: 8px;
 		padding: 8px;
 		background: var(--color-surface-100-900);
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+
+	.image-card-compact:hover {
+		background: var(--color-surface-200-800);
 	}
 
 	.thumb-compact {
@@ -157,23 +178,5 @@
 	.dim-compact {
 		font-size: 0.75rem;
 		color: var(--color-surface-500);
-	}
-
-	.links-compact {
-		display: flex;
-		gap: 8px;
-	}
-
-	.link-btn {
-		font-size: 0.75rem;
-		color: var(--color-primary-500);
-		background: none;
-		border: none;
-		cursor: pointer;
-		padding: 0;
-	}
-
-	.link-btn:hover {
-		text-decoration: underline;
 	}
 </style>
