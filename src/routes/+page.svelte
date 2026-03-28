@@ -9,7 +9,9 @@
 	import ProgressBar from '$lib/components/run/ProgressBar.svelte';
 	import RunControls from '$lib/components/run/RunControls.svelte';
 	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
+	import RunStatusPanel from '$lib/components/run/RunStatusPanel.svelte';
 	import { ChevronDownIcon, ChevronUpIcon } from '@lucide/svelte';
+	import { logPanelOpen } from '$lib/stores/logs';
 
 	let query = $state('');
 	let selectedRow = $state<RunRow | null>(null);
@@ -45,6 +47,7 @@
 			if (!isNaN(budget) && budget > 0) sc.max_budget_usd = budget;
 			const dur = parseInt(maxDuration);
 			if (!isNaN(dur) && dur > 0) sc.max_duration_seconds = dur;
+			logPanelOpen.set(true);
 			await startNewRun(query, sc);
 		} catch (err) {
 			submitError = String(err);
@@ -142,6 +145,9 @@
 
 		{#if isActive || isFinished}
 			<ProgressBar stats={$runState.progress} status={$runState.status} />
+			{#if isActive}
+				<RunStatusPanel status={$runState.status} />
+			{/if}
 		{/if}
 
 		{#if isSchemaReview}

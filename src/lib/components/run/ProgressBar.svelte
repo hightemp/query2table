@@ -14,6 +14,8 @@
 		return Math.round((stats.pages_fetched / stats.pages_total) * 100);
 	});
 
+	let isRunning = $derived(status === 'running' || status === 'pending');
+
 	function formatElapsed(secs: number): string {
 		const m = Math.floor(secs / 60);
 		const s = secs % 60;
@@ -26,12 +28,16 @@
 		<span class="progress-label">
 			{#if status === 'running'}
 				Processing...
+			{:else if status === 'pending'}
+				Starting...
 			{:else if status === 'paused'}
 				Paused
 			{:else if status === 'completed'}
 				Completed
 			{:else if status === 'failed'}
 				Failed
+			{:else if status === 'cancelled'}
+				Cancelled
 			{:else}
 				{status}
 			{/if}
@@ -44,18 +50,19 @@
 	<div class="progress-track">
 		<div
 			class="progress-fill"
+			class:running={isRunning}
 			class:completed={status === 'completed'}
 			class:failed={status === 'failed'}
 			class:paused={status === 'paused'}
-			style="width: {stats ? progressPercent() : 0}%"
+			style="width: {stats ? progressPercent() : (isRunning ? 100 : 0)}%"
 		></div>
 	</div>
 
 	{#if stats}
 		<div class="progress-stats">
-			<span>Rows: {stats.rows_found}</span>
-			<span>Pages: {stats.pages_fetched}/{stats.pages_total}</span>
-			<span>Queries: {stats.queries_executed}/{stats.queries_total}</span>
+			<span>Rows: <strong>{stats.rows_found}</strong></span>
+			<span>Pages: <strong>{stats.pages_fetched}</strong>/{stats.pages_total}</span>
+			<span>Queries: <strong>{stats.queries_executed}</strong>/{stats.queries_total}</span>
 			<span>Time: {formatElapsed(stats.elapsed_secs)}</span>
 			<span>Cost: ${stats.spent_usd.toFixed(4)}</span>
 		</div>
@@ -87,6 +94,7 @@
 		background: var(--color-surface-200-800);
 		border-radius: 4px;
 		overflow: hidden;
+		position: relative;
 	}
 
 	.progress-fill {
@@ -96,16 +104,28 @@
 		transition: width 0.3s ease;
 	}
 
+	.progress-fill.running {
+		animation: pulse 1.5s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.6; }
+	}
+
 	.progress-fill.completed {
 		background: var(--color-success-500, #22c55e);
+		animation: none;
 	}
 
 	.progress-fill.failed {
 		background: var(--color-error-500);
+		animation: none;
 	}
 
 	.progress-fill.paused {
 		background: var(--color-warning-500);
+		animation: none;
 	}
 
 	.progress-stats {
@@ -115,5 +135,9 @@
 		font-size: 0.8rem;
 		color: var(--color-surface-600-400);
 		flex-wrap: wrap;
+	}
+
+	.progress-stats strong {
+		color: var(--color-surface-900-100);
 	}
 </style>

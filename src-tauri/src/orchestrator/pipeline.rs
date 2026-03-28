@@ -200,17 +200,24 @@ impl Pipeline {
 
         // --- Phase 1: Interpret query ---
         self.set_state(PipelineState::Interpreting).await;
-        self.log("INFO", "interpreter", "Interpreting query...").await;
+        self.log("INFO", "interpreter", "Analyzing query with LLM...").await;
 
         let intent = QueryInterpreter::interpret(&self.query, &llm).await
             .map_err(|e| PipelineError::Llm(format!("Interpreter: {e}")))?;
         self.budget.record_llm_call(500, 200); // estimated tokens
 
-        self.log("INFO", "interpreter", &format!("Entity type: {}, attributes: {:?}", intent.entity_type, intent.attributes)).await;
+        self.log("INFO", "interpreter", &format!("Identified entity type: '{}'", intent.entity_type)).await;
+        self.log("INFO", "interpreter", &format!("Attributes: {:?}", intent.attributes)).await;
+        if !intent.constraints.is_empty() {
+            self.log("INFO", "interpreter", &format!("Constraints: {:?}", intent.constraints)).await;
+        }
+        if !intent.languages.is_empty() {
+            self.log("INFO", "interpreter", &format!("Languages: {:?}", intent.languages)).await;
+        }
 
         // --- Phase 2: Plan schema ---
         self.set_state(PipelineState::Planning).await;
-        self.log("INFO", "planner", "Planning schema...").await;
+        self.log("INFO", "planner", "Generating table schema with LLM...").await;
 
         let proposed_schema = SchemaPlanner::plan(&intent, &llm).await
             .map_err(|e| PipelineError::Llm(format!("SchemaPlanner: {e}")))?;
@@ -222,7 +229,8 @@ impl Pipeline {
         self.repo.create_run_schema(&self.run_id, &columns_json).await
             .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
-        self.log("INFO", "planner", &format!("Proposed {} columns", proposed_schema.columns.len())).await;
+        let col_names: Vec<&str> = proposed_schema.columns.iter().map(|c| c.name.as_str()).collect();
+        self.log("INFO", "planner", &format!("Proposed {} columns: {}", proposed_schema.columns.len(), col_names.join(", "))).await;
 
         // --- Phase 3: Schema review (wait for confirmation or auto-confirm) ---
         // Emit schema_proposed BEFORE status change so the frontend has columns
@@ -247,7 +255,7 @@ impl Pipeline {
 
         // --- Phase 4: Search planning ---
         self.set_state(PipelineState::Running).await;
-        self.log("INFO", "search_planner", "Planning searches...").await;
+        self.log("INFO", "search_planner", "Generating search queries with LLM...").await;
 
         let search_plan = SearchPlanner::plan(&intent, &crate::roles::schema_planner::ProposedSchema { columns: confirmed_columns.clone() }, &llm).await
             .map_err(|e| PipelineError::Llm(format!("SearchPlanner: {e}")))?;
@@ -264,7 +272,10 @@ impl Pipeline {
         self.budget.record_llm_call(300, 400);
 
         let all_queries = [search_plan.queries.as_slice(), expanded.queries.as_slice()].concat();
-        self.log("INFO", "search_planner", &format!("{} search queries planned", all_queries.len())).await;
+        self.log("INFO", "search_planner", &format!("{} search queries planned across {} languages", all_queries.len(), languages.len())).await;
+        for (i, q) in all_queries.iter().enumerate() {
+            self.log("DEBUG", "search_planner", &format!("  Query {}: [{}] {}", i + 1, q.language, q.query_text)).await;
+        }
 
         // Save search queries to DB
         for (i, q) in all_queries.iter().enumerate() {
@@ -279,7 +290,7 @@ impl Pipeline {
         }
 
         // --- Phase 5: Execute searches ---
-        self.log("INFO", "search_executor", "Executing searches...").await;
+        self.log("INFO", "search_executor", &format!("Executing {} search queries via {}...", all_queries.len(), search.primary_name())).await;
 
         let collected = SearchExecutor::execute(&all_queries, &search).await
             .map_err(|e| PipelineError::Search(format!("SearchExecutor: {e}")))?;
@@ -288,7 +299,7 @@ impl Pipeline {
         }
 
         self.log("INFO", "search_executor", &format!(
-            "Collected {} results from {} queries ({} failed)",
+            "Found {} URLs from {} queries ({} failed)",
             collected.results.len(),
             collected.total_queries_executed,
             collected.failed_queries,
@@ -311,12 +322,11 @@ impl Pipeline {
         }
 
         // --- Phase 6: Fetch + Extract loop ---
-        self.log("INFO", "pipeline", "Starting fetch and extraction...").await;
-
         let pending_results = self.repo.get_pending_search_results(&self.run_id).await
             .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
         let total_pages = pending_results.len();
+        self.log("INFO", "fetcher", &format!("Fetching {} pages (max {} parallel)...", total_pages, self.config.max_parallel_fetches)).await;
         let fetcher = if let Some(f) = self.fetcher_override.take() {
             f
         } else {
@@ -417,6 +427,8 @@ impl Pipeline {
                             self.budget.record_fetch_call();
                             pages_fetched += 1;
 
+                            self.log("INFO", "fetcher", &format!("[{}/{}] Fetched: {}", pages_fetched, total_pages, &doc.document.url)).await;
+
                             // Save fetched page
                             let page_id = self.repo.create_fetched_page(
                                 &doc.search_result_id,
@@ -450,6 +462,7 @@ impl Pipeline {
                         }
                         Some(FetchResult::Failure(fail)) => {
                             pages_failed += 1;
+                            self.log("WARN", "fetcher", &format!("Failed to fetch: {}", &fail.url)).await;
                             self.repo.create_fetched_page(
                                 &fail.search_result_id,
                                 &self.run_id,
@@ -476,6 +489,10 @@ impl Pipeline {
                             // Validate extracted rows
                             let validated = Validator::validate(&output.rows, &confirmed_columns, self.config.min_confidence);
                             let valid_rows = Validator::filter_valid(&validated);
+
+                            if !valid_rows.is_empty() {
+                                self.log("INFO", "extractor", &format!("Extracted {} valid rows (of {})", valid_rows.len(), output.rows.len())).await;
+                            }
 
                             for row in &valid_rows {
                                 // Save entity row
@@ -530,7 +547,8 @@ impl Pipeline {
         }
 
         // --- Phase 7: Deduplication ---
-        self.log("INFO", "deduplicator", &format!("Deduplicating {} rows...", all_valid_rows.len())).await;
+        self.log("INFO", "pipeline", &format!("Fetch complete: {} pages fetched, {} failed", pages_fetched, pages_failed)).await;
+        self.log("INFO", "deduplicator", &format!("Deduplicating {} rows (similarity threshold: {:.0}%)...", all_valid_rows.len(), self.config.dedup_similarity * 100.0)).await;
 
         let dedup_result = Deduplicator::deduplicate(
             &all_valid_rows,
