@@ -6,13 +6,24 @@
 	import { onMount } from 'svelte';
 	import { onLogEvent, onRunLogEntry } from '$lib/api/tauri';
 	import { addLog } from '$lib/stores/logs';
+	import { currentTheme, loadTheme } from '$lib/stores/ui';
 	import type { LogEntry } from '$lib/types';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
 
+	$effect(() => {
+		const theme = $currentTheme;
+		if (theme === 'dark') {
+			document.documentElement.classList.add('dark');
+		} else {
+			document.documentElement.classList.remove('dark');
+		}
+	});
+
 	onMount(() => {
 		settings.load();
+		loadTheme();
 
 		const unlisteners: (() => void)[] = [];
 

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { SearchIcon, HistoryIcon, SettingsIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from '@lucide/svelte';
-	import { sidebarCollapsed } from '$lib/stores/ui';
+	import { SearchIcon, HistoryIcon, SettingsIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SunIcon, MoonIcon } from '@lucide/svelte';
+	import { sidebarCollapsed, currentTheme, toggleTheme } from '$lib/stores/ui';
 
 	function toggleSidebar() {
 		sidebarCollapsed.update((v) => !v);
@@ -36,6 +36,19 @@
 			{#if !$sidebarCollapsed}<span>Settings</span>{/if}
 		</a>
 	</nav>
+
+	<div class="sidebar-footer">
+		<button class="btn-icon" onclick={toggleTheme} aria-label="Toggle theme">
+			{#if $currentTheme === 'dark'}
+				<SunIcon size={20} />
+			{:else}
+				<MoonIcon size={20} />
+			{/if}
+		</button>
+		{#if !$sidebarCollapsed}
+			<span class="theme-label">{$currentTheme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+		{/if}
+	</div>
 </aside>
 
 <style>
@@ -120,5 +133,19 @@
 	.collapsed .nav-item {
 		justify-content: center;
 		padding: 10px;
+	}
+
+	.sidebar-footer {
+		margin-top: auto;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 12px;
+	}
+
+	.theme-label {
+		font-size: 0.85rem;
+		white-space: nowrap;
+		opacity: 0.7;
 	}
 </style>
