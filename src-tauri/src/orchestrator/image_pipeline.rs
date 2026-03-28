@@ -12,6 +12,8 @@ use crate::roles::image_ranker::ImageRanker;
 
 use super::budget_tracker::BudgetTracker;
 use super::events::{EventPublisher, ProgressStats};
+use crate::roles::stopping_controller::{StoppingController, PipelineStats};
+
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
 
 /// Simplified pipeline for image search mode.
@@ -102,6 +104,13 @@ impl ImagePipeline {
             return Ok(PipelineState::Completed);
         }
 
+        // Check stop conditions after search
+        if let Some(reason) = self.check_stop_conditions(0) {
+            self.log("INFO", "stopping_controller", &format!("Stopping after search: {:?}", reason)).await;
+            self.set_status("completed").await;
+            return Ok(PipelineState::Completed);
+        }
+
         // Check for cancellation
         if self.is_cancelled() {
             self.set_status("cancelled").await;
@@ -134,11 +143,20 @@ impl ImagePipeline {
                 .collect()
         };
 
+        // Apply target limit ("Max Images" stop condition)
+        let max_images = self.config.stop.target_row_count;
+        let ranked_results = if ranked_results.len() > max_images {
+            self.log("INFO", "image_pipeline", &format!("Limiting results from {} to {} (max images)", ranked_results.len(), max_images)).await;
+            ranked_results.into_iter().take(max_images).collect::<Vec<_>>()
+        } else {
+            ranked_results
+        };
+
         // Store results
         self.log("INFO", "image_pipeline", &format!("Storing {} image results", ranked_results.len())).await;
-        let total = ranked_results.len() as u64;
+        let mut stored_count = 0u64;
 
-        for (i, ranked) in ranked_results.iter().enumerate() {
+        for ranked in &ranked_results {
             let img = &ranked.result;
             let image_id = self.repo.create_image_result(
                 &self.run_id,
@@ -151,11 +169,13 @@ impl ImagePipeline {
                 Some(ranked.relevance_score),
             ).await.map_err(|e| format!("Storage: {e}"))?;
 
+            stored_count += 1;
+
             // Emit event for real-time UI updates
             if let Some(ref events) = self.events {
                 events.emit_image_added(&image_id, &img.image_url, &img.thumbnail_url, &img.title);
                 events.emit_progress(ProgressStats {
-                    rows_found: (i + 1) as u64,
+                    rows_found: stored_count,
                     pages_fetched: 0,
                     pages_total: 0,
                     queries_executed: queries.len() as u64,
@@ -164,11 +184,17 @@ impl ImagePipeline {
                     spent_usd: self.budget.spent_usd(),
                 });
             }
+
+            // Check stop conditions during storage
+            if let Some(reason) = self.check_stop_conditions(stored_count as usize) {
+                self.log("INFO", "stopping_controller", &format!("Stopping during storage: {:?}", reason)).await;
+                break;
+            }
         }
 
         // Update run stats
         let stats = serde_json::json!({
-            "image_count": total,
+            "image_count": stored_count,
             "queries_executed": queries.len(),
             "elapsed_secs": self.start_time.elapsed().as_secs(),
             "spent_usd": self.budget.spent_usd(),
@@ -176,7 +202,7 @@ impl ImagePipeline {
         self.repo.update_run_stats(&self.run_id, &stats.to_string())
             .await.map_err(|e| format!("Storage: {e}"))?;
 
-        self.log("INFO", "image_pipeline", &format!("Image search completed: {} images", total)).await;
+        self.log("INFO", "image_pipeline", &format!("Image search completed: {} images", stored_count)).await;
         self.set_status("completed").await;
 
         Ok(PipelineState::Completed)
@@ -199,6 +225,18 @@ impl ImagePipeline {
         } else {
             false
         }
+    }
+
+    fn check_stop_conditions(&self, image_count: usize) -> Option<String> {
+        let stats = PipelineStats {
+            row_count: image_count,
+            estimated_cost_usd: self.budget.spent_usd(),
+            start_time: self.start_time,
+            last_batch_new_rows: 0,
+            last_batch_total_rows: 0,
+        };
+        StoppingController::should_stop(&self.config.stop, &stats)
+            .map(|reason| format!("{:?}", reason))
     }
 
     async fn set_status(&self, status: &str) {

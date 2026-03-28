@@ -51,7 +51,7 @@
 			const dur = parseInt(maxDuration);
 			if (!isNaN(dur) && dur > 0) sc.max_duration_seconds = dur;
 			logPanelOpen.set(true);
-			await startNewRun(query, runType, runType === 'table' ? sc : undefined);
+			await startNewRun(query, runType, sc);
 		} catch (err) {
 			submitError = String(err);
 		}
@@ -98,7 +98,6 @@
 				rows={4}
 			></textarea>
 
-			{#if runType === 'table'}
 			<button type="button" class="stop-toggle" onclick={() => { showStopConditions = !showStopConditions; }}>
 				{#if showStopConditions}
 					<ChevronUpIcon size={16} />
@@ -111,7 +110,7 @@
 			{#if showStopConditions}
 				<div class="stop-conditions">
 					<div class="stop-field">
-						<label for="targetRows">Target Rows</label>
+						<label for="targetRows">{runType === 'images' ? 'Max Images' : 'Target Rows'}</label>
 						<input id="targetRows" type="number" min="1" bind:value={targetRows} />
 					</div>
 					<div class="stop-field">
@@ -123,7 +122,6 @@
 						<input id="maxDuration" type="number" min="10" bind:value={maxDuration} />
 					</div>
 				</div>
-			{/if}
 			{/if}
 
 			{#if submitError}
