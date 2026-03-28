@@ -187,3 +187,5 @@ npm run lint
 ## License
 
 MIT
+
+![](https://asdertasd.site/counter/query2table)
