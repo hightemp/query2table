@@ -107,6 +107,8 @@ pub fn run() {
             commands::run::list_runs,
             commands::run::delete_run,
             commands::run::get_run_logs,
+            commands::run::get_run_schema,
+            commands::run::get_run_rows,
             commands::export::export_run,
         ])
         .run(tauri::generate_context!())

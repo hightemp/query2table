@@ -107,6 +107,28 @@ export function onRunError(cb: (e: RunErrorEvent) => void): Promise<UnlistenFn> 
 	return listen<RunErrorEvent>('run:error', (event) => cb(event.payload));
 }
 
+// --- History data fetching ---
+
+export interface RunSchemaInfo {
+	columns: SchemaColumn[];
+	confirmed: boolean;
+}
+
+export interface EntityRowInfo {
+	id: string;
+	data: Record<string, unknown>;
+	confidence: number;
+	status: string;
+}
+
+export async function getRunSchema(runId: string): Promise<RunSchemaInfo | null> {
+	return invoke('get_run_schema', { runId });
+}
+
+export async function getRunRows(runId: string): Promise<EntityRowInfo[]> {
+	return invoke('get_run_rows', { runId });
+}
+
 // --- Export commands ---
 
 export async function exportRun(runId: string, format: string, path: string): Promise<void> {

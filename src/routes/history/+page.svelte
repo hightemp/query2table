@@ -1,12 +1,22 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listRuns, deleteRun } from '$lib/api/tauri';
-	import type { RunInfo } from '$lib/types';
-	import { TrashIcon, ExternalLinkIcon } from '@lucide/svelte';
+	import { listRuns, deleteRun, getRunSchema, getRunRows, type RunSchemaInfo, type EntityRowInfo } from '$lib/api/tauri';
+	import type { RunInfo, SchemaColumn } from '$lib/types';
+	import type { RunRow } from '$lib/stores/run';
+	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
+	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
+	import { TrashIcon, ExternalLinkIcon, ArrowLeftIcon } from '@lucide/svelte';
 
 	let runs = $state<RunInfo[]>([]);
 	let loading = $state(true);
 	let error = $state('');
+
+	// View state
+	let viewingRun = $state<RunInfo | null>(null);
+	let viewSchema = $state<SchemaColumn[]>([]);
+	let viewRows = $state<RunRow[]>([]);
+	let viewLoading = $state(false);
+	let selectedRow = $state<RunRow | null>(null);
 
 	onMount(async () => {
 		await loadRuns();
@@ -22,6 +32,36 @@
 		} finally {
 			loading = false;
 		}
+	}
+
+	async function handleView(run: RunInfo) {
+		viewLoading = true;
+		error = '';
+		selectedRow = null;
+		try {
+			const [schemaInfo, rows] = await Promise.all([
+				getRunSchema(run.id),
+				getRunRows(run.id),
+			]);
+			viewSchema = schemaInfo?.columns ?? [];
+			viewRows = rows.map((r) => ({
+				id: r.id,
+				data: r.data as Record<string, unknown>,
+				confidence: r.confidence,
+			}));
+			viewingRun = run;
+		} catch (e) {
+			error = String(e);
+		} finally {
+			viewLoading = false;
+		}
+	}
+
+	function handleBack() {
+		viewingRun = null;
+		viewSchema = [];
+		viewRows = [];
+		selectedRow = null;
 	}
 
 	async function handleDelete(runId: string) {
@@ -47,53 +87,87 @@
 </script>
 
 <div class="history-page">
-	<h1>Run History</h1>
-	<p class="subtitle">View past research queries and their results.</p>
-
-	{#if error}
-		<p class="error-msg">{error}</p>
-	{/if}
-
-	{#if loading}
-		<div class="empty-state">Loading...</div>
-	{:else if runs.length === 0}
-		<div class="empty-state">
-			<p>No runs yet. Start a new query to see results here.</p>
+	{#if viewingRun}
+		<div class="view-header">
+			<button class="btn-back" onclick={handleBack}>
+				<ArrowLeftIcon size={16} />
+				Back to History
+			</button>
+			<div class="view-title">
+				<h1>{viewingRun.query}</h1>
+				<span class="badge {statusClass(viewingRun.status)}">{viewingRun.status}</span>
+			</div>
+			<div class="view-meta">
+				<span>{formatDate(viewingRun.created_at)}</span>
+				<span>{viewRows.length} rows</span>
+			</div>
 		</div>
+
+		{#if viewSchema.length > 0 && viewRows.length > 0}
+			<ResultsTable
+				schema={viewSchema}
+				rows={viewRows}
+				onrowclick={(row) => { selectedRow = row; }}
+			/>
+		{:else}
+			<div class="empty-state">No results found for this run.</div>
+		{/if}
+
+		{#if selectedRow}
+			<RowDetailPanel
+				row={selectedRow}
+				columns={viewSchema.map((c) => c.name)}
+				onclose={() => { selectedRow = null; }}
+			/>
+		{/if}
 	{:else}
-		<div class="runs-list">
-			{#each runs as run}
-				<div class="run-card">
-					<div class="run-card-header">
-						<span class="run-query">{run.query}</span>
-						<span class="badge {statusClass(run.status)}">{run.status}</span>
+		<h1>Run History</h1>
+		<p class="subtitle">View past research queries and their results.</p>
+
+		{#if error}
+			<p class="error-msg">{error}</p>
+		{/if}
+
+		{#if loading}
+			<div class="empty-state">Loading...</div>
+		{:else if runs.length === 0}
+			<div class="empty-state">
+				<p>No runs yet. Start a new query to see results here.</p>
+			</div>
+		{:else}
+			<div class="runs-list">
+				{#each runs as run}
+					<div class="run-card">
+						<div class="run-card-header">
+							<span class="run-query">{run.query}</span>
+							<span class="badge {statusClass(run.status)}">{run.status}</span>
+						</div>
+						<div class="run-card-meta">
+							<span class="run-date">{formatDate(run.created_at)}</span>
+							{#if run.error}
+								<span class="run-error">{run.error}</span>
+							{/if}
+						</div>
+						<div class="run-card-actions">
+							<button class="action-link" onclick={() => handleView(run)} disabled={viewLoading}>
+								<ExternalLinkIcon size={14} />
+								View
+							</button>
+							<button class="action-btn danger" onclick={() => handleDelete(run.id)}>
+								<TrashIcon size={14} />
+								Delete
+							</button>
+						</div>
 					</div>
-					<div class="run-card-meta">
-						<span class="run-date">{formatDate(run.created_at)}</span>
-						{#if run.error}
-							<span class="run-error">{run.error}</span>
-						{/if}
-					</div>
-					<div class="run-card-actions">
-						<a href="/?runId={run.id}" class="action-link">
-							<ExternalLinkIcon size={14} />
-							View
-						</a>
-						<button class="action-btn danger" onclick={() => handleDelete(run.id)}>
-							<TrashIcon size={14} />
-							Delete
-						</button>
-					</div>
-				</div>
-			{/each}
-		</div>
+				{/each}
+			</div>
+		{/if}
 	{/if}
 </div>
 
 <style>
 	.history-page {
-		max-width: 900px;
-		margin: 0 auto;
+		width: 100%;
 	}
 
 	h1 {
@@ -226,5 +300,66 @@
 
 	.action-btn.danger:hover {
 		text-decoration: underline;
+	}
+
+	.view-header {
+		margin-bottom: 20px;
+	}
+
+	.btn-back {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.9rem;
+		background: none;
+		border: none;
+		color: var(--color-primary-500);
+		cursor: pointer;
+		padding: 4px 0;
+		margin-bottom: 12px;
+	}
+
+	.btn-back:hover {
+		text-decoration: underline;
+	}
+
+	.view-title {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-bottom: 6px;
+	}
+
+	.view-title h1 {
+		margin-bottom: 0;
+	}
+
+	.view-meta {
+		display: flex;
+		gap: 16px;
+		font-size: 0.85rem;
+		color: var(--color-surface-600-400);
+		margin-bottom: 16px;
+	}
+
+	button.action-link {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 0.85rem;
+		color: var(--color-primary-500);
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 0;
+	}
+
+	button.action-link:hover {
+		text-decoration: underline;
+	}
+
+	button.action-link:disabled {
+		opacity: 0.5;
+		cursor: wait;
 	}
 </style>

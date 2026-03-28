@@ -218,3 +218,51 @@ pub struct RunLogEntry {
     pub message: String,
     pub created_at: i64,
 }
+
+#[derive(Debug, Serialize)]
+pub struct RunSchemaInfo {
+    pub columns: serde_json::Value,
+    pub confirmed: bool,
+}
+
+#[tauri::command]
+pub async fn get_run_schema(
+    state: State<'_, AppState>,
+    run_id: String,
+) -> Result<Option<RunSchemaInfo>, String> {
+    let repo = Repository::new(state.db.pool().clone());
+    let schema = repo.get_run_schema(&run_id).await.map_err(|e| e.to_string())?;
+    Ok(schema.map(|s| {
+        let columns = serde_json::from_str(&s.columns).unwrap_or(serde_json::Value::Array(vec![]));
+        RunSchemaInfo {
+            columns,
+            confirmed: s.confirmed != 0,
+        }
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct EntityRowInfo {
+    pub id: String,
+    pub data: serde_json::Value,
+    pub confidence: f64,
+    pub status: String,
+}
+
+#[tauri::command]
+pub async fn get_run_rows(
+    state: State<'_, AppState>,
+    run_id: String,
+) -> Result<Vec<EntityRowInfo>, String> {
+    let repo = Repository::new(state.db.pool().clone());
+    let rows = repo.get_entity_rows_by_run(&run_id).await.map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|r| {
+        let data = serde_json::from_str(&r.data).unwrap_or(serde_json::Value::Object(Default::default()));
+        EntityRowInfo {
+            id: r.id,
+            data,
+            confidence: r.confidence,
+            status: r.status,
+        }
+    }).collect())
+}
