@@ -65,14 +65,34 @@ impl ImagePipeline {
         self.set_status("running").await;
         self.log("INFO", "image_pipeline", "Starting image search...").await;
 
-        // Initialize search provider
+        // Initialize providers
         let search = Arc::new(
             SearchManager::from_config(self.config.search.clone())
                 .map_err(|e| format!("Search config: {e}"))?
         );
+        let llm = LlmManager::from_config(self.config.llm.clone()).ok();
 
-        // Generate search query variations
-        let queries = Self::generate_query_variations(&self.query);
+        // Generate search query variations (LLM-based or static fallback)
+        let queries = match &llm {
+            Some(llm_mgr) => {
+                self.log("INFO", "image_pipeline", "Generating image search queries with LLM...").await;
+                match Self::generate_queries_with_llm(&self.query, llm_mgr).await {
+                    Ok(q) => {
+                        self.budget.record_llm_call(500, 300);
+                        q
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "LLM query generation failed, using static fallback");
+                        self.log("WARN", "image_pipeline", &format!("LLM query generation failed: {e}, using static fallback")).await;
+                        Self::generate_query_variations(&self.query)
+                    }
+                }
+            }
+            None => {
+                self.log("INFO", "image_pipeline", "LLM not configured, using static query variations").await;
+                Self::generate_query_variations(&self.query)
+            }
+        };
         self.log("INFO", "image_searcher", &format!("Searching with {} query variations", queries.len())).await;
 
         // Check for cancellation
@@ -118,9 +138,9 @@ impl ImagePipeline {
         }
 
         // Optional LLM ranking
-        let ranked_results = if let Ok(llm) = LlmManager::from_config(self.config.llm.clone()) {
+        let ranked_results = if let Some(ref llm_mgr) = llm {
             self.log("INFO", "image_ranker", "Ranking images with LLM...").await;
-            match ImageRanker::rank(&self.query, collected.results, &llm, 0.3).await {
+            match ImageRanker::rank(&self.query, collected.results, llm_mgr, 0.3).await {
                 Ok(ranked) => {
                     self.budget.record_llm_call(1000, 500);
                     self.log("INFO", "image_ranker", &format!("Ranked: {} images passed relevance filter", ranked.len())).await;
@@ -208,14 +228,75 @@ impl ImagePipeline {
         Ok(PipelineState::Completed)
     }
 
-    /// Generate simple query variations for broader image search coverage.
+    /// Generate image search queries using LLM for better diversity and coverage.
+    async fn generate_queries_with_llm(query: &str, llm: &LlmManager) -> Result<Vec<String>, String> {
+        use crate::providers::llm::Message;
+
+        let system = r#"You are an image search query generator. Given a user's image search request, generate 6-10 diverse search queries optimized for finding relevant images.
+
+Strategy:
+1. Include the original query
+2. Add variations with different phrasings
+3. Add queries with visual descriptors (e.g. "high resolution", "professional photo", "close-up")
+4. Add queries targeting specific image sources (e.g. "stock photo", "infographic", "diagram")
+5. If the topic has common synonyms, use them
+6. If relevant, add queries in different languages
+
+Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no explanation."#;
+
+        let messages = vec![
+            Message::system(system),
+            Message::user(format!("Generate image search queries for: {}", query)),
+        ];
+
+        let response = llm.complete(messages, true).await
+            .map_err(|e| format!("LLM error: {e}"))?;
+
+        #[derive(serde::Deserialize)]
+        struct QueriesResponse {
+            queries: Vec<String>,
+        }
+
+        let parsed: QueriesResponse = serde_json::from_str(&response.content)
+            .map_err(|e| format!("Failed to parse LLM response: {e}"))?;
+
+        if parsed.queries.is_empty() {
+            return Err("LLM returned empty query list".to_string());
+        }
+
+        // Ensure original query is always included
+        let mut queries = parsed.queries;
+        let lower_queries: Vec<String> = queries.iter().map(|q| q.to_lowercase()).collect();
+        if !lower_queries.contains(&query.to_lowercase()) {
+            queries.insert(0, query.to_string());
+        }
+
+        // Cap at 12 to avoid excessive API calls
+        queries.truncate(12);
+
+        Ok(queries)
+    }
+
+    /// Static fallback: generate query variations without LLM.
     fn generate_query_variations(query: &str) -> Vec<String> {
         let mut queries = vec![query.to_string()];
-        // Add a "photos" variant if not already present
         let lower = query.to_lowercase();
+
+        // Add visual-type suffixes
         if !lower.contains("photo") && !lower.contains("image") && !lower.contains("picture") {
             queries.push(format!("{} photos", query));
+            queries.push(format!("{} images", query));
         }
+
+        // Add quality/style variations
+        if !lower.contains("high resolution") && !lower.contains("hd") {
+            queries.push(format!("{} high resolution", query));
+        }
+
+        // Add different angles
+        queries.push(format!("best {} pictures", query));
+        queries.push(format!("{} examples", query));
+
         queries
     }
 
