@@ -191,6 +191,9 @@
 	.settings-page {
 		max-width: 800px;
 		margin: 0 auto;
+		overflow-y: auto;
+		flex: 1;
+		min-height: 0;
 	}
 
 	.settings-header {

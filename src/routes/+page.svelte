@@ -180,6 +180,11 @@
 <style>
 	.query-page {
 		width: 100%;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		flex: 1;
+		overflow: hidden;
 	}
 
 	h1 {
@@ -197,6 +202,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
+		overflow-y: auto;
 	}
 
 	.query-input {

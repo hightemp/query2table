@@ -99,10 +99,16 @@
 		border-radius: 8px;
 		overflow: hidden;
 		background: var(--color-surface-50-950);
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		flex: 1;
 	}
 
 	.table-scroll {
-		overflow-x: auto;
+		overflow: auto;
+		flex: 1;
+		min-height: 0;
 	}
 
 	.results-table {
@@ -113,6 +119,9 @@
 
 	.results-table thead {
 		background: var(--color-surface-100-900);
+		position: sticky;
+		top: 0;
+		z-index: 1;
 	}
 
 	.results-table th {
