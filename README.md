@@ -4,6 +4,9 @@ A local-first desktop application that converts natural-language research querie
 
 Enter a query like *"Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website"* and Query2Table will search the internet, extract entities via LLMs, deduplicate results, and present a live-updating table — all running locally on your machine.
 
+![](screenshots/2026-03-28_09-50.png)
+![](screenshots/2026-03-28_09-51.png)
+
 ## Features
 
 - **Natural language queries** — describe what you want in plain English
