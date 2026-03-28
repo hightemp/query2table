@@ -2,17 +2,25 @@
 	import { runState, startNewRun, cancelCurrentRun, pauseCurrentRun, resumeCurrentRun, confirmCurrentSchema, resetRun } from '$lib/stores/run';
 	import type { SchemaColumn } from '$lib/types';
 	import type { RunRow } from '$lib/stores/run';
+	import type { StopConditions } from '$lib/api/tauri';
 	import SchemaEditor from '$lib/components/run/SchemaEditor.svelte';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
 	import ProgressBar from '$lib/components/run/ProgressBar.svelte';
 	import RunControls from '$lib/components/run/RunControls.svelte';
 	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
+	import { ChevronDownIcon, ChevronUpIcon } from '@lucide/svelte';
 
 	let query = $state('');
 	let selectedRow = $state<RunRow | null>(null);
 	let submitError = $state('');
 	let showExport = $state(false);
+	let showStopConditions = $state(false);
+
+	// Stop conditions with defaults
+	let targetRows = $state('50');
+	let maxBudget = $state('1.00');
+	let maxDuration = $state('600');
 
 	let isIdle = $derived($runState.status === 'idle');
 	let isSchemaReview = $derived($runState.status === 'schema_review');
@@ -30,7 +38,14 @@
 		if (!query.trim()) return;
 		submitError = '';
 		try {
-			await startNewRun(query);
+			const sc: StopConditions = {};
+			const rows = parseInt(targetRows);
+			if (!isNaN(rows) && rows > 0) sc.target_row_count = rows;
+			const budget = parseFloat(maxBudget);
+			if (!isNaN(budget) && budget > 0) sc.max_budget_usd = budget;
+			const dur = parseInt(maxDuration);
+			if (!isNaN(dur) && dur > 0) sc.max_duration_seconds = dur;
+			await startNewRun(query, sc);
 		} catch (err) {
 			submitError = String(err);
 		}
@@ -65,6 +80,33 @@
 				placeholder="e.g. Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website..."
 				rows={4}
 			></textarea>
+
+			<button type="button" class="stop-toggle" onclick={() => { showStopConditions = !showStopConditions; }}>
+				{#if showStopConditions}
+					<ChevronUpIcon size={16} />
+				{:else}
+					<ChevronDownIcon size={16} />
+				{/if}
+				Stop Conditions
+			</button>
+
+			{#if showStopConditions}
+				<div class="stop-conditions">
+					<div class="stop-field">
+						<label for="targetRows">Target Rows</label>
+						<input id="targetRows" type="number" min="1" bind:value={targetRows} />
+					</div>
+					<div class="stop-field">
+						<label for="maxBudget">Max Cost ($)</label>
+						<input id="maxBudget" type="number" min="0.01" step="0.01" bind:value={maxBudget} />
+					</div>
+					<div class="stop-field">
+						<label for="maxDuration">Max Duration (s)</label>
+						<input id="maxDuration" type="number" min="10" bind:value={maxDuration} />
+					</div>
+				</div>
+			{/if}
+
 			{#if submitError}
 				<p class="error-msg">{submitError}</p>
 			{/if}
@@ -178,6 +220,59 @@
 	.query-actions {
 		display: flex;
 		justify-content: flex-end;
+	}
+
+	.stop-toggle {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		background: none;
+		border: none;
+		color: var(--color-surface-600-400);
+		font-size: 0.9rem;
+		cursor: pointer;
+		padding: 4px 0;
+	}
+
+	.stop-toggle:hover {
+		color: var(--color-primary-500);
+	}
+
+	.stop-conditions {
+		display: flex;
+		gap: 16px;
+		padding: 12px 16px;
+		border: 1px solid var(--color-surface-300-700);
+		border-radius: 8px;
+		background: var(--color-surface-50-950);
+	}
+
+	.stop-field {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		flex: 1;
+	}
+
+	.stop-field label {
+		font-size: 0.8rem;
+		color: var(--color-surface-600-400);
+		font-weight: 600;
+	}
+
+	.stop-field input {
+		padding: 6px 10px;
+		border: 1px solid var(--color-surface-300-700);
+		border-radius: 6px;
+		background: var(--color-surface-100-900);
+		color: inherit;
+		font-size: 0.9rem;
+		width: 100%;
+	}
+
+	.stop-field input:focus {
+		outline: none;
+		border-color: var(--color-primary-500);
 	}
 
 	.btn-primary {

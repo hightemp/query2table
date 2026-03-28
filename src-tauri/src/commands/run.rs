@@ -5,6 +5,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 use tracing::{info, error};
 
+use serde::Deserialize;
 use crate::AppState;
 use crate::storage::models::SchemaColumn;
 use crate::storage::repository::Repository;
@@ -31,12 +32,20 @@ pub struct StartRunResponse {
     pub run_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct StopConditions {
+    pub target_row_count: Option<usize>,
+    pub max_budget_usd: Option<f64>,
+    pub max_duration_seconds: Option<u64>,
+}
+
 #[tauri::command]
 pub async fn start_run(
     app: AppHandle,
     state: State<'_, AppState>,
     controller: State<'_, RunController>,
     query: String,
+    stop_conditions: Option<StopConditions>,
 ) -> Result<StartRunResponse, String> {
     let run_id = new_id();
 
@@ -44,7 +53,21 @@ pub async fn start_run(
     let settings_list = state.db.get_all_settings().await.map_err(|e| e.to_string())?;
     let settings: HashMap<String, String> = settings_list.into_iter().collect();
 
-    let config = PipelineConfig::from_settings(&settings);
+    let mut config = PipelineConfig::from_settings(&settings);
+
+    // Override stop conditions with per-query values
+    if let Some(sc) = stop_conditions {
+        if let Some(v) = sc.target_row_count {
+            config.stop.target_row_count = v;
+        }
+        if let Some(v) = sc.max_budget_usd {
+            config.stop.max_budget_usd = v;
+            config.max_budget_usd = v;
+        }
+        if let Some(v) = sc.max_duration_seconds {
+            config.stop.max_duration_secs = v;
+        }
+    }
     let repo = Arc::new(Repository::new(state.db.pool().clone()));
     let events = Some(EventPublisher::new(app.clone(), run_id.clone()));
 

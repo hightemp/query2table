@@ -108,7 +108,7 @@ function unsubscribeEvents() {
 	unlisteners = [];
 }
 
-export async function startNewRun(query: string) {
+export async function startNewRun(query: string, stopConditions?: import('$lib/api/tauri').StopConditions) {
 	runState.set({
 		...initialState,
 		query,
@@ -117,7 +117,7 @@ export async function startNewRun(query: string) {
 
 	await subscribeEvents();
 
-	const resp = await apiStartRun(query);
+	const resp = await apiStartRun(query, stopConditions);
 	runState.update((s) => ({ ...s, runId: resp.run_id }));
 }
 

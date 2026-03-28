@@ -45,8 +45,14 @@ export function onLogEvent(callback: (entry: LogEntry) => void): Promise<Unliste
 
 // --- Run commands ---
 
-export async function startRun(query: string): Promise<StartRunResponse> {
-	return invoke('start_run', { query });
+export interface StopConditions {
+	target_row_count?: number;
+	max_budget_usd?: number;
+	max_duration_seconds?: number;
+}
+
+export async function startRun(query: string, stopConditions?: StopConditions): Promise<StartRunResponse> {
+	return invoke('start_run', { query, stopConditions: stopConditions ?? null });
 }
 
 export async function cancelRun(runId: string): Promise<void> {

@@ -64,15 +64,7 @@
 				{ key: 'dedup_similarity_threshold', label: 'Dedup Threshold', description: 'Similarity threshold for deduplication (0.0-1.0)', type: 'number' },
 			]
 		},
-		{
-			label: 'Stop Conditions',
-			description: 'When to stop searching',
-			settings: [
-				{ key: 'target_row_count', label: 'Target Rows', description: 'Stop after this many rows', type: 'number' },
-				{ key: 'max_budget_usd', label: 'Max Cost ($)', description: 'Stop after spending this amount', type: 'number' },
-				{ key: 'max_duration_seconds', label: 'Max Duration (s)', description: 'Stop after this many seconds', type: 'number' },
-			]
-		}
+
 	];
 
 	function getValue(key: string): string {
