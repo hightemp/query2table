@@ -173,7 +173,7 @@ impl ImagePipeline {
         };
 
         // Store results
-        self.log("INFO", "image_pipeline", &format!("Storing {} image results", ranked_results.len())).await;
+        self.log("INFO", "image_storage", &format!("Storing {} image results", ranked_results.len())).await;
         let mut stored_count = 0u64;
 
         for ranked in &ranked_results {

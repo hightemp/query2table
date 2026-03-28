@@ -4,12 +4,13 @@
 
 	interface Props {
 		status: string;
+		runType?: string;
 	}
 
-	let { status }: Props = $props();
+	let { status, runType = 'table' }: Props = $props();
 
-	// Pipeline phases in order
-	const phases = [
+	// Pipeline phases for table mode
+	const tablePhases = [
 		{ key: 'interpreter', label: 'Analyzing query' },
 		{ key: 'planner', label: 'Planning schema' },
 		{ key: 'schema_review', label: 'Waiting for schema confirmation' },
@@ -19,6 +20,16 @@
 		{ key: 'extractor', label: 'Extracting data' },
 		{ key: 'deduplicator', label: 'Deduplicating results' },
 	];
+
+	// Pipeline phases for image mode
+	const imagePhases = [
+		{ key: 'image_pipeline', label: 'Initializing' },
+		{ key: 'image_searcher', label: 'Searching images' },
+		{ key: 'image_ranker', label: 'Ranking images' },
+		{ key: 'image_storage', label: 'Storing results' },
+	];
+
+	let phases = $derived(runType === 'images' ? imagePhases : tablePhases);
 
 	// Derive the active phase from the latest logs
 	let activePhaseKey = $derived.by(() => {
