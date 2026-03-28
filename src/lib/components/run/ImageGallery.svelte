@@ -60,12 +60,15 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
+		min-height: 0;
+		flex: 1;
 	}
 
 	.gallery-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		flex-shrink: 0;
 	}
 
 	.count {
@@ -115,11 +118,17 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 		gap: 12px;
+		overflow-y: auto;
+		min-height: 0;
+		flex: 1;
 	}
 
 	.list {
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+		overflow-y: auto;
+		min-height: 0;
+		flex: 1;
 	}
 </style>
