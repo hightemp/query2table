@@ -1,5 +1,8 @@
 # Query2Table
 
+![Experimental](https://img.shields.io/badge/status-experimental-orange)
+![Vibe Coded](https://img.shields.io/badge/vibe-coded-blueviolet)
+
 A local-first desktop application that converts natural-language research queries into structured tables with row-level sources. Built with Tauri v2, Rust, and Svelte 5.
 
 Enter a query like *"Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website"* and Query2Table will search the internet, extract entities via LLMs, deduplicate results, and present a live-updating table — all running locally on your machine.
