@@ -34,6 +34,24 @@ struct SerperResult {
     snippet: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SerperImageResponse {
+    images: Option<Vec<SerperImageResult>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SerperImageResult {
+    title: String,
+    image_url: String,
+    image_width: Option<u32>,
+    image_height: Option<u32>,
+    thumbnail_url: Option<String>,
+    source: Option<String>,
+    link: Option<String>,
+}
+
 impl SerperProvider {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -129,6 +147,79 @@ impl SearchProvider for SerperProvider {
     }
 }
 
+#[async_trait]
+impl ImageSearchProvider for SerperProvider {
+    async fn search_images(&self, query: SearchQuery) -> Result<Vec<ImageSearchResult>, SearchError> {
+        let url = format!("{}/images", self.base_url);
+
+        debug!(query = %query.query, num_results = query.num_results, "Serper image search");
+
+        let body = SerperRequest {
+            q: query.query,
+            num: query.num_results,
+            gl: query.country,
+            hl: query.language,
+        };
+
+        let response = self.client
+            .post(&url)
+            .header("X-API-KEY", &self.api_key)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_connect() {
+                    SearchError::ConnectionError(e.to_string())
+                } else {
+                    SearchError::RequestFailed(e.to_string())
+                }
+            })?;
+
+        let status = response.status();
+
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            return Err(SearchError::AuthError("Invalid Serper API key".to_string()));
+        }
+
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse().ok());
+            return Err(SearchError::RateLimited { retry_after_secs: retry_after });
+        }
+
+        if !status.is_success() {
+            let body_text = response.text().await.unwrap_or_default();
+            return Err(SearchError::RequestFailed(
+                format!("Serper Images API error {}: {}", status, body_text)
+            ));
+        }
+
+        let serper_response: SerperImageResponse = response.json().await.map_err(|e| {
+            SearchError::ParseError(format!("Failed to parse Serper image response: {}", e))
+        })?;
+
+        let results = serper_response
+            .images
+            .unwrap_or_default()
+            .into_iter()
+            .map(|r| ImageSearchResult {
+                image_url: r.image_url.clone(),
+                thumbnail_url: r.thumbnail_url.unwrap_or_else(|| r.image_url),
+                title: r.title,
+                source_url: r.link.or(r.source).unwrap_or_default(),
+                width: r.image_width,
+                height: r.image_height,
+            })
+            .collect();
+
+        Ok(results)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +267,36 @@ mod tests {
         let json = r#"{}"#;
         let response: SerperResponse = serde_json::from_str(json).unwrap();
         assert!(response.organic.is_none());
+    }
+
+    #[test]
+    fn test_serper_image_response_parsing() {
+        let json = r#"{
+            "images": [
+                {
+                    "title": "Beautiful Sunset",
+                    "imageUrl": "https://example.com/sunset.jpg",
+                    "imageWidth": 1920,
+                    "imageHeight": 1080,
+                    "thumbnailUrl": "https://example.com/sunset_thumb.jpg",
+                    "source": "Example Site",
+                    "link": "https://example.com/sunsets"
+                }
+            ]
+        }"#;
+
+        let response: SerperImageResponse = serde_json::from_str(json).unwrap();
+        let results = response.images.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "Beautiful Sunset");
+        assert_eq!(results[0].image_url, "https://example.com/sunset.jpg");
+        assert_eq!(results[0].image_width, Some(1920));
+    }
+
+    #[test]
+    fn test_serper_image_response_empty() {
+        let json = r#"{ "images": [] }"#;
+        let response: SerperImageResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.images.unwrap().len(), 0);
     }
 }

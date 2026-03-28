@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listRuns, deleteRun, getRunSchema, getRunRows, type RunSchemaInfo, type EntityRowInfo } from '$lib/api/tauri';
-	import type { RunInfo, SchemaColumn } from '$lib/types';
+	import { listRuns, deleteRun, getRunSchema, getRunRows, getImageResults, type RunSchemaInfo, type EntityRowInfo } from '$lib/api/tauri';
+	import type { RunInfo, SchemaColumn, ImageResult } from '$lib/types';
 	import type { RunRow } from '$lib/stores/run';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
 	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
-	import { TrashIcon, ExternalLinkIcon, ArrowLeftIcon, DownloadIcon } from '@lucide/svelte';
+	import ImageGallery from '$lib/components/run/ImageGallery.svelte';
+	import { TrashIcon, ExternalLinkIcon, ArrowLeftIcon, DownloadIcon, TableIcon, ImageIcon } from '@lucide/svelte';
 
 	let runs = $state<RunInfo[]>([]);
 	let loading = $state(true);
@@ -16,6 +17,7 @@
 	let viewingRun = $state<RunInfo | null>(null);
 	let viewSchema = $state<SchemaColumn[]>([]);
 	let viewRows = $state<RunRow[]>([]);
+	let viewImages = $state<ImageResult[]>([]);
 	let viewLoading = $state(false);
 	let selectedRow = $state<RunRow | null>(null);
 	let showExport = $state(false);
@@ -41,16 +43,23 @@
 		error = '';
 		selectedRow = null;
 		try {
-			const [schemaInfo, rows] = await Promise.all([
-				getRunSchema(run.id),
-				getRunRows(run.id),
-			]);
-			viewSchema = schemaInfo?.columns ?? [];
-			viewRows = rows.map((r) => ({
-				id: r.id,
-				data: r.data as Record<string, unknown>,
-				confidence: r.confidence,
-			}));
+			if (run.run_type === 'images') {
+				viewImages = await getImageResults(run.id);
+				viewSchema = [];
+				viewRows = [];
+			} else {
+				const [schemaInfo, rows] = await Promise.all([
+					getRunSchema(run.id),
+					getRunRows(run.id),
+				]);
+				viewSchema = schemaInfo?.columns ?? [];
+				viewRows = rows.map((r) => ({
+					id: r.id,
+					data: r.data as Record<string, unknown>,
+					confidence: r.confidence,
+				}));
+				viewImages = [];
+			}
 			viewingRun = run;
 		} catch (e) {
 			error = String(e);
@@ -63,6 +72,7 @@
 		viewingRun = null;
 		viewSchema = [];
 		viewRows = [];
+		viewImages = [];
 		selectedRow = null;
 		showExport = false;
 	}
@@ -102,8 +112,8 @@
 			</div>
 			<div class="view-meta">
 				<span>{formatDate(viewingRun.created_at)}</span>
-				<span>{viewRows.length} rows</span>
-				{#if viewRows.length > 0}
+				<span>{viewingRun.run_type === 'images' ? `${viewImages.length} images` : `${viewRows.length} rows`}</span>
+				{#if viewRows.length > 0 || viewImages.length > 0}
 					<button class="btn-export" onclick={() => { showExport = true; }}>
 						<DownloadIcon size={14} />
 						Export
@@ -119,7 +129,13 @@
 			/>
 		{/if}
 
-		{#if viewSchema.length > 0 && viewRows.length > 0}
+		{#if viewingRun.run_type === 'images'}
+			{#if viewImages.length > 0}
+				<ImageGallery images={viewImages} />
+			{:else}
+				<div class="empty-state">No images found for this run.</div>
+			{/if}
+		{:else if viewSchema.length > 0 && viewRows.length > 0}
 			<ResultsTable
 				schema={viewSchema}
 				rows={viewRows}
@@ -156,7 +172,14 @@
 					<div class="run-card">
 						<div class="run-card-header">
 							<span class="run-query">{run.query}</span>
+						<div class="header-badges">
+							{#if run.run_type === 'images'}
+								<span class="badge badge-type"><ImageIcon size={12} /> Images</span>
+							{:else}
+								<span class="badge badge-type"><TableIcon size={12} /> Table</span>
+							{/if}
 							<span class="badge {statusClass(run.status)}">{run.status}</span>
+						</div>
 						</div>
 						<div class="run-card-meta">
 							<span class="run-date">{formatDate(run.created_at)}</span>
@@ -254,6 +277,19 @@
 		white-space: nowrap;
 		background: var(--color-surface-200-800);
 		color: var(--color-surface-600-400);
+	}
+
+	.header-badges {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+		flex-shrink: 0;
+	}
+
+	.badge-type {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
 	}
 
 	.badge-success {

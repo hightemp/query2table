@@ -195,6 +195,35 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_run_logs_level ON run_logs(level)")
             .execute(&self.pool).await?;
 
+        // Image search results table
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS image_results (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                image_url TEXT NOT NULL,
+                thumbnail_url TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                source_url TEXT NOT NULL DEFAULT '',
+                width INTEGER,
+                height INTEGER,
+                relevance_score REAL,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch())
+            )"
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_image_results_run_id ON image_results(run_id)")
+            .execute(&self.pool).await?;
+
+        // Add run_type column to runs table (for existing databases)
+        sqlx::query(
+            "ALTER TABLE runs ADD COLUMN run_type TEXT NOT NULL DEFAULT 'table'"
+        )
+        .execute(&self.pool)
+        .await
+        .ok(); // ok() — ignore error if column already exists
+
         // Insert default settings if not present
         // Keys must match what backend reads in providers/ and orchestrator/
         let defaults = vec![

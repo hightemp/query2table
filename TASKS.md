@@ -1552,6 +1552,30 @@ cd src-tauri && cargo test --features e2e -- --ignored
 
 ---
 
+### Stage 8: Image Search Mode
+
+56. ~~`T056` — Add `ImageSearchResult` struct and `ImageSearchProvider` trait to `types.rs`~~
+57. ~~`T057` — Implement Brave Image Search (`/res/v1/images/search` endpoint)~~
+58. ~~`T058` — Implement Serper Image Search (`POST /images` endpoint)~~
+59. ~~`T059` — Add `search_images()` to `SearchManager` with fallback/retry~~
+60. ~~`T060` — Add `image_results` table (migration in `db.rs`)~~
+61. ~~`T061` — Add image repository CRUD methods (`create_image_result`, `get_image_results`)~~
+62. ~~`T062` — Add `run_type` field to `runs` table (default `'table'`, also `'images'`)~~
+63. ~~`T063` — Create `ImageSearcher` role (`roles/image_searcher.rs`)~~
+64. ~~`T064` — Create `ImageRanker` role (`roles/image_ranker.rs`) — optional LLM filtering~~
+65. ~~`T065` — Create `ImagePipeline` (`orchestrator/image_pipeline.rs`)~~
+66. ~~`T066` — Update `commands/run.rs` — `run_type` routing + `get_image_results` command~~
+67. ~~`T067` — Frontend types (`ImageResult`) + run store (`runType`, `imageResults[]`)~~
+68. ~~`T068` — Mode toggle UI on query page ("Table" | "Images")~~
+69. ~~`T069` — Create `ImageGallery.svelte` + `ImageCard.svelte` (grid/list views)~~
+70. ~~`T070` — Gallery integration + history page run-type badges~~
+71. ~~`T071` — Image results CSV/JSON export~~
+72. ~~`T072` — CSP update for external image thumbnails~~ (already had `img-src https:`)
+
+**Deliverable:** Standalone image search mode — user selects "Images", gets a gallery of results from Brave/Serper image APIs with optional LLM ranking.
+
+---
+
 ## Appendix A: Cargo.toml Dependencies (Estimated)
 
 ```toml

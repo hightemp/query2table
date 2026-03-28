@@ -9,3 +9,5 @@ pub mod extractor;
 pub mod validator;
 pub mod deduplicator;
 pub mod stopping_controller;
+pub mod image_searcher;
+pub mod image_ranker;

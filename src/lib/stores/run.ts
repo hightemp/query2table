@@ -3,6 +3,8 @@ import type {
 	SchemaColumn,
 	ProgressStats,
 	RowAddedEvent,
+	ImageResult,
+	ImageAddedEvent,
 } from '$lib/types';
 import {
 	startRun as apiStartRun,
@@ -16,6 +18,7 @@ import {
 	onSchemaProposed,
 	onRunError,
 	onRunLogEntry,
+	onImageAdded,
 } from '$lib/api/tauri';
 import { addLog } from '$lib/stores/logs';
 
@@ -28,9 +31,11 @@ export interface RunRow {
 export interface RunState {
 	runId: string | null;
 	query: string;
+	runType: string;
 	status: string;
 	schema: SchemaColumn[];
 	rows: RunRow[];
+	imageResults: ImageResult[];
 	progress: ProgressStats | null;
 	error: string | null;
 }
@@ -38,9 +43,11 @@ export interface RunState {
 const initialState: RunState = {
 	runId: null,
 	query: '',
+	runType: 'table',
 	status: 'idle',
 	schema: [],
 	rows: [],
+	imageResults: [],
 	progress: null,
 	error: null,
 };
@@ -98,6 +105,22 @@ async function subscribeEvents() {
 				message: `[${e.role}] ${e.message}`,
 			});
 		}),
+		onImageAdded((e: ImageAddedEvent) => {
+			runState.update((s) => {
+				if (s.runId !== e.run_id) return s;
+				const img: ImageResult = {
+					id: e.image_id,
+					image_url: e.image_url,
+					thumbnail_url: e.thumbnail_url,
+					title: e.title,
+					source_url: '',
+					width: null,
+					height: null,
+					relevance_score: null,
+				};
+				return { ...s, imageResults: [...s.imageResults, img] };
+			});
+		}),
 	]);
 
 	unlisteners = unsubs;
@@ -108,16 +131,17 @@ function unsubscribeEvents() {
 	unlisteners = [];
 }
 
-export async function startNewRun(query: string, stopConditions?: import('$lib/api/tauri').StopConditions) {
+export async function startNewRun(query: string, runType: string = 'table', stopConditions?: import('$lib/api/tauri').StopConditions) {
 	runState.set({
 		...initialState,
 		query,
+		runType,
 		status: 'pending',
 	});
 
 	await subscribeEvents();
 
-	const resp = await apiStartRun(query, stopConditions);
+	const resp = await apiStartRun(query, runType, stopConditions);
 	runState.update((s) => ({ ...s, runId: resp.run_id }));
 }
 

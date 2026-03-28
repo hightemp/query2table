@@ -10,6 +10,7 @@ use crate::AppState;
 use crate::storage::models::SchemaColumn;
 use crate::storage::repository::Repository;
 use crate::orchestrator::pipeline::{Pipeline, PipelineConfig, PipelineCommand};
+use crate::orchestrator::image_pipeline::ImagePipeline;
 use crate::orchestrator::events::EventPublisher;
 use crate::utils::id::new_id;
 
@@ -45,9 +46,11 @@ pub async fn start_run(
     state: State<'_, AppState>,
     controller: State<'_, RunController>,
     query: String,
+    run_type: Option<String>,
     stop_conditions: Option<StopConditions>,
 ) -> Result<StartRunResponse, String> {
     let run_id = new_id();
+    let run_type = run_type.unwrap_or_else(|| "table".to_string());
 
     // Load settings from DB
     let settings_list = state.db.get_all_settings().await.map_err(|e| e.to_string())?;
@@ -71,36 +74,60 @@ pub async fn start_run(
     let repo = Arc::new(Repository::new(state.db.pool().clone()));
     let events = Some(EventPublisher::new(app.clone(), run_id.clone()));
 
-    let (pipeline, cmd_tx) = Pipeline::new(
-        run_id.clone(),
-        query.clone(),
-        config,
-        repo,
-        events,
-    );
-
-    // Store the command sender
-    {
-        let mut active = controller.active.lock().await;
-        active.insert(run_id.clone(), cmd_tx);
-    }
-
     let rid = run_id.clone();
     let controller_handle = controller.active.clone();
 
-    // Spawn pipeline on background task
-    tokio::spawn(async move {
-        let result = pipeline.run().await;
-        match &result {
-            Ok(state) => info!(run_id = %rid, state = ?state, "Pipeline finished"),
-            Err(e) => error!(run_id = %rid, error = %e, "Pipeline failed"),
-        }
-        // Remove from active runs
-        let mut active = controller_handle.lock().await;
-        active.remove(&rid);
-    });
+    if run_type == "images" {
+        // Image search pipeline
+        let (pipeline, cmd_tx) = ImagePipeline::new(
+            run_id.clone(),
+            query.clone(),
+            config,
+            repo,
+            events,
+        );
 
-    info!(run_id = %run_id, query = %query, "Run started");
+        {
+            let mut active = controller.active.lock().await;
+            active.insert(run_id.clone(), cmd_tx);
+        }
+
+        tokio::spawn(async move {
+            let result = pipeline.run().await;
+            match &result {
+                Ok(state) => info!(run_id = %rid, state = ?state, "Image pipeline finished"),
+                Err(e) => error!(run_id = %rid, error = %e, "Image pipeline failed"),
+            }
+            let mut active = controller_handle.lock().await;
+            active.remove(&rid);
+        });
+    } else {
+        // Default table pipeline
+        let (pipeline, cmd_tx) = Pipeline::new(
+            run_id.clone(),
+            query.clone(),
+            config,
+            repo,
+            events,
+        );
+
+        {
+            let mut active = controller.active.lock().await;
+            active.insert(run_id.clone(), cmd_tx);
+        }
+
+        tokio::spawn(async move {
+            let result = pipeline.run().await;
+            match &result {
+                Ok(state) => info!(run_id = %rid, state = ?state, "Pipeline finished"),
+                Err(e) => error!(run_id = %rid, error = %e, "Pipeline failed"),
+            }
+            let mut active = controller_handle.lock().await;
+            active.remove(&rid);
+        });
+    }
+
+    info!(run_id = %run_id, query = %query, run_type = %run_type, "Run started");
 
     Ok(StartRunResponse { run_id })
 }
@@ -167,6 +194,7 @@ pub struct RunInfo {
     pub id: String,
     pub query: String,
     pub status: String,
+    pub run_type: String,
     pub stats: Option<String>,
     pub error: Option<String>,
     pub created_at: i64,
@@ -183,6 +211,7 @@ pub async fn get_run(
         id: r.id,
         query: r.query,
         status: r.status,
+        run_type: r.run_type,
         stats: r.stats,
         error: r.error,
         created_at: r.created_at,
@@ -202,6 +231,7 @@ pub async fn list_runs(
         id: r.id,
         query: r.query,
         status: r.status,
+        run_type: r.run_type,
         stats: r.stats,
         error: r.error,
         created_at: r.created_at,
@@ -287,5 +317,36 @@ pub async fn get_run_rows(
             confidence: r.confidence,
             status: r.status,
         }
+    }).collect())
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImageResultInfo {
+    pub id: String,
+    pub image_url: String,
+    pub thumbnail_url: String,
+    pub title: String,
+    pub source_url: String,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub relevance_score: Option<f64>,
+}
+
+#[tauri::command]
+pub async fn get_image_results(
+    state: State<'_, AppState>,
+    run_id: String,
+) -> Result<Vec<ImageResultInfo>, String> {
+    let repo = Repository::new(state.db.pool().clone());
+    let rows = repo.get_image_results(&run_id).await.map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|r| ImageResultInfo {
+        id: r.id,
+        image_url: r.image_url,
+        thumbnail_url: r.thumbnail_url,
+        title: r.title,
+        source_url: r.source_url,
+        width: r.width,
+        height: r.height,
+        relevance_score: r.relevance_score,
     }).collect())
 }

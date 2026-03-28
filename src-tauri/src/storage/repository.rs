@@ -16,15 +16,20 @@ impl Repository {
     // --- Runs ---
 
     pub async fn create_run(&self, id: &str, query: &str, config: &str) -> Result<(), sqlx::Error> {
+        self.create_run_with_type(id, query, config, "table").await
+    }
+
+    pub async fn create_run_with_type(&self, id: &str, query: &str, config: &str, run_type: &str) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO runs (id, query, status, config, created_at, updated_at) VALUES (?, ?, 'pending', ?, unixepoch(), unixepoch())"
+            "INSERT INTO runs (id, query, status, config, run_type, created_at, updated_at) VALUES (?, ?, 'pending', ?, ?, unixepoch(), unixepoch())"
         )
         .bind(id)
         .bind(query)
         .bind(config)
+        .bind(run_type)
         .execute(&self.pool)
         .await?;
-        debug!(run_id = id, "Created run");
+        debug!(run_id = id, run_type, "Created run");
         Ok(())
     }
 
@@ -75,7 +80,7 @@ impl Repository {
         run_id: &str,
     ) -> Result<Option<RunRow>, sqlx::Error> {
         let row = sqlx::query_as::<_, RunRow>(
-            "SELECT id, query, status, config, stats, error, created_at, updated_at, completed_at FROM runs WHERE id = ?"
+            "SELECT id, query, status, config, stats, error, run_type, created_at, updated_at, completed_at FROM runs WHERE id = ?"
         )
         .bind(run_id)
         .fetch_optional(&self.pool)
@@ -85,7 +90,7 @@ impl Repository {
 
     pub async fn list_runs(&self, limit: i64, offset: i64) -> Result<Vec<RunRow>, sqlx::Error> {
         let rows = sqlx::query_as::<_, RunRow>(
-            "SELECT id, query, status, config, stats, error, created_at, updated_at, completed_at FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            "SELECT id, query, status, config, stats, error, run_type, created_at, updated_at, completed_at FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?"
         )
         .bind(limit)
         .bind(offset)
@@ -491,6 +496,57 @@ impl Repository {
         debug!(run_id, "Deleted run");
         Ok(())
     }
+
+    // --- Image Results ---
+
+    pub async fn create_image_result(
+        &self,
+        run_id: &str,
+        image_url: &str,
+        thumbnail_url: &str,
+        title: &str,
+        source_url: &str,
+        width: Option<u32>,
+        height: Option<u32>,
+        relevance_score: Option<f64>,
+    ) -> Result<String, sqlx::Error> {
+        let id = new_id();
+        sqlx::query(
+            "INSERT INTO image_results (id, run_id, image_url, thumbnail_url, title, source_url, width, height, relevance_score, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())"
+        )
+        .bind(&id)
+        .bind(run_id)
+        .bind(image_url)
+        .bind(thumbnail_url)
+        .bind(title)
+        .bind(source_url)
+        .bind(width.map(|v| v as i64))
+        .bind(height.map(|v| v as i64))
+        .bind(relevance_score)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn get_image_results(&self, run_id: &str) -> Result<Vec<ImageResultRow>, sqlx::Error> {
+        let rows = sqlx::query_as::<_, ImageResultRow>(
+            "SELECT id, run_id, image_url, thumbnail_url, title, source_url, width, height, relevance_score, created_at FROM image_results WHERE run_id = ? ORDER BY relevance_score DESC NULLS LAST, created_at"
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn count_image_results(&self, run_id: &str) -> Result<i64, sqlx::Error> {
+        let count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM image_results WHERE run_id = ?"
+        )
+        .bind(run_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
+    }
 }
 
 // --- Row types for sqlx::FromRow ---
@@ -503,6 +559,7 @@ pub struct RunRow {
     pub config: String,
     pub stats: Option<String>,
     pub error: Option<String>,
+    pub run_type: String,
     pub created_at: i64,
     pub updated_at: i64,
     pub completed_at: Option<i64>,
@@ -589,6 +646,20 @@ pub struct RunLogRow {
     pub role: Option<String>,
     pub message: String,
     pub details: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ImageResultRow {
+    pub id: String,
+    pub run_id: String,
+    pub image_url: String,
+    pub thumbnail_url: String,
+    pub title: String,
+    pub source_url: String,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub relevance_score: Option<f64>,
     pub created_at: i64,
 }
 

@@ -66,6 +66,7 @@ export interface RunInfo {
 	id: string;
 	query: string;
 	status: string;
+	run_type: string;
 	stats: string | null;
 	error: string | null;
 	created_at: number;
@@ -123,4 +124,25 @@ export interface SchemaProposedEvent {
 export interface RunErrorEvent {
 	run_id: string;
 	error: string;
+}
+
+// --- Image Search types ---
+
+export interface ImageResult {
+	id: string;
+	image_url: string;
+	thumbnail_url: string;
+	title: string;
+	source_url: string;
+	width: number | null;
+	height: number | null;
+	relevance_score: number | null;
+}
+
+export interface ImageAddedEvent {
+	run_id: string;
+	image_id: string;
+	image_url: string;
+	thumbnail_url: string;
+	title: string;
 }

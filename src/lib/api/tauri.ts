@@ -11,6 +11,8 @@ import type {
 	LogEntryEvent,
 	SchemaProposedEvent,
 	RunErrorEvent,
+	ImageResult,
+	ImageAddedEvent,
 } from '$lib/types';
 
 export interface Setting {
@@ -51,8 +53,8 @@ export interface StopConditions {
 	max_duration_seconds?: number;
 }
 
-export async function startRun(query: string, stopConditions?: StopConditions): Promise<StartRunResponse> {
-	return invoke('start_run', { query, stopConditions: stopConditions ?? null });
+export async function startRun(query: string, runType?: string, stopConditions?: StopConditions): Promise<StartRunResponse> {
+	return invoke('start_run', { query, runType: runType ?? null, stopConditions: stopConditions ?? null });
 }
 
 export async function cancelRun(runId: string): Promise<void> {
@@ -133,6 +135,14 @@ export async function getRunSchema(runId: string): Promise<RunSchemaInfo | null>
 
 export async function getRunRows(runId: string): Promise<EntityRowInfo[]> {
 	return invoke('get_run_rows', { runId });
+}
+
+export async function getImageResults(runId: string): Promise<ImageResult[]> {
+	return invoke('get_image_results', { runId });
+}
+
+export function onImageAdded(cb: (e: ImageAddedEvent) => void): Promise<UnlistenFn> {
+	return listen<ImageAddedEvent>('run:image_added', (event) => cb(event.payload));
 }
 
 // --- Export commands ---

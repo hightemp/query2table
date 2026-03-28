@@ -99,6 +99,20 @@ impl EventPublisher {
             tracing::error!(error = %e, "Failed to emit error event");
         }
     }
+
+    pub fn emit_image_added(&self, image_id: &str, image_url: &str, thumbnail_url: &str, title: &str) {
+        let payload = ImageAddedEvent {
+            run_id: self.run_id.clone(),
+            image_id: image_id.to_string(),
+            image_url: image_url.to_string(),
+            thumbnail_url: thumbnail_url.to_string(),
+            title: title.to_string(),
+        };
+        if let Err(e) = self.app.emit("run:image_added", &payload) {
+            tracing::error!(error = %e, "Failed to emit image_added event");
+        }
+        debug!(run_id = %self.run_id, image_id, "Emitted image_added");
+    }
 }
 
 // --- Event payload types ---
@@ -152,6 +166,15 @@ pub struct SchemaProposedEvent {
 pub struct RunErrorEvent {
     pub run_id: String,
     pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImageAddedEvent {
+    pub run_id: String,
+    pub image_id: String,
+    pub image_url: String,
+    pub thumbnail_url: String,
+    pub title: String,
 }
 
 #[cfg(test)]

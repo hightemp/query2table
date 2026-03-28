@@ -10,10 +10,12 @@
 	import RunControls from '$lib/components/run/RunControls.svelte';
 	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
 	import RunStatusPanel from '$lib/components/run/RunStatusPanel.svelte';
-	import { ChevronDownIcon, ChevronUpIcon } from '@lucide/svelte';
+	import ImageGallery from '$lib/components/run/ImageGallery.svelte';
+	import { ChevronDownIcon, ChevronUpIcon, TableIcon, ImageIcon } from '@lucide/svelte';
 	import { logPanelOpen } from '$lib/stores/logs';
 
 	let query = $state('');
+	let runType = $state<'table' | 'images'>('table');
 	let selectedRow = $state<RunRow | null>(null);
 	let submitError = $state('');
 	let showExport = $state(false);
@@ -33,6 +35,7 @@
 		$runState.status === 'completed' || $runState.status === 'failed' || $runState.status === 'cancelled'
 	);
 	let showResults = $derived(isActive || isFinished || isSchemaReview);
+	let isImageRun = $derived($runState.runType === 'images');
 	let columnNames = $derived($runState.schema.map((c) => c.name));
 
 	async function handleSubmit(e: Event) {
@@ -48,7 +51,7 @@
 			const dur = parseInt(maxDuration);
 			if (!isNaN(dur) && dur > 0) sc.max_duration_seconds = dur;
 			logPanelOpen.set(true);
-			await startNewRun(query, sc);
+			await startNewRun(query, runType, runType === 'table' ? sc : undefined);
 		} catch (err) {
 			submitError = String(err);
 		}
@@ -77,13 +80,25 @@
 		<p class="subtitle">Describe what you want to research. Query2Table will search, extract, and organize results into a structured table.</p>
 
 		<form class="query-form" onsubmit={handleSubmit}>
+			<div class="mode-toggle">
+				<button type="button" class="mode-btn" class:active={runType === 'table'} onclick={() => (runType = 'table')}>
+					<TableIcon size={16} />
+					Table
+				</button>
+				<button type="button" class="mode-btn" class:active={runType === 'images'} onclick={() => (runType = 'images')}>
+					<ImageIcon size={16} />
+					Images
+				</button>
+			</div>
+
 			<textarea
 				class="query-input"
 				bind:value={query}
-				placeholder="e.g. Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website..."
+				placeholder={runType === 'images' ? 'e.g. Photos of modern Japanese architecture...' : 'e.g. Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website...'}
 				rows={4}
 			></textarea>
 
+			{#if runType === 'table'}
 			<button type="button" class="stop-toggle" onclick={() => { showStopConditions = !showStopConditions; }}>
 				{#if showStopConditions}
 					<ChevronUpIcon size={16} />
@@ -109,13 +124,14 @@
 					</div>
 				</div>
 			{/if}
+			{/if}
 
 			{#if submitError}
 				<p class="error-msg">{submitError}</p>
 			{/if}
 			<div class="query-actions">
 				<button type="submit" class="btn-primary" disabled={!query.trim()}>
-					Start Research
+					{runType === 'images' ? 'Search Images' : 'Start Research'}
 				</button>
 			</div>
 		</form>
@@ -133,7 +149,7 @@
 				oncancel={cancelCurrentRun}
 				onreset={handleReset}
 				onexport={() => { showExport = true; }}
-				showExport={isFinished && $runState.rows.length > 0}
+				showExport={isFinished && ($runState.rows.length > 0 || $runState.imageResults.length > 0)}
 			/>
 		</div>
 
@@ -158,7 +174,9 @@
 			/>
 		{/if}
 
-		{#if $runState.schema.length > 0 && !isSchemaReview}
+		{#if isImageRun}
+			<ImageGallery images={$runState.imageResults} />
+		{:else if $runState.schema.length > 0 && !isSchemaReview}
 			<ResultsTable
 				schema={$runState.schema}
 				rows={$runState.rows}
@@ -209,6 +227,37 @@
 		flex-direction: column;
 		gap: 12px;
 		overflow-y: auto;
+	}
+
+	.mode-toggle {
+		display: flex;
+		border: 1px solid var(--color-surface-300-700);
+		border-radius: 8px;
+		overflow: hidden;
+		width: fit-content;
+	}
+
+	.mode-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 16px;
+		border: none;
+		background: var(--color-surface-100-900);
+		color: var(--color-surface-500);
+		font-size: 0.9rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.mode-btn:not(:last-child) {
+		border-right: 1px solid var(--color-surface-300-700);
+	}
+
+	.mode-btn.active {
+		background: var(--color-primary-500);
+		color: white;
 	}
 
 	.query-input {

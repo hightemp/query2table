@@ -7,6 +7,16 @@ use super::brave::BraveSearchProvider;
 use super::serper::SerperProvider;
 use crate::utils::retry::{retry_with_backoff, RetryAction, RetryConfig};
 
+/// No-op image provider for testing with `with_providers`.
+struct NoopImageProvider;
+
+#[async_trait::async_trait]
+impl ImageSearchProvider for NoopImageProvider {
+    async fn search_images(&self, _query: SearchQuery) -> Result<Vec<ImageSearchResult>, SearchError> {
+        Ok(vec![])
+    }
+}
+
 /// Which search backend to use.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SearchBackend {
@@ -38,26 +48,31 @@ impl Default for SearchConfig {
 pub struct SearchManager {
     primary: Arc<dyn SearchProvider>,
     fallback: Option<Arc<dyn SearchProvider>>,
+    image_primary: Arc<dyn ImageSearchProvider>,
+    image_fallback: Option<Arc<dyn ImageSearchProvider>>,
     config: SearchConfig,
 }
 
 impl SearchManager {
     pub fn from_config(config: SearchConfig) -> Result<Self, SearchError> {
-        let (primary, fallback) = match config.primary {
+        let (primary, fallback, image_primary, image_fallback) = match config.primary {
             SearchBackend::Brave => {
                 if config.brave_api_key.is_empty() {
                     return Err(SearchError::NotConfigured(
                         "Brave Search API key is required".to_string()
                     ));
                 }
-                let primary: Arc<dyn SearchProvider> =
-                    Arc::new(BraveSearchProvider::new(config.brave_api_key.clone()));
-                let fallback: Option<Arc<dyn SearchProvider>> = if !config.serper_api_key.is_empty() {
-                    Some(Arc::new(SerperProvider::new(config.serper_api_key.clone())))
-                } else {
-                    None
-                };
-                (primary, fallback)
+                let brave = Arc::new(BraveSearchProvider::new(config.brave_api_key.clone()));
+                let primary: Arc<dyn SearchProvider> = brave.clone();
+                let image_primary: Arc<dyn ImageSearchProvider> = brave;
+                let (fallback, image_fallback): (Option<Arc<dyn SearchProvider>>, Option<Arc<dyn ImageSearchProvider>>) =
+                    if !config.serper_api_key.is_empty() {
+                        let serper = Arc::new(SerperProvider::new(config.serper_api_key.clone()));
+                        (Some(serper.clone() as Arc<dyn SearchProvider>), Some(serper as Arc<dyn ImageSearchProvider>))
+                    } else {
+                        (None, None)
+                    };
+                (primary, fallback, image_primary, image_fallback)
             }
             SearchBackend::Serper => {
                 if config.serper_api_key.is_empty() {
@@ -65,14 +80,17 @@ impl SearchManager {
                         "Serper API key is required".to_string()
                     ));
                 }
-                let primary: Arc<dyn SearchProvider> =
-                    Arc::new(SerperProvider::new(config.serper_api_key.clone()));
-                let fallback: Option<Arc<dyn SearchProvider>> = if !config.brave_api_key.is_empty() {
-                    Some(Arc::new(BraveSearchProvider::new(config.brave_api_key.clone())))
-                } else {
-                    None
-                };
-                (primary, fallback)
+                let serper = Arc::new(SerperProvider::new(config.serper_api_key.clone()));
+                let primary: Arc<dyn SearchProvider> = serper.clone();
+                let image_primary: Arc<dyn ImageSearchProvider> = serper;
+                let (fallback, image_fallback): (Option<Arc<dyn SearchProvider>>, Option<Arc<dyn ImageSearchProvider>>) =
+                    if !config.brave_api_key.is_empty() {
+                        let brave = Arc::new(BraveSearchProvider::new(config.brave_api_key.clone()));
+                        (Some(brave.clone() as Arc<dyn SearchProvider>), Some(brave as Arc<dyn ImageSearchProvider>))
+                    } else {
+                        (None, None)
+                    };
+                (primary, fallback, image_primary, image_fallback)
             }
         };
 
@@ -82,7 +100,7 @@ impl SearchManager {
             "Search manager initialized"
         );
 
-        Ok(Self { primary, fallback, config })
+        Ok(Self { primary, fallback, image_primary, image_fallback, config })
     }
 
     /// Execute a search, with retry on transient errors, then falling back to secondary provider.
@@ -159,7 +177,66 @@ impl SearchManager {
         fallback: Option<Arc<dyn SearchProvider>>,
         config: SearchConfig,
     ) -> Self {
-        Self { primary, fallback, config }
+        // For testing: use dummy image providers (no-op)
+        let image_primary: Arc<dyn ImageSearchProvider> = Arc::new(NoopImageProvider);
+        Self { primary, fallback, image_primary, image_fallback: None, config }
+    }
+
+    /// Execute an image search, with retry on transient errors, then falling back.
+    pub async fn search_images(&self, query: &str) -> Result<Vec<ImageSearchResult>, SearchError> {
+        self.search_images_with_count(query, self.config.num_results).await
+    }
+
+    /// Execute an image search with custom result count.
+    pub async fn search_images_with_count(
+        &self,
+        query: &str,
+        num_results: u32,
+    ) -> Result<Vec<ImageSearchResult>, SearchError> {
+        let retry_config = RetryConfig {
+            max_retries: 2,
+            initial_delay: Duration::from_secs(2),
+            max_delay: Duration::from_secs(30),
+            multiplier: 2.0,
+        };
+
+        let image_primary = self.image_primary.clone();
+        let q = query.to_string();
+
+        let primary_result = retry_with_backoff(&retry_config, "image_search_primary", || {
+            let image_primary = image_primary.clone();
+            let q = q.clone();
+            async move {
+                let search_query = SearchQuery::new(&q, num_results);
+                match image_primary.search_images(search_query).await {
+                    Ok(results) => (Ok(results), RetryAction::Success, None),
+                    Err(SearchError::RateLimited { retry_after_secs }) => {
+                        let hint = retry_after_secs.map(Duration::from_secs);
+                        (Err(SearchError::RateLimited { retry_after_secs }), RetryAction::Retry, hint)
+                    }
+                    Err(SearchError::ConnectionError(msg)) => {
+                        (Err(SearchError::ConnectionError(msg)), RetryAction::Retry, None)
+                    }
+                    Err(e) => (Err(e), RetryAction::Fail, None),
+                }
+            }
+        }).await;
+
+        match primary_result {
+            Ok(results) => Ok(results),
+            Err(e) => {
+                if let Some(ref fallback) = self.image_fallback {
+                    warn!(
+                        error = %e,
+                        "Primary image search failed after retries, trying fallback"
+                    );
+                    let fallback_query = SearchQuery::new(query, num_results);
+                    fallback.search_images(fallback_query).await
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 
     pub fn primary_name(&self) -> &str {
