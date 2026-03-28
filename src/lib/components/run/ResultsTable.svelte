@@ -9,6 +9,7 @@
 	import { FlexRender } from '@tanstack/svelte-table';
 	import type { SchemaColumn } from '$lib/types';
 	import type { RunRow } from '$lib/stores/run';
+	import { openUrl } from '@tauri-apps/plugin-opener';
 
 	interface Props {
 		schema: SchemaColumn[];
@@ -19,6 +20,25 @@
 	let { schema, rows, onrowclick }: Props = $props();
 
 	let sorting = $state<SortingState>([]);
+
+	let columnTypeMap = $derived<Record<string, string>>(
+		Object.fromEntries(schema.map((col) => [col.name, col.type]))
+	);
+
+	function isUrl(value: string): boolean {
+		try {
+			const u = new URL(value);
+			return u.protocol === 'http:' || u.protocol === 'https:';
+		} catch {
+			return false;
+		}
+	}
+
+	function handleLinkClick(e: MouseEvent, url: string) {
+		e.preventDefault();
+		e.stopPropagation();
+		openUrl(url);
+	}
 
 	let columnDefs = $derived<ColumnDef<RunRow, unknown>[]>(
 		schema.map((col) => ({
@@ -80,8 +100,19 @@
 					{#each table.getRowModel().rows as row}
 						<tr class="data-row" onclick={() => onrowclick(row.original)}>
 							{#each row.getVisibleCells() as cell}
+								{@const value = String(cell.getValue())}
+								{@const colType = columnTypeMap[cell.column.id]}
 								<td>
-									<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+									{#if colType === 'url' && value && isUrl(value)}
+										<a
+											href={value}
+											class="cell-link"
+											title={value}
+											onclick={(e) => handleLinkClick(e, value)}
+										>{value}</a>
+									{:else}
+										<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+									{/if}
 								</td>
 							{/each}
 						</tr>
@@ -153,6 +184,17 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.cell-link {
+		color: var(--color-primary-500);
+		text-decoration: none;
+		cursor: pointer;
+	}
+
+	.cell-link:hover {
+		text-decoration: underline;
+		color: var(--color-primary-400);
 	}
 
 	.data-row {
