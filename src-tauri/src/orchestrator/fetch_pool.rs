@@ -3,8 +3,9 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
 
-use crate::providers::http::client::{HttpFetcher, FetchError};
+use crate::providers::http::client::{HttpFetcher, FetchError, FetchedPage};
 use crate::roles::document_parser::{DocumentParser, ParsedDocument};
+use crate::roles::pdf_parser::PdfParser;
 
 /// A URL to fetch, with metadata for tracking.
 #[derive(Debug, Clone)]
@@ -81,12 +82,18 @@ pub fn spawn_fetch_pool(
                 }
 
                 let fetch_result = match result {
-                    Ok((page_body, http_status)) => {
-                        let doc = DocumentParser::parse(&page_body, &job.url);
+                    Ok(page) => {
+                        let doc = if page.is_pdf() {
+                            debug!(worker_id, url = %job.url, bytes = page.body_bytes.len(), "Parsing PDF document");
+                            PdfParser::parse(&page.body_bytes, &job.url)
+                        } else {
+                            DocumentParser::parse(&page.body, &job.url)
+                        };
                         debug!(
                             worker_id,
                             url = %job.url,
                             text_len = doc.text.len(),
+                            is_pdf = page.is_pdf(),
                             duration_ms,
                             "Fetched and parsed"
                         );
@@ -94,8 +101,8 @@ pub fn spawn_fetch_pool(
                             search_result_id: job.search_result_id,
                             document: doc,
                             fetch_duration_ms: duration_ms,
-                            http_status,
-                            content_length: page_body.len(),
+                            http_status: page.status,
+                            content_length: if page.is_pdf() { page.body_bytes.len() } else { page.body.len() },
                         })
                     }
                     Err(e) => {
@@ -127,9 +134,8 @@ pub fn spawn_fetch_pool(
 async fn fetch_and_parse(
     fetcher: &HttpFetcher,
     job: &FetchJob,
-) -> Result<(String, u16), FetchError> {
-    let page = fetcher.fetch(&job.url).await?;
-    Ok((page.body, page.status))
+) -> Result<FetchedPage, FetchError> {
+    fetcher.fetch(&job.url).await
 }
 
 #[cfg(test)]

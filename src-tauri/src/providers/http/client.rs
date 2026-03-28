@@ -34,6 +34,19 @@ pub struct FetchedPage {
     pub status: u16,
     pub body: String,
     pub content_type: Option<String>,
+    /// Raw bytes for binary content (e.g. PDF). Empty for text content.
+    pub body_bytes: Vec<u8>,
+}
+
+impl FetchedPage {
+    /// Returns true if content-type indicates a PDF document.
+    pub fn is_pdf(&self) -> bool {
+        self.content_type
+            .as_ref()
+            .map(|ct| ct.to_lowercase().contains("application/pdf"))
+            .unwrap_or(false)
+            || self.url.to_lowercase().ends_with(".pdf")
+    }
 }
 
 const USER_AGENTS: &[&str] = &[
@@ -151,22 +164,35 @@ impl HttpFetcher {
             });
         }
 
-        let body = response.text().await.map_err(|e| {
+        let is_pdf = content_type
+            .as_ref()
+            .map(|ct| ct.to_lowercase().contains("application/pdf"))
+            .unwrap_or(false)
+            || url.to_lowercase().ends_with(".pdf");
+
+        let raw_bytes = response.bytes().await.map_err(|e| {
             FetchError::RequestFailed(format!("Failed to read response body: {}", e))
         })?;
 
-        if body.len() as u64 > self.max_body_bytes {
+        if raw_bytes.len() as u64 > self.max_body_bytes {
             return Err(FetchError::ContentTooLarge {
-                size: body.len() as u64,
+                size: raw_bytes.len() as u64,
                 max: self.max_body_bytes,
             });
         }
+
+        let (body, body_bytes) = if is_pdf {
+            (String::new(), raw_bytes.to_vec())
+        } else {
+            (String::from_utf8_lossy(&raw_bytes).to_string(), Vec::new())
+        };
 
         Ok(FetchedPage {
             url: url.to_string(),
             status: status.as_u16(),
             body,
             content_type,
+            body_bytes,
         })
     }
 
@@ -204,8 +230,31 @@ mod tests {
             status: 200,
             body: "<html>test</html>".to_string(),
             content_type: Some("text/html".to_string()),
+            body_bytes: Vec::new(),
         };
         assert_eq!(page.status, 200);
+        assert!(!page.is_pdf());
+    }
+
+    #[test]
+    fn test_fetched_page_pdf_detection() {
+        let page_by_ct = FetchedPage {
+            url: "https://example.com/doc".to_string(),
+            status: 200,
+            body: String::new(),
+            content_type: Some("application/pdf".to_string()),
+            body_bytes: vec![0x25, 0x50, 0x44, 0x46], // %PDF
+        };
+        assert!(page_by_ct.is_pdf());
+
+        let page_by_url = FetchedPage {
+            url: "https://example.com/doc.pdf".to_string(),
+            status: 200,
+            body: String::new(),
+            content_type: None,
+            body_bytes: vec![0x25, 0x50, 0x44, 0x46],
+        };
+        assert!(page_by_url.is_pdf());
     }
 
     #[test]

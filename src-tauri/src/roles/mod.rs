@@ -1,4 +1,5 @@
 pub mod document_parser;
+pub mod pdf_parser;
 pub mod query_interpreter;
 pub mod schema_planner;
 pub mod search_planner;
