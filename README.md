@@ -18,6 +18,7 @@ Enter a query like *"Find all YC-backed AI startups from 2024 with their funding
 - **Multilingual query expansion** — searches across languages and geographies
 - **LLM-powered extraction** — OpenRouter (cloud) or Ollama (local) for entity extraction
 - **Streaming results** — rows appear in a live table as they're found
+- **PDF extraction** — automatically detects and extracts text from PDF documents found in search results
 - **Row-level sources** — every row links back to the pages it was extracted from
 - **Entity deduplication** — fuzzy matching + LLM-assisted disambiguation
 - **Configurable stop conditions** — target row count, max cost, max duration
@@ -108,6 +109,7 @@ Query → Interpret → Plan Schema → [User Confirms] → Plan Searches
 | SearchExecutor | No | Call search APIs, collect candidate URLs |
 | Fetcher | No | HTTP fetch with rate limiting and robots.txt |
 | DocumentParser | No | HTML → clean text (boilerplate removal) |
+| PdfParser | No | PDF → clean text (via pdf-extract) |
 | Extractor | Yes | Text + schema → structured rows |
 | Validator | Partial | Schema conformance + semantic checks |
 | Deduplicator | Partial | Fuzzy matching (strsim) + LLM for edge cases |
@@ -128,7 +130,7 @@ query2table/
 │   │   ├── main.rs          # Tauri entry point
 │   │   ├── commands/        # IPC command handlers
 │   │   ├── orchestrator/    # Pipeline state machine, budget tracker
-│   │   ├── roles/           # 11 pipeline roles
+│   │   ├── roles/           # 12 pipeline roles
 │   │   ├── providers/       # External API clients (LLM, search, HTTP)
 │   │   ├── storage/         # SQLite models & repository
 │   │   └── export/          # CSV, JSON, XLSX export
