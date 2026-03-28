@@ -5,7 +5,8 @@
 	import type { RunRow } from '$lib/stores/run';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
-	import { TrashIcon, ExternalLinkIcon, ArrowLeftIcon } from '@lucide/svelte';
+	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
+	import { TrashIcon, ExternalLinkIcon, ArrowLeftIcon, DownloadIcon } from '@lucide/svelte';
 
 	let runs = $state<RunInfo[]>([]);
 	let loading = $state(true);
@@ -17,6 +18,7 @@
 	let viewRows = $state<RunRow[]>([]);
 	let viewLoading = $state(false);
 	let selectedRow = $state<RunRow | null>(null);
+	let showExport = $state(false);
 
 	onMount(async () => {
 		await loadRuns();
@@ -62,6 +64,7 @@
 		viewSchema = [];
 		viewRows = [];
 		selectedRow = null;
+		showExport = false;
 	}
 
 	async function handleDelete(runId: string) {
@@ -100,8 +103,21 @@
 			<div class="view-meta">
 				<span>{formatDate(viewingRun.created_at)}</span>
 				<span>{viewRows.length} rows</span>
+				{#if viewRows.length > 0}
+					<button class="btn-export" onclick={() => { showExport = true; }}>
+						<DownloadIcon size={14} />
+						Export
+					</button>
+				{/if}
 			</div>
 		</div>
+
+		{#if showExport}
+			<ExportDialog
+				runId={viewingRun.id}
+				onclose={() => { showExport = false; }}
+			/>
+		{/if}
 
 		{#if viewSchema.length > 0 && viewRows.length > 0}
 			<ResultsTable
@@ -336,10 +352,30 @@
 
 	.view-meta {
 		display: flex;
+		align-items: center;
 		gap: 16px;
 		font-size: 0.85rem;
 		color: var(--color-surface-600-400);
 		margin-bottom: 16px;
+	}
+
+	.btn-export {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 14px;
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--color-primary-500);
+		background: none;
+		border: 1px solid var(--color-primary-500);
+		border-radius: 6px;
+		cursor: pointer;
+		margin-left: auto;
+	}
+
+	.btn-export:hover {
+		background: rgba(59, 130, 246, 0.1);
 	}
 
 	button.action-link {
