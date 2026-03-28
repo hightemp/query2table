@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { RunRow } from '$lib/stores/run';
+	import { openUrl } from '@tauri-apps/plugin-opener';
 
 	interface Props {
 		row: RunRow;
@@ -8,6 +9,21 @@
 	}
 
 	let { row, columns, onclose }: Props = $props();
+
+	function isUrl(value: string): boolean {
+		try {
+			const u = new URL(value);
+			return u.protocol === 'http:' || u.protocol === 'https:';
+		} catch {
+			return false;
+		}
+	}
+
+	function handleLinkClick(e: MouseEvent, url: string) {
+		e.preventDefault();
+		e.stopPropagation();
+		openUrl(url);
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -31,9 +47,16 @@
 			<table class="detail-table">
 				<tbody>
 					{#each columns as col}
+						{@const value = row.data[col] != null ? String(row.data[col]) : ''}
 						<tr>
 							<td class="detail-key">{col}</td>
-							<td class="detail-value">{row.data[col] ?? '—'}</td>
+							<td class="detail-value">
+								{#if value && isUrl(value)}
+									<a href={value} class="detail-link" onclick={(e) => handleLinkClick(e, value)}>{value}</a>
+								{:else}
+									{value || '—'}
+								{/if}
+							</td>
 						</tr>
 					{/each}
 				</tbody>
@@ -143,5 +166,14 @@
 		padding: 10px 0;
 		word-break: break-word;
 		font-size: 0.9rem;
+	}
+
+	.detail-link {
+		color: var(--color-primary-500);
+		text-decoration: none;
+		cursor: pointer;
+	}
+	.detail-link:hover {
+		text-decoration: underline;
 	}
 </style>
