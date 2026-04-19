@@ -3,6 +3,7 @@ use std::time::Duration;
 use thiserror::Error;
 use tracing::debug;
 
+use super::proxy::apply_proxy;
 use super::rate_limiter::RateLimiter;
 
 /// Error types for HTTP fetching.
@@ -65,12 +66,13 @@ pub struct HttpFetcher {
 
 impl HttpFetcher {
     pub fn new(rate_limiter: RateLimiter) -> Self {
-        let client = ClientBuilder::new()
+        let builder = ClientBuilder::new()
             .timeout(Duration::from_secs(20))
             .connect_timeout(Duration::from_secs(8))
             .redirect(reqwest::redirect::Policy::limited(5))
             .gzip(true)
-            .brotli(true)
+            .brotli(true);
+        let client = apply_proxy(builder)
             .build()
             .expect("Failed to build HTTP client");
 

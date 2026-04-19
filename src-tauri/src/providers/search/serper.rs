@@ -54,8 +54,11 @@ struct SerperImageResult {
 
 impl SerperProvider {
     pub fn new(api_key: impl Into<String>) -> Self {
+        let client = crate::providers::http::apply_proxy(Client::builder())
+            .build()
+            .expect("Failed to build Serper HTTP client");
         Self {
-            client: Client::new(),
+            client,
             api_key: api_key.into(),
             base_url: "https://google.serper.dev".to_string(),
         }

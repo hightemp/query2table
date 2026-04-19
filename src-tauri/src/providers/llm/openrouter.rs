@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
 use super::types::*;
+use crate::providers::http::apply_proxy;
 
 /// OpenRouter.ai LLM provider (OpenAI-compatible API).
 pub struct OpenRouterProvider {
@@ -14,9 +15,10 @@ pub struct OpenRouterProvider {
 
 impl OpenRouterProvider {
     pub fn new(api_key: String) -> Self {
-        let client = reqwest::ClientBuilder::new()
+        let builder = reqwest::ClientBuilder::new()
             .timeout(std::time::Duration::from_secs(120))
-            .connect_timeout(std::time::Duration::from_secs(15))
+            .connect_timeout(std::time::Duration::from_secs(15));
+        let client = apply_proxy(builder)
             .build()
             .expect("Failed to build OpenRouter HTTP client");
         Self {

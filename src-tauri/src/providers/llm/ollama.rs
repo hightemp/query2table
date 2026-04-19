@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::types::*;
+use crate::providers::http::apply_proxy;
 
 /// Ollama local LLM provider.
 pub struct OllamaProvider {
@@ -13,9 +14,10 @@ pub struct OllamaProvider {
 
 impl OllamaProvider {
     pub fn new(base_url: String) -> Self {
-        let client = reqwest::ClientBuilder::new()
+        let builder = reqwest::ClientBuilder::new()
             .timeout(std::time::Duration::from_secs(300))
-            .connect_timeout(std::time::Duration::from_secs(10))
+            .connect_timeout(std::time::Duration::from_secs(10));
+        let client = apply_proxy(builder)
             .build()
             .expect("Failed to build Ollama HTTP client");
         Self {

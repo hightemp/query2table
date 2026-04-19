@@ -358,9 +358,10 @@ pub async fn proxy_image(url: String) -> Result<String, String> {
     use reqwest::Client;
     use base64::Engine;
 
-    let client = Client::builder()
+    let builder = Client::builder()
         .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+    let client = crate::providers::http::apply_proxy(builder)
         .build()
         .map_err(|e| format!("HTTP client error: {e}"))?;
 

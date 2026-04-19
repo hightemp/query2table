@@ -21,6 +21,11 @@ pub struct AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Capture HTTP_PROXY/HTTPS_PROXY for our reqwest clients and strip them
+    // from the environment so the Tauri WebView (webkit2gtk) doesn't try to
+    // route the dev-server / devtools traffic through the proxy.
+    providers::http::proxy::init_and_strip_env();
+
     // Initialize logging early (before Tauri setup) so all startup messages are captured.
     let data_dir = std::env::var("XDG_DATA_HOME")
         .ok()

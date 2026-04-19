@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 
 use super::client::FetchError;
+use super::proxy::apply_proxy;
 
 /// Cached robots.txt entry.
 struct RobotsEntry {
@@ -23,8 +24,7 @@ pub struct RobotsChecker {
 impl RobotsChecker {
     pub fn new() -> Self {
         Self {
-            client: Client::builder()
-                .timeout(Duration::from_secs(5))
+            client: apply_proxy(Client::builder().timeout(Duration::from_secs(5)))
                 .build()
                 .expect("Failed to build robots.txt client"),
             cache: RwLock::new(HashMap::new()),

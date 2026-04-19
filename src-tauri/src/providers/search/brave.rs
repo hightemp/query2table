@@ -56,8 +56,11 @@ struct BraveImageProperties {
 
 impl BraveSearchProvider {
     pub fn new(api_key: impl Into<String>) -> Self {
+        let client = crate::providers::http::apply_proxy(Client::builder())
+            .build()
+            .expect("Failed to build Brave HTTP client");
         Self {
-            client: Client::new(),
+            client,
             api_key: api_key.into(),
             base_url: "https://api.search.brave.com/res/v1".to_string(),
         }
