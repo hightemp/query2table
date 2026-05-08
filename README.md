@@ -1,11 +1,16 @@
 # Query2Table
 
-![Experimental](https://img.shields.io/badge/status-experimental-orange)
-![Vibe Coded](https://img.shields.io/badge/vibe-coded-blueviolet)
+[![GitHub release](https://img.shields.io/github/v/release/hightemp/query2table?style=flat-square)](https://github.com/hightemp/query2table/releases/latest)
+[![GitHub downloads](https://img.shields.io/github/downloads/hightemp/query2table/total?style=flat-square)](https://github.com/hightemp/query2table/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%20v2-24C8D8?style=flat-square&logo=tauri)](https://v2.tauri.app/)
+[![Rust](https://img.shields.io/badge/backend-Rust-orange?style=flat-square&logo=rust)](https://www.rust-lang.org/)
+[![Svelte](https://img.shields.io/badge/frontend-Svelte%205-FF3E00?style=flat-square&logo=svelte)](https://svelte.dev/)
+![](https://asdertasd.site/counter/query2table)
 
-A local-first desktop application that converts natural-language research queries into structured tables with row-level sources. Built with Tauri v2, Rust, and Svelte 5.
+**Query2Table** — local-first desktop research tool. You describe what data you need; the app autonomously searches the internet across multiple sources and languages, fetches pages, extracts structured entities with LLMs, deduplicates them, and presents the result as a live-updating table with row-level source links — all running on your machine without a cloud backend.
 
-Enter a query like *"Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website"* and Query2Table will search the internet, extract entities via LLMs, deduplicate results, and present a live-updating table — all running locally on your machine.
+Ask something like *"Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website"* and watch the table fill up in real time.
 
 ![](screenshots/2026-03-28_09-50.png)
 ![](screenshots/2026-03-28_09-51.png)
@@ -193,4 +198,4 @@ npm run lint
 
 MIT
 
-![](https://asdertasd.site/counter/query2table)
+
