@@ -24,6 +24,7 @@ Ask something like *"Find all YC-backed AI startups from 2024 with their funding
 - **LLM-powered extraction** — OpenRouter (cloud) or Ollama (local) for entity extraction
 - **Streaming results** — rows appear in a live table as they're found
 - **PDF extraction** — automatically detects and extracts text from PDF documents found in search results
+- **Image search mode** — a dedicated pipeline that searches images instead of text: generates 6–12 diverse query variations (LLM or static fallbacks), executes image searches via Brave / Serper, then ranks every result with an LLM using a strict relevance rubric (0.0–1.0); images scoring below 0.7 are dropped, the rest are stored sorted by score with real-time per-image UI updates; budget, cancellation, and stop conditions (count / cost / time) are respected throughout
 - **Row-level sources** — every row links back to the pages it was extracted from
 - **Entity deduplication** — fuzzy matching + LLM-assisted disambiguation
 - **Configurable stop conditions** — target row count, max cost, max duration
