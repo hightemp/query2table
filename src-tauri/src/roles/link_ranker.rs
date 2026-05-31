@@ -91,7 +91,12 @@ impl LinkRanker {
     ) -> Result<(f64, String), String> {
         let text = match max_text_chars {
             Some(limit) if candidate.document.text.len() > limit => {
-                &candidate.document.text[..limit]
+                // Truncate on a UTF-8 char boundary at or before `limit`.
+                let mut end = limit;
+                while end > 0 && !candidate.document.text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                &candidate.document.text[..end]
             }
             _ => &candidate.document.text,
         };
@@ -210,5 +215,18 @@ mod tests {
         let (score, desc) = LinkRanker::parse_score("not json");
         assert_eq!(score, 0.0);
         assert_eq!(desc, "");
+    }
+
+    #[test]
+    fn test_truncate_on_char_boundary() {
+        // '，' is 3 bytes each; a byte limit may land inside a char.
+        let text = "aaa，，，".to_string();
+        let limit = 4; // byte 4 is inside the first '，' (bytes 3..6)
+        let mut end = limit;
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        // Must not panic and must yield a valid UTF-8 slice.
+        assert_eq!(&text[..end], "aaa");
     }
 }
