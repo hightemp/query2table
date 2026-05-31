@@ -10,6 +10,8 @@
 
 **Query2Table** — local-first desktop research tool. You describe what data you need; the app autonomously searches the internet across multiple sources and languages, fetches pages, extracts structured entities with LLMs, deduplicates them, and presents the result as a live-updating table with row-level source links — all running on your machine without a cloud backend.
 
+Beyond tables, it offers two more dedicated modes: **image search**, which finds and LLM-ranks relevant images by visual relevance, and **link search**, which reads the full content of candidate pages and returns only the most relevant links with LLM-generated descriptions and relevance scores.
+
 Ask something like *"Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website"* and watch the table fill up in real time.
 
 ![](screenshots/2026-03-28_09-50.png)
