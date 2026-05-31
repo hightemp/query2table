@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listRuns, deleteRun, getRunSchema, getRunRows, getImageResults, type RunSchemaInfo, type EntityRowInfo } from '$lib/api/tauri';
-	import type { RunInfo, SchemaColumn, ImageResult } from '$lib/types';
+	import { listRuns, deleteRun, getRunSchema, getRunRows, getImageResults, getLinkResults, type RunSchemaInfo, type EntityRowInfo } from '$lib/api/tauri';
+	import type { RunInfo, SchemaColumn, ImageResult, LinkResult } from '$lib/types';
 	import type { RunRow } from '$lib/stores/run';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
 	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
 	import ImageGallery from '$lib/components/run/ImageGallery.svelte';
-	import { TrashIcon, ExternalLinkIcon, ArrowLeftIcon, DownloadIcon, TableIcon, ImageIcon } from '@lucide/svelte';
+	import LinkList from '$lib/components/run/LinkList.svelte';
+	import { TrashIcon, ExternalLinkIcon, ArrowLeftIcon, DownloadIcon, TableIcon, ImageIcon, LinkIcon } from '@lucide/svelte';
 
 	let runs = $state<RunInfo[]>([]);
 	let loading = $state(true);
@@ -18,6 +19,7 @@
 	let viewSchema = $state<SchemaColumn[]>([]);
 	let viewRows = $state<RunRow[]>([]);
 	let viewImages = $state<ImageResult[]>([]);
+	let viewLinks = $state<LinkResult[]>([]);
 	let viewLoading = $state(false);
 	let selectedRow = $state<RunRow | null>(null);
 	let showExport = $state(false);
@@ -47,6 +49,12 @@
 				viewImages = await getImageResults(run.id);
 				viewSchema = [];
 				viewRows = [];
+				viewLinks = [];
+			} else if (run.run_type === 'links') {
+				viewLinks = await getLinkResults(run.id);
+				viewSchema = [];
+				viewRows = [];
+				viewImages = [];
 			} else {
 				const [schemaInfo, rows] = await Promise.all([
 					getRunSchema(run.id),
@@ -59,6 +67,7 @@
 					confidence: r.confidence,
 				}));
 				viewImages = [];
+				viewLinks = [];
 			}
 			viewingRun = run;
 		} catch (e) {
@@ -73,6 +82,7 @@
 		viewSchema = [];
 		viewRows = [];
 		viewImages = [];
+		viewLinks = [];
 		selectedRow = null;
 		showExport = false;
 	}
@@ -112,7 +122,7 @@
 			</div>
 			<div class="view-meta">
 				<span>{formatDate(viewingRun.created_at)}</span>
-				<span>{viewingRun.run_type === 'images' ? `${viewImages.length} images` : `${viewRows.length} rows`}</span>
+				<span>{viewingRun.run_type === 'images' ? `${viewImages.length} images` : viewingRun.run_type === 'links' ? `${viewLinks.length} links` : `${viewRows.length} rows`}</span>
 				{#if viewRows.length > 0 || viewImages.length > 0}
 					<button class="btn-export" onclick={() => { showExport = true; }}>
 						<DownloadIcon size={14} />
@@ -134,6 +144,12 @@
 				<ImageGallery images={viewImages} />
 			{:else}
 				<div class="empty-state">No images found for this run.</div>
+			{/if}
+		{:else if viewingRun.run_type === 'links'}
+			{#if viewLinks.length > 0}
+				<LinkList links={viewLinks} />
+			{:else}
+				<div class="empty-state">No links found for this run.</div>
 			{/if}
 		{:else if viewSchema.length > 0 && viewRows.length > 0}
 			<ResultsTable
@@ -174,8 +190,8 @@
 							<span class="run-query">{run.query}</span>
 						<div class="header-badges">
 							{#if run.run_type === 'images'}
-								<span class="badge badge-type"><ImageIcon size={12} /> Images</span>
-							{:else}
+								<span class="badge badge-type"><ImageIcon size={12} /> Images</span>						{:else if run.run_type === 'links'}
+							<span class="badge badge-type"><LinkIcon size={12} /> Links</span>							{:else}
 								<span class="badge badge-type"><TableIcon size={12} /> Table</span>
 							{/if}
 							<span class="badge {statusClass(run.status)}">{run.status}</span>
