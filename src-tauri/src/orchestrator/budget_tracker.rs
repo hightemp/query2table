@@ -51,9 +51,11 @@ impl BudgetTracker {
         self.inner.completion_tokens.fetch_add(completion_tokens as u64, Ordering::Relaxed);
         self.inner.llm_calls.fetch_add(1, Ordering::Relaxed);
 
-        // Cost estimate in microdollars: prompt=$0.15/1M, completion=$0.60/1M
-        let prompt_cost_micro = (prompt_tokens as u64) * 150 / 1_000_000;
-        let completion_cost_micro = (completion_tokens as u64) * 600 / 1_000_000;
+        // Cost estimate in microdollars (1 USD = 1_000_000 microdollars).
+        // Prompt $0.15/1M tokens = 150_000 microdollars per 1M tokens.
+        // Completion $0.60/1M tokens = 600_000 microdollars per 1M tokens.
+        let prompt_cost_micro = (prompt_tokens as u64) * 150_000 / 1_000_000;
+        let completion_cost_micro = (completion_tokens as u64) * 600_000 / 1_000_000;
         // Minimum 1 microdollar per call to account for rounding
         let total = (prompt_cost_micro + completion_cost_micro).max(1);
 
@@ -164,6 +166,19 @@ mod tests {
         assert_eq!(snap.completion_tokens, 500);
         assert_eq!(snap.llm_calls, 1);
         assert!(snap.spent_usd > 0.0);
+    }
+
+    #[test]
+    fn test_llm_cost_estimate_accuracy() {
+        // 1M prompt tokens at $0.15/1M should cost $0.15.
+        let bt = BudgetTracker::new(10.0);
+        bt.record_llm_call(1_000_000, 0);
+        assert!((bt.spent_usd() - 0.15).abs() < 1e-6, "got {}", bt.spent_usd());
+
+        // 1M completion tokens at $0.60/1M should cost $0.60.
+        let bt2 = BudgetTracker::new(10.0);
+        bt2.record_llm_call(0, 1_000_000);
+        assert!((bt2.spent_usd() - 0.60).abs() < 1e-6, "got {}", bt2.spent_usd());
     }
 
     #[test]
