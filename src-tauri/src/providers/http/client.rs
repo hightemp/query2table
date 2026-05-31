@@ -186,7 +186,7 @@ impl HttpFetcher {
         let (body, body_bytes) = if is_pdf {
             (String::new(), raw_bytes.to_vec())
         } else {
-            (String::from_utf8_lossy(&raw_bytes).to_string(), Vec::new())
+            (decode_html_body(&raw_bytes, content_type.as_deref()), Vec::new())
         };
 
         Ok(FetchedPage {
@@ -204,9 +204,139 @@ impl HttpFetcher {
     }
 }
 
+/// Decode raw HTML bytes into a `String`, detecting the character encoding.
+///
+/// Many non-English sites (especially Chinese, Japanese, Korean, Cyrillic and
+/// older Western pages) are *not* UTF-8 — they use GBK/GB2312, Big5,
+/// Shift_JIS, EUC-KR, windows-1251, ISO-8859-*, or UTF-16. Blindly running
+/// `from_utf8_lossy` on those bytes produces replacement characters (`�`) and
+/// garbled text. We determine the encoding in priority order:
+///
+/// 1. A BOM at the start of the document (UTF-8 / UTF-16 LE / UTF-16 BE).
+/// 2. The `charset` parameter of the `Content-Type` HTTP header.
+/// 3. A `<meta charset=...>` / `<meta http-equiv="Content-Type">` tag in the
+///    first part of the HTML.
+/// 4. UTF-8 as the default.
+fn decode_html_body(bytes: &[u8], content_type: Option<&str>) -> String {
+    // 1. BOM sniffing — authoritative when present.
+    if let Some((enc, bom_len)) = encoding_rs::Encoding::for_bom(bytes) {
+        let (text, _, _) = enc.decode(&bytes[bom_len..]);
+        return text.into_owned();
+    }
+
+    // 2. Charset from the Content-Type header.
+    let mut encoding: Option<&'static encoding_rs::Encoding> = content_type
+        .and_then(charset_from_content_type)
+        .and_then(|label| encoding_rs::Encoding::for_label(label.as_bytes()));
+
+    // 3. Charset declared inside the HTML <meta> tags.
+    if encoding.is_none() {
+        encoding = charset_from_meta(bytes)
+            .and_then(|label| encoding_rs::Encoding::for_label(label.as_bytes()));
+    }
+
+    // 4. Default to UTF-8.
+    let enc = encoding.unwrap_or(encoding_rs::UTF_8);
+    let (text, _, _) = enc.decode(bytes);
+    text.into_owned()
+}
+
+/// Extract the `charset=` value from a Content-Type header value.
+fn charset_from_content_type(content_type: &str) -> Option<String> {
+    for part in content_type.split(';') {
+        let part = part.trim();
+        if let Some(rest) = part
+            .strip_prefix("charset=")
+            .or_else(|| part.strip_prefix("CHARSET="))
+            .or_else(|| {
+                // Case-insensitive prefix match for "charset=".
+                if part.len() >= 8 && part[..8].eq_ignore_ascii_case("charset=") {
+                    Some(&part[8..])
+                } else {
+                    None
+                }
+            })
+        {
+            let val = rest.trim().trim_matches('"').trim_matches('\'');
+            if !val.is_empty() {
+                return Some(val.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Scan the first portion of an HTML document for a declared charset.
+fn charset_from_meta(bytes: &[u8]) -> Option<String> {
+    // Only the document head matters; scan at most the first 4 KB as ASCII.
+    let limit = bytes.len().min(4096);
+    let head = String::from_utf8_lossy(&bytes[..limit]).to_ascii_lowercase();
+
+    // <meta charset="...">
+    if let Some(pos) = head.find("charset") {
+        let after = &head[pos + "charset".len()..];
+        let after = after.trim_start_matches(|c: char| c == '=' || c == ' ' || c == '"' || c == '\'');
+        let val: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+            .collect();
+        if !val.is_empty() {
+            return Some(val);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decode_utf8_default() {
+        let body = decode_html_body("héllo 你好".as_bytes(), Some("text/html"));
+        assert_eq!(body, "héllo 你好");
+    }
+
+    #[test]
+    fn decode_gbk_from_header() {
+        // "你好" encoded in GBK.
+        let (gbk_bytes, _, _) = encoding_rs::GBK.encode("你好世界");
+        let body = decode_html_body(&gbk_bytes, Some("text/html; charset=gbk"));
+        assert_eq!(body, "你好世界");
+    }
+
+    #[test]
+    fn decode_shift_jis_from_meta() {
+        let (sjis_body, _, _) = encoding_rs::SHIFT_JIS.encode("こんにちは");
+        let mut bytes =
+            b"<html><head><meta charset=\"shift_jis\"></head><body>".to_vec();
+        bytes.extend_from_slice(&sjis_body);
+        let body = decode_html_body(&bytes, None);
+        assert!(body.contains("こんにちは"));
+    }
+
+    #[test]
+    fn decode_utf16_le_bom() {
+        let mut bytes = vec![0xFF, 0xFE]; // UTF-16 LE BOM
+        for unit in "héllo".encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        let body = decode_html_body(&bytes, None);
+        assert_eq!(body, "héllo");
+    }
+
+    #[test]
+    fn charset_from_content_type_variants() {
+        assert_eq!(
+            charset_from_content_type("text/html; charset=UTF-8").as_deref(),
+            Some("UTF-8")
+        );
+        assert_eq!(
+            charset_from_content_type("text/html;charset=gbk").as_deref(),
+            Some("gbk")
+        );
+        assert_eq!(charset_from_content_type("text/html").as_deref(), None);
+    }
 
     #[test]
     fn test_user_agent_rotation() {

@@ -90,15 +90,8 @@ impl LinkRanker {
         max_text_chars: Option<usize>,
     ) -> Result<(f64, String), String> {
         let text = match max_text_chars {
-            Some(limit) if candidate.document.text.len() > limit => {
-                // Truncate on a UTF-8 char boundary at or before `limit`.
-                let mut end = limit;
-                while end > 0 && !candidate.document.text.is_char_boundary(end) {
-                    end -= 1;
-                }
-                &candidate.document.text[..end]
-            }
-            _ => &candidate.document.text,
+            Some(limit) => crate::utils::text::truncate_chars(&candidate.document.text, limit),
+            None => &candidate.document.text,
         };
 
         let prompt = format!(

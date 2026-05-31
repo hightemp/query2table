@@ -63,11 +63,7 @@ impl Extractor {
 
         // Truncate text to avoid exceeding token limits
         let text = if let Some(max) = max_text_chars {
-            if document.text.len() > max {
-                &document.text[..max]
-            } else {
-                &document.text
-            }
+            crate::utils::text::truncate_chars(&document.text, max)
         } else {
             &document.text
         };

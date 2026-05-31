@@ -37,9 +37,7 @@ impl PdfParser {
             .map_err(|e| format!("PDF extraction error: {}", e))?;
 
         if let Some(max) = max_chars {
-            if text.len() > max {
-                return Ok(text[..max].to_string());
-            }
+            return Ok(crate::utils::text::truncate_chars(&text, max).to_string());
         }
         Ok(text)
     }
