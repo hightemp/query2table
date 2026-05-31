@@ -216,6 +216,24 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_image_results_run_id ON image_results(run_id)")
             .execute(&self.pool).await?;
 
+        // Link search results table (relevance-filtered web pages)
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS link_results (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                url TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                relevance_score REAL,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch())
+            )"
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_link_results_run_id ON link_results(run_id)")
+            .execute(&self.pool).await?;
+
         // Add run_type column to runs table (for existing databases)
         sqlx::query(
             "ALTER TABLE runs ADD COLUMN run_type TEXT NOT NULL DEFAULT 'table'"

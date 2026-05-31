@@ -11,11 +11,12 @@
 	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
 	import RunStatusPanel from '$lib/components/run/RunStatusPanel.svelte';
 	import ImageGallery from '$lib/components/run/ImageGallery.svelte';
-	import { ChevronDownIcon, ChevronUpIcon, TableIcon, ImageIcon } from '@lucide/svelte';
+	import LinkList from '$lib/components/run/LinkList.svelte';
+	import { ChevronDownIcon, ChevronUpIcon, TableIcon, ImageIcon, LinkIcon } from '@lucide/svelte';
 	import { logPanelOpen } from '$lib/stores/logs';
 
 	let query = $state('');
-	let runType = $state<'table' | 'images'>('table');
+	let runType = $state<'table' | 'images' | 'links'>('table');
 	let selectedRow = $state<RunRow | null>(null);
 	let submitError = $state('');
 	let showExport = $state(false);
@@ -36,6 +37,7 @@
 	);
 	let showResults = $derived(isActive || isFinished || isSchemaReview);
 	let isImageRun = $derived($runState.runType === 'images');
+	let isLinkRun = $derived($runState.runType === 'links');
 	let columnNames = $derived($runState.schema.map((c) => c.name));
 
 	async function handleSubmit(e: Event) {
@@ -89,12 +91,16 @@
 					<ImageIcon size={16} />
 					Images
 				</button>
+				<button type="button" class="mode-btn" class:active={runType === 'links'} onclick={() => (runType = 'links')}>
+					<LinkIcon size={16} />
+					Links
+				</button>
 			</div>
 
 			<textarea
 				class="query-input"
 				bind:value={query}
-				placeholder={runType === 'images' ? 'e.g. Photos of modern Japanese architecture...' : 'e.g. Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website...'}
+				placeholder={runType === 'images' ? 'e.g. Photos of modern Japanese architecture...' : runType === 'links' ? 'e.g. Best resources for learning Rust async programming...' : 'e.g. Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website...'}
 				rows={4}
 			></textarea>
 
@@ -110,7 +116,7 @@
 			{#if showStopConditions}
 				<div class="stop-conditions">
 					<div class="stop-field">
-						<label for="targetRows">{runType === 'images' ? 'Max Images' : 'Target Rows'}</label>
+						<label for="targetRows">{runType === 'images' ? 'Max Images' : runType === 'links' ? 'Max Links' : 'Target Rows'}</label>
 						<input id="targetRows" type="number" min="1" bind:value={targetRows} />
 					</div>
 					<div class="stop-field">
@@ -129,7 +135,7 @@
 			{/if}
 			<div class="query-actions">
 				<button type="submit" class="btn-primary" disabled={!query.trim()}>
-					{runType === 'images' ? 'Search Images' : 'Start Research'}
+					{runType === 'images' ? 'Search Images' : runType === 'links' ? 'Find Links' : 'Start Research'}
 				</button>
 			</div>
 		</form>
@@ -174,6 +180,8 @@
 
 		{#if isImageRun}
 			<ImageGallery images={$runState.imageResults} />
+		{:else if isLinkRun}
+			<LinkList links={$runState.linkResults} />
 		{:else if $runState.schema.length > 0 && !isSchemaReview}
 			<ResultsTable
 				schema={$runState.schema}

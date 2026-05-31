@@ -13,6 +13,8 @@ import type {
 	RunErrorEvent,
 	ImageResult,
 	ImageAddedEvent,
+	LinkResult,
+	LinkAddedEvent,
 } from '$lib/types';
 
 export interface Setting {
@@ -147,6 +149,14 @@ export async function proxyImage(url: string): Promise<string> {
 
 export function onImageAdded(cb: (e: ImageAddedEvent) => void): Promise<UnlistenFn> {
 	return listen<ImageAddedEvent>('run:image_added', (event) => cb(event.payload));
+}
+
+export async function getLinkResults(runId: string): Promise<LinkResult[]> {
+	return invoke('get_link_results', { runId });
+}
+
+export function onLinkAdded(cb: (e: LinkAddedEvent) => void): Promise<UnlistenFn> {
+	return listen<LinkAddedEvent>('run:link_added', (event) => cb(event.payload));
 }
 
 // --- Export commands ---

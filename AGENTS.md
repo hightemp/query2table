@@ -28,8 +28,8 @@ query2table/
 │       ├── main.rs             # Tauri entry point
 │       ├── lib.rs              # Module declarations
 │       ├── commands/           # Tauri IPC command handlers (run, settings, history, export)
-│       ├── orchestrator/       # Pipeline state machine, stop controller, budget tracker
-│       ├── roles/              # Fixed pipeline roles (13 roles: interpreter, planner, executor, etc.)
+│       ├── orchestrator/       # Pipeline state machines (table, images, links), stop controller, budget tracker
+│       ├── roles/              # Fixed pipeline roles (interpreter, planner, executor, extractor, link_ranker, etc.)
 │       ├── providers/          # External API clients (llm/, search/, http/)
 │       ├── storage/            # SQLite models, repository, migrations
 │       ├── export/             # CSV, JSON, XLSX export implementations

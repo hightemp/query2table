@@ -5,6 +5,8 @@ import type {
 	RowAddedEvent,
 	ImageResult,
 	ImageAddedEvent,
+	LinkResult,
+	LinkAddedEvent,
 } from '$lib/types';
 import {
 	startRun as apiStartRun,
@@ -19,6 +21,7 @@ import {
 	onRunError,
 	onRunLogEntry,
 	onImageAdded,
+	onLinkAdded,
 } from '$lib/api/tauri';
 import { addLog } from '$lib/stores/logs';
 
@@ -36,6 +39,7 @@ export interface RunState {
 	schema: SchemaColumn[];
 	rows: RunRow[];
 	imageResults: ImageResult[];
+	linkResults: LinkResult[];
 	progress: ProgressStats | null;
 	error: string | null;
 }
@@ -48,6 +52,7 @@ const initialState: RunState = {
 	schema: [],
 	rows: [],
 	imageResults: [],
+	linkResults: [],
 	progress: null,
 	error: null,
 };
@@ -119,6 +124,19 @@ async function subscribeEvents() {
 					relevance_score: e.relevance_score,
 				};
 				return { ...s, imageResults: [...s.imageResults, img] };
+			});
+		}),
+		onLinkAdded((e: LinkAddedEvent) => {
+			runState.update((s) => {
+				if (s.runId !== e.run_id) return s;
+				const link: LinkResult = {
+					id: e.link_id,
+					url: e.url,
+					title: e.title,
+					description: e.description,
+					relevance_score: e.relevance_score,
+				};
+				return { ...s, linkResults: [...s.linkResults, link] };
 			});
 		}),
 	]);

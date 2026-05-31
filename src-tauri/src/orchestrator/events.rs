@@ -117,6 +117,21 @@ impl EventPublisher {
         }
         debug!(run_id = %self.run_id, image_id, "Emitted image_added");
     }
+
+    pub fn emit_link_added(&self, link_id: &str, url: &str, title: &str, description: &str, relevance_score: Option<f64>) {
+        let payload = LinkAddedEvent {
+            run_id: self.run_id.clone(),
+            link_id: link_id.to_string(),
+            url: url.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+            relevance_score,
+        };
+        if let Err(e) = self.app.emit("run:link_added", &payload) {
+            tracing::error!(error = %e, "Failed to emit link_added event");
+        }
+        debug!(run_id = %self.run_id, link_id, "Emitted link_added");
+    }
 }
 
 // --- Event payload types ---
@@ -182,6 +197,16 @@ pub struct ImageAddedEvent {
     pub source_url: String,
     pub width: Option<u32>,
     pub height: Option<u32>,
+    pub relevance_score: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LinkAddedEvent {
+    pub run_id: String,
+    pub link_id: String,
+    pub url: String,
+    pub title: String,
+    pub description: String,
     pub relevance_score: Option<f64>,
 }
 

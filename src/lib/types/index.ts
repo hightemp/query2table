@@ -150,3 +150,22 @@ export interface ImageAddedEvent {
 	height: number | null;
 	relevance_score: number | null;
 }
+
+// --- Link Search types ---
+
+export interface LinkResult {
+	id: string;
+	url: string;
+	title: string;
+	description: string;
+	relevance_score: number | null;
+}
+
+export interface LinkAddedEvent {
+	run_id: string;
+	link_id: string;
+	url: string;
+	title: string;
+	description: string;
+	relevance_score: number | null;
+}

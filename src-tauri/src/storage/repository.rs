@@ -547,6 +547,51 @@ impl Repository {
         .await?;
         Ok(count)
     }
+
+    // --- Link Results ---
+
+    pub async fn create_link_result(
+        &self,
+        run_id: &str,
+        url: &str,
+        title: &str,
+        description: &str,
+        relevance_score: Option<f64>,
+    ) -> Result<String, sqlx::Error> {
+        let id = new_id();
+        sqlx::query(
+            "INSERT INTO link_results (id, run_id, url, title, description, relevance_score, created_at) VALUES (?, ?, ?, ?, ?, ?, unixepoch())"
+        )
+        .bind(&id)
+        .bind(run_id)
+        .bind(url)
+        .bind(title)
+        .bind(description)
+        .bind(relevance_score)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn get_link_results(&self, run_id: &str) -> Result<Vec<LinkResultRow>, sqlx::Error> {
+        let rows = sqlx::query_as::<_, LinkResultRow>(
+            "SELECT id, run_id, url, title, description, relevance_score, created_at FROM link_results WHERE run_id = ? ORDER BY relevance_score DESC NULLS LAST, created_at"
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn count_link_results(&self, run_id: &str) -> Result<i64, sqlx::Error> {
+        let count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM link_results WHERE run_id = ?"
+        )
+        .bind(run_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
+    }
 }
 
 // --- Row types for sqlx::FromRow ---
@@ -659,6 +704,17 @@ pub struct ImageResultRow {
     pub source_url: String,
     pub width: Option<i64>,
     pub height: Option<i64>,
+    pub relevance_score: Option<f64>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct LinkResultRow {
+    pub id: String,
+    pub run_id: String,
+    pub url: String,
+    pub title: String,
+    pub description: String,
     pub relevance_score: Option<f64>,
     pub created_at: i64,
 }
