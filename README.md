@@ -25,6 +25,7 @@ Ask something like *"Find all YC-backed AI startups from 2024 with their funding
 - **Streaming results** — rows appear in a live table as they're found
 - **PDF extraction** — automatically detects and extracts text from PDF documents found in search results
 - **Image search mode** — a dedicated pipeline that searches images instead of text: generates 6–12 diverse query variations (LLM or static fallbacks), executes image searches via Brave / Serper, then ranks every result with an LLM using a strict relevance rubric (0.0–1.0); images scoring below 0.7 are dropped, the rest are stored sorted by score with real-time per-image UI updates; budget, cancellation, and stop conditions (count / cost / time) are respected throughout
+- **Link search mode** — a dedicated pipeline that returns the most relevant pages instead of a table: generates search query variations from your request, executes web searches via Brave / Serper (deduplicated by URL), fetches and parses each page, then has an LLM read the full content and score its relevance (0.0–1.0) to your query while generating a short description; pages below the confidence threshold are dropped, the rest are stored sorted by score with real-time per-link UI updates; budget, cancellation, and stop conditions are respected throughout
 - **Row-level sources** — every row links back to the pages it was extracted from
 - **Entity deduplication** — fuzzy matching + LLM-assisted disambiguation
 - **Configurable stop conditions** — target row count, max cost, max duration
@@ -119,6 +120,7 @@ Query → Interpret → Plan Schema → [User Confirms] → Plan Searches
 | Extractor | Yes | Text + schema → structured rows |
 | Validator | Partial | Schema conformance + semantic checks |
 | Deduplicator | Partial | Fuzzy matching (strsim) + LLM for edge cases |
+| LinkRanker | Yes | Read page content and score relevance (0.0–1.0) + generate description (link search mode) |
 | StoppingController | No | Evaluate stop conditions (rows, budget, time, saturation) |
 
 ### State Machine
@@ -166,6 +168,8 @@ SQLite in WAL mode with the following tables:
 | `fetched_pages` | Downloaded page content |
 | `entity_rows` | Extracted structured rows (JSON data) |
 | `row_sources` | Row-level evidence (URL, title, snippet) |
+| `image_results` | Ranked images per run (image search mode) |
+| `link_results` | Ranked relevant links with descriptions and scores (link search mode) |
 | `run_logs` | Execution logs per run |
 
 ## Development
