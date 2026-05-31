@@ -21,12 +21,14 @@ bump-version:
 	@sed -i 's/"version": "[^"]*"/"version": "$(VERSION)"/' package.json
 	@sed -i 's/"version": "[^"]*"/"version": "$(VERSION)"/' src-tauri/tauri.conf.json
 	@sed -i 's/^version = "[^"]*"/version = "$(VERSION)"/' src-tauri/Cargo.toml
+	@cd src-tauri && cargo update -p query2table --offline 2>/dev/null || true
 
 release: bump-version
 	@echo "Releasing v$(VERSION)..."
-	git add -A
+	git add VERSION package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
 	git commit -m "release: v$(VERSION)" --allow-empty
 	git tag -f "v$(VERSION)"
 	git push -f origin main
 	git push -f origin "v$(VERSION)"
 	@echo "Release v$(VERSION) pushed. CI will build and publish."
+
