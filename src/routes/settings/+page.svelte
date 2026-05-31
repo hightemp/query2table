@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { settings } from '$lib/stores/settings';
 	import type { SettingGroup, SettingDef } from '$lib/types';
-	import { EyeIcon, EyeOffIcon, SaveIcon } from '@lucide/svelte';
+	import { EyeIcon, EyeOffIcon, SaveIcon, TrashIcon, PlusIcon } from '@lucide/svelte';
 
 	let settingsMap: Map<string, string> = $state(new Map());
 	let dirty = $state(new Set<string>());
@@ -86,6 +86,59 @@
 		settingsMap = new Map(settingsMap);
 		dirty.add(key);
 		dirty = new Set(dirty);
+	}
+
+	// --- Proxy management ---
+	interface ProxyEntry {
+		name: string;
+		url: string;
+	}
+
+	let proxies = $derived.by<ProxyEntry[]>(() => {
+		const raw = settingsMap.get('proxy_list') ?? '[]';
+		try {
+			const parsed = JSON.parse(raw);
+			if (Array.isArray(parsed)) {
+				return parsed
+					.filter((p) => p && typeof p === 'object')
+					.map((p) => ({ name: String(p.name ?? ''), url: String(p.url ?? '') }));
+			}
+		} catch {
+			// ignore malformed JSON
+		}
+		return [];
+	});
+
+	let activeProxy = $derived(settingsMap.get('active_proxy_url') ?? '');
+
+	function persistProxies(list: ProxyEntry[]) {
+		handleChange('proxy_list', JSON.stringify(list));
+	}
+
+	function addProxy() {
+		persistProxies([...proxies, { name: '', url: '' }]);
+	}
+
+	function updateProxy(index: number, field: 'name' | 'url', value: string) {
+		const list = proxies.map((p, i) => (i === index ? { ...p, [field]: value } : p));
+		const removed = proxies[index];
+		persistProxies(list);
+		// If the active proxy URL changed, keep the selection in sync.
+		if (field === 'url' && removed.url === activeProxy) {
+			handleChange('active_proxy_url', value);
+		}
+	}
+
+	function removeProxy(index: number) {
+		const removed = proxies[index];
+		persistProxies(proxies.filter((_, i) => i !== index));
+		if (removed.url === activeProxy) {
+			handleChange('active_proxy_url', '');
+		}
+	}
+
+	function selectActiveProxy(url: string) {
+		handleChange('active_proxy_url', url);
 	}
 
 	function togglePassword(key: string) {
@@ -195,6 +248,62 @@
 			</div>
 		</section>
 	{/each}
+
+	<section class="settings-section">
+		<h2>Network / Proxy</h2>
+		<p class="section-description">
+			Configure one or more proxies and pick which one to route all requests through.
+			Supports <code>http://</code>, <code>https://</code> and <code>socks5://</code> URLs,
+			optionally with credentials (e.g. <code>http://user:pass@host:port</code>).
+		</p>
+
+		<div class="proxy-list">
+			<label class="proxy-radio">
+				<input
+					type="radio"
+					name="active-proxy"
+					checked={activeProxy === ''}
+					onchange={() => selectActiveProxy('')}
+				/>
+				<span class="proxy-radio-label">Direct connection (no proxy)</span>
+			</label>
+
+			{#each proxies as proxy, i (i)}
+				<div class="proxy-row">
+					<input
+						type="radio"
+						name="active-proxy"
+						checked={proxy.url !== '' && activeProxy === proxy.url}
+						disabled={proxy.url === ''}
+						onchange={() => selectActiveProxy(proxy.url)}
+						aria-label="Use this proxy"
+					/>
+					<input
+						class="proxy-name"
+						type="text"
+						placeholder="Name (optional)"
+						value={proxy.name}
+						oninput={(e) => updateProxy(i, 'name', (e.target as HTMLInputElement).value)}
+					/>
+					<input
+						class="proxy-url"
+						type="text"
+						placeholder="http://user:pass@host:port"
+						value={proxy.url}
+						oninput={(e) => updateProxy(i, 'url', (e.target as HTMLInputElement).value)}
+					/>
+					<button class="btn-remove-proxy" type="button" onclick={() => removeProxy(i)} aria-label="Remove proxy">
+						<TrashIcon size={16} />
+					</button>
+				</div>
+			{/each}
+
+			<button class="btn-add-proxy" type="button" onclick={addProxy}>
+				<PlusIcon size={16} />
+				Add proxy
+			</button>
+		</div>
+	</section>
 </div>
 
 <style>
@@ -330,5 +439,86 @@
 		cursor: pointer;
 		color: var(--color-surface-600-400);
 		padding: 4px;
+	}
+
+	.proxy-list {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.proxy-radio {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		cursor: pointer;
+	}
+
+	.proxy-radio-label {
+		font-size: 0.9rem;
+	}
+
+	.proxy-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.proxy-row input[type='text'] {
+		padding: 8px 12px;
+		border: 1px solid var(--color-surface-300-700);
+		border-radius: 6px;
+		background: var(--color-surface-200-800);
+		color: inherit;
+		font-size: 0.9rem;
+	}
+
+	.proxy-row input:focus {
+		outline: none;
+		border-color: var(--color-primary-500);
+	}
+
+	.proxy-name {
+		flex: 0 0 30%;
+	}
+
+	.proxy-url {
+		flex: 1;
+	}
+
+	.btn-remove-proxy {
+		border: none;
+		background: transparent;
+		cursor: pointer;
+		color: var(--color-error-500);
+		padding: 6px;
+		display: flex;
+		align-items: center;
+	}
+
+	.btn-add-proxy {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		align-self: flex-start;
+		padding: 8px 14px;
+		border: 1px dashed var(--color-surface-300-700);
+		border-radius: 6px;
+		background: transparent;
+		color: inherit;
+		cursor: pointer;
+		font-size: 0.9rem;
+	}
+
+	.btn-add-proxy:hover {
+		border-color: var(--color-primary-500);
+		color: var(--color-primary-500);
+	}
+
+	.section-description code {
+		background: var(--color-surface-200-800);
+		padding: 1px 5px;
+		border-radius: 4px;
+		font-size: 0.85em;
 	}
 </style>

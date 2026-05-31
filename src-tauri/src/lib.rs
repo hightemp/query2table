@@ -49,6 +49,13 @@ pub fn run() {
         db
     });
 
+    // Apply the user-selected proxy (if any) before any HTTP client is built.
+    if let Some(url) = runtime.block_on(async { db.get_setting("active_proxy_url").await.ok().flatten() }) {
+        if !url.trim().is_empty() {
+            providers::http::set_runtime_proxy(Some(url));
+        }
+    }
+
     let app_state = AppState {
         db: Arc::new(db),
     };

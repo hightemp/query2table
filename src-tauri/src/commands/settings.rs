@@ -37,5 +37,17 @@ pub async fn update_setting(
         .db
         .set_setting(&key, &value)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Apply the selected proxy immediately so subsequent requests use it.
+    if key == "active_proxy_url" {
+        let url = if value.trim().is_empty() {
+            None
+        } else {
+            Some(value)
+        };
+        crate::providers::http::set_runtime_proxy(url);
+    }
+
+    Ok(())
 }
