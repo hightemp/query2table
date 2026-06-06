@@ -4,12 +4,19 @@
 	interface Props {
 		stats: ProgressStats | null;
 		status: string;
+		runType?: string;
 	}
 
-	let { stats, status }: Props = $props();
+	let { stats, status, runType = 'table' }: Props = $props();
+
+	let isResearch = $derived(runType === 'research');
 
 	let progressPercent = $derived(() => {
 		if (!stats) return 0;
+		if (isResearch) {
+			if (stats.queries_total === 0) return 0;
+			return Math.round((stats.queries_executed / stats.queries_total) * 100);
+		}
 		if (stats.pages_total === 0) return 0;
 		return Math.round((stats.pages_fetched / stats.pages_total) * 100);
 	});
@@ -60,11 +67,19 @@
 
 	{#if stats}
 		<div class="progress-stats">
-			<span>Rows: <strong>{stats.rows_found}</strong></span>
-			<span>Pages: <strong>{stats.pages_fetched}</strong>/{stats.pages_total}</span>
-			<span>Queries: <strong>{stats.queries_executed}</strong>/{stats.queries_total}</span>
-			<span>Time: {formatElapsed(stats.elapsed_secs)}</span>
-			<span>Cost: ${stats.spent_usd.toFixed(4)}</span>
+			{#if isResearch}
+				<span>Steps: <strong>{stats.queries_executed}</strong>/{stats.queries_total}</span>
+				<span>Searches: <strong>{stats.rows_found}</strong></span>
+				<span>Pages: <strong>{stats.pages_fetched}</strong></span>
+				<span>Time: {formatElapsed(stats.elapsed_secs)}</span>
+				<span>Cost: ${stats.spent_usd.toFixed(4)}</span>
+			{:else}
+				<span>Rows: <strong>{stats.rows_found}</strong></span>
+				<span>Pages: <strong>{stats.pages_fetched}</strong>/{stats.pages_total}</span>
+				<span>Queries: <strong>{stats.queries_executed}</strong>/{stats.queries_total}</span>
+				<span>Time: {formatElapsed(stats.elapsed_secs)}</span>
+				<span>Cost: ${stats.spent_usd.toFixed(4)}</span>
+			{/if}
 		</div>
 	{/if}
 </div>

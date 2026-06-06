@@ -65,55 +65,26 @@ Rules:
     /// Parse a model reply into an [`AgentAction`].
     ///
     /// Tolerates code fences and surrounding text by extracting the first
-    /// JSON object found in the reply.
+    /// JSON object found in the reply. If the JSON object is truncated
+    /// (e.g. a long answer cut off by the token limit), it falls back to a
+    /// lenient field-extraction salvage so partial answers are not lost.
     pub fn parse_action(raw: &str) -> Result<AgentAction, String> {
-        let json_str = extract_json_object(raw)
-            .ok_or_else(|| format!("No JSON object found in model reply: {raw}"))?;
-
-        #[derive(Deserialize)]
-        struct RawAction {
-            action: String,
-            #[serde(default)]
-            query: Option<String>,
-            #[serde(default)]
-            url: Option<String>,
-            #[serde(default)]
-            thought: Option<String>,
-            #[serde(default)]
-            markdown: Option<String>,
+        // Strict path: a complete, well-formed JSON object.
+        if let Some(json_str) = extract_json_object(raw) {
+            match parse_json_action(&json_str) {
+                Ok(action) => return Ok(action),
+                Err(strict_err) => {
+                    if let Some(action) = salvage_action(raw) {
+                        return Ok(action);
+                    }
+                    return Err(strict_err);
+                }
+            }
         }
 
-        let parsed: RawAction = serde_json::from_str(&json_str)
-            .map_err(|e| format!("Failed to parse agent action JSON: {e} (raw: {json_str})"))?;
-
-        match parsed.action.trim().to_lowercase().as_str() {
-            "search" => {
-                let query = parsed
-                    .query
-                    .filter(|q| !q.trim().is_empty())
-                    .ok_or_else(|| "search action missing 'query'".to_string())?;
-                Ok(AgentAction::Search { query })
-            }
-            "fetch" => {
-                let url = parsed
-                    .url
-                    .filter(|u| !u.trim().is_empty())
-                    .ok_or_else(|| "fetch action missing 'url'".to_string())?;
-                Ok(AgentAction::Fetch { url })
-            }
-            "think" => {
-                let thought = parsed.thought.unwrap_or_default();
-                Ok(AgentAction::Think { thought })
-            }
-            "answer" => {
-                let markdown = parsed
-                    .markdown
-                    .filter(|m| !m.trim().is_empty())
-                    .ok_or_else(|| "answer action missing 'markdown'".to_string())?;
-                Ok(AgentAction::Answer { markdown })
-            }
-            other => Err(format!("Unknown agent action: {other}")),
-        }
+        // No complete JSON object (likely truncated) — attempt salvage.
+        salvage_action(raw)
+            .ok_or_else(|| format!("No JSON object found in model reply: {raw}"))
     }
 
     /// Convert fetched HTML into Markdown. Falls back to plain text extraction
@@ -165,6 +136,150 @@ fn extract_json_object(raw: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Parse a complete JSON object string into an [`AgentAction`].
+fn parse_json_action(json_str: &str) -> Result<AgentAction, String> {
+    #[derive(Deserialize)]
+    struct RawAction {
+        action: String,
+        #[serde(default)]
+        query: Option<String>,
+        #[serde(default)]
+        url: Option<String>,
+        #[serde(default)]
+        thought: Option<String>,
+        #[serde(default)]
+        markdown: Option<String>,
+    }
+
+    let parsed: RawAction = serde_json::from_str(json_str)
+        .map_err(|e| format!("Failed to parse agent action JSON: {e} (raw: {json_str})"))?;
+
+    match parsed.action.trim().to_lowercase().as_str() {
+        "search" => {
+            let query = parsed
+                .query
+                .filter(|q| !q.trim().is_empty())
+                .ok_or_else(|| "search action missing 'query'".to_string())?;
+            Ok(AgentAction::Search { query })
+        }
+        "fetch" => {
+            let url = parsed
+                .url
+                .filter(|u| !u.trim().is_empty())
+                .ok_or_else(|| "fetch action missing 'url'".to_string())?;
+            Ok(AgentAction::Fetch { url })
+        }
+        "think" => {
+            let thought = parsed.thought.unwrap_or_default();
+            Ok(AgentAction::Think { thought })
+        }
+        "answer" => {
+            let markdown = parsed
+                .markdown
+                .filter(|m| !m.trim().is_empty())
+                .ok_or_else(|| "answer action missing 'markdown'".to_string())?;
+            Ok(AgentAction::Answer { markdown })
+        }
+        other => Err(format!("Unknown agent action: {other}")),
+    }
+}
+
+/// Best-effort recovery from a possibly-truncated JSON reply.
+///
+/// Long answers can exceed the model's token limit, producing a JSON object
+/// whose final string value is cut off mid-content. This extracts the action
+/// type and the relevant field directly, tolerating a missing closing quote.
+fn salvage_action(raw: &str) -> Option<AgentAction> {
+    let action_type = extract_string_field(raw, "action")?.trim().to_lowercase();
+    match action_type.as_str() {
+        "answer" => {
+            let markdown = extract_string_field(raw, "markdown")?;
+            if markdown.trim().is_empty() {
+                None
+            } else {
+                debug!(len = markdown.len(), "Salvaged truncated answer");
+                Some(AgentAction::Answer { markdown })
+            }
+        }
+        "think" => Some(AgentAction::Think {
+            thought: extract_string_field(raw, "thought").unwrap_or_default(),
+        }),
+        "search" => {
+            let query = extract_string_field(raw, "query")?;
+            (!query.trim().is_empty()).then_some(AgentAction::Search { query })
+        }
+        "fetch" => {
+            let url = extract_string_field(raw, "url")?;
+            (!url.trim().is_empty()).then_some(AgentAction::Fetch { url })
+        }
+        _ => None,
+    }
+}
+
+/// Extract the string value of a JSON field by name, tolerating truncation.
+///
+/// Reads from the opening quote up to the first unescaped closing quote, or to
+/// the end of input if the value was cut off. The captured content is
+/// JSON-unescaped (strictly when possible, leniently otherwise).
+fn extract_string_field(raw: &str, field: &str) -> Option<String> {
+    let key = format!("\"{field}\"");
+    let key_pos = raw.find(&key)?;
+    let after_key = &raw[key_pos + key.len()..];
+    let colon = after_key.find(':')?;
+    let after_colon = &after_key[colon + 1..];
+    let quote = after_colon.find('"')?;
+    let content = &after_colon[quote + 1..];
+
+    let bytes = content.as_bytes();
+    let mut escaped = false;
+    let mut end = content.len();
+    for (i, &b) in bytes.iter().enumerate() {
+        let c = b as char;
+        if escaped {
+            escaped = false;
+        } else if c == '\\' {
+            escaped = true;
+        } else if c == '"' {
+            end = i;
+            break;
+        }
+    }
+    let captured = &content[..end];
+
+    // Strict unescape first (drop a dangling backslash from truncation).
+    let trimmed = captured.trim_end_matches('\\');
+    if let Ok(s) = serde_json::from_str::<String>(&format!("\"{trimmed}\"")) {
+        return Some(s);
+    }
+    Some(lenient_unescape(captured))
+}
+
+/// Minimal JSON string unescaping for salvaged (possibly invalid) content.
+fn lenient_unescape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('r') => out.push('\r'),
+                Some('"') => out.push('"'),
+                Some('\\') => out.push('\\'),
+                Some('/') => out.push('/'),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => {} // trailing backslash from truncation — drop it
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -252,5 +367,34 @@ mod tests {
         let md = ResearchAgent::html_to_markdown(html, "https://example.com");
         assert!(md.contains("Title"));
         assert!(md.contains("Hello"));
+    }
+
+    #[test]
+    fn test_salvage_truncated_answer() {
+        // JSON answer cut off mid-markdown (no closing quote/brace).
+        let raw = r##"{"action":"answer","markdown":"# Heading\n\nSome long content that was cut off mid-sen"##;
+        let action = ResearchAgent::parse_action(raw).unwrap();
+        match action {
+            AgentAction::Answer { markdown } => {
+                assert!(markdown.contains("# Heading"));
+                assert!(markdown.contains("cut off mid-sen"));
+                assert!(markdown.contains('\n'));
+            }
+            _ => panic!("expected salvaged answer"),
+        }
+    }
+
+    #[test]
+    fn test_salvage_truncated_answer_trailing_backslash() {
+        // Truncation right after an escape character.
+        let raw = "{\"action\":\"answer\",\"markdown\":\"Line one\\nLine two\\";
+        let action = ResearchAgent::parse_action(raw).unwrap();
+        match action {
+            AgentAction::Answer { markdown } => {
+                assert!(markdown.contains("Line one"));
+                assert!(markdown.contains("Line two"));
+            }
+            _ => panic!("expected salvaged answer"),
+        }
     }
 }

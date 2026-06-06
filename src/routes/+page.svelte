@@ -170,8 +170,8 @@
 		{/if}
 
 		{#if isActive || isFinished}
-			<ProgressBar stats={$runState.progress} status={$runState.status} />
-			{#if isActive}
+			<ProgressBar stats={$runState.progress} status={$runState.status} runType={$runState.runType} />
+			{#if isActive && !isResearchRun}
 				<RunStatusPanel status={$runState.status} runType={$runState.runType} />
 			{/if}
 		{/if}

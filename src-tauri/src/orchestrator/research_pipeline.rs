@@ -116,6 +116,8 @@ impl ResearchPipeline {
 
         let mut step_index: u32 = 0;
         let mut answered = false;
+        let mut search_count: u32 = 0;
+        let mut fetch_count: u32 = 0;
 
         while step_index < max_steps {
             // Handle pause/resume/cancel.
@@ -150,6 +152,7 @@ impl ResearchPipeline {
                 AgentAction::Search { query } => {
                     self.log("INFO", "research", &format!("Search: {query}")).await;
                     self.budget.record_search_call();
+                    search_count += 1;
                     let observation = match search
                         .search_with_count(&query, SEARCH_RESULTS_PER_QUERY)
                         .await
@@ -168,6 +171,7 @@ impl ResearchPipeline {
                 }
                 AgentAction::Fetch { url } => {
                     self.log("INFO", "research", &format!("Fetch: {url}")).await;
+                    fetch_count += 1;
                     let observation = match fetcher.fetch(&url).await {
                         Ok(page) => {
                             let markdown = if page.is_pdf() {
@@ -205,7 +209,7 @@ impl ResearchPipeline {
                 }
             }
 
-            self.emit_progress(step_index + 1, max_steps);
+            self.emit_progress(step_index + 1, max_steps, search_count, fetch_count);
             step_index += 1;
         }
 
@@ -268,11 +272,11 @@ impl ResearchPipeline {
         }
     }
 
-    fn emit_progress(&self, steps_done: u32, max_steps: u32) {
+    fn emit_progress(&self, steps_done: u32, max_steps: u32, searches: u32, fetches: u32) {
         if let Some(ref events) = self.events {
             events.emit_progress(ProgressStats {
-                rows_found: steps_done as u64,
-                pages_fetched: 0,
+                rows_found: searches as u64,
+                pages_fetched: fetches as u64,
                 pages_total: 0,
                 queries_executed: steps_done as u64,
                 queries_total: max_steps as u64,
