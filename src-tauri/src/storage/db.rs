@@ -234,6 +234,39 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_link_results_run_id ON link_results(run_id)")
             .execute(&self.pool).await?;
 
+        // Research agent steps table (search / fetch / think transcript)
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS research_steps (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                step_index INTEGER NOT NULL,
+                step_type TEXT NOT NULL,
+                content TEXT NOT NULL DEFAULT '',
+                url TEXT,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch())
+            )"
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_research_steps_run_id ON research_steps(run_id)")
+            .execute(&self.pool).await?;
+
+        // Research final answer table (one markdown answer per run)
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS research_results (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                answer_markdown TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL DEFAULT (unixepoch())
+            )"
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_research_results_run_id ON research_results(run_id)")
+            .execute(&self.pool).await?;
+
         // Add run_type column to runs table (for existing databases)
         sqlx::query(
             "ALTER TABLE runs ADD COLUMN run_type TEXT NOT NULL DEFAULT 'table'"

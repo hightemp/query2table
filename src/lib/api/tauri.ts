@@ -15,6 +15,9 @@ import type {
 	ImageAddedEvent,
 	LinkResult,
 	LinkAddedEvent,
+	ResearchResult,
+	ResearchStepEvent,
+	ResearchAnswerEvent,
 } from '$lib/types';
 
 export interface Setting {
@@ -157,6 +160,18 @@ export async function getLinkResults(runId: string): Promise<LinkResult[]> {
 
 export function onLinkAdded(cb: (e: LinkAddedEvent) => void): Promise<UnlistenFn> {
 	return listen<LinkAddedEvent>('run:link_added', (event) => cb(event.payload));
+}
+
+export async function getResearchResult(runId: string): Promise<ResearchResult> {
+	return invoke('get_research_result', { runId });
+}
+
+export function onResearchStep(cb: (e: ResearchStepEvent) => void): Promise<UnlistenFn> {
+	return listen<ResearchStepEvent>('run:research_step', (event) => cb(event.payload));
+}
+
+export function onResearchAnswer(cb: (e: ResearchAnswerEvent) => void): Promise<UnlistenFn> {
+	return listen<ResearchAnswerEvent>('run:research_answer', (event) => cb(event.payload));
 }
 
 // --- Export commands ---

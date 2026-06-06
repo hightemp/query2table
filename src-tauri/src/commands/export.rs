@@ -18,9 +18,6 @@ pub async fn export_run(
     state: State<'_, AppState>,
     request: ExportRequest,
 ) -> Result<(), String> {
-    let format = ExportFormat::from_str(&request.format)
-        .ok_or_else(|| format!("Unknown export format: {}", request.format))?;
-
     let repo = Repository::new(state.db.pool().clone());
 
     // Check run type
@@ -29,6 +26,20 @@ pub async fn export_run(
         .ok_or_else(|| "Run not found".to_string())?;
 
     let path = std::path::Path::new(&request.path);
+
+    // Research mode exports the Markdown answer directly (format is ignored).
+    if run.run_type == "research" {
+        let answer = repo.get_research_result(&request.run_id).await
+            .map_err(|e| format!("Failed to get research result: {e}"))?
+            .map(|r| r.answer_markdown)
+            .unwrap_or_default();
+        std::fs::write(path, answer)
+            .map_err(|e| format!("Failed to write file: {e}"))?;
+        return Ok(());
+    }
+
+    let format = ExportFormat::from_str(&request.format)
+        .ok_or_else(|| format!("Unknown export format: {}", request.format))?;
 
     if run.run_type == "images" {
         // Export image results

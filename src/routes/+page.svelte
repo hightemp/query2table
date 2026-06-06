@@ -12,11 +12,12 @@
 	import RunStatusPanel from '$lib/components/run/RunStatusPanel.svelte';
 	import ImageGallery from '$lib/components/run/ImageGallery.svelte';
 	import LinkList from '$lib/components/run/LinkList.svelte';
-	import { ChevronDownIcon, ChevronUpIcon, TableIcon, ImageIcon, LinkIcon } from '@lucide/svelte';
+	import ResearchView from '$lib/components/run/ResearchView.svelte';
+	import { ChevronDownIcon, ChevronUpIcon, TableIcon, ImageIcon, LinkIcon, BrainIcon } from '@lucide/svelte';
 	import { logPanelOpen } from '$lib/stores/logs';
 
 	let query = $state('');
-	let runType = $state<'table' | 'images' | 'links'>('table');
+	let runType = $state<'table' | 'images' | 'links' | 'research'>('table');
 	let selectedRow = $state<RunRow | null>(null);
 	let submitError = $state('');
 	let showExport = $state(false);
@@ -38,6 +39,7 @@
 	let showResults = $derived(isActive || isFinished || isSchemaReview);
 	let isImageRun = $derived($runState.runType === 'images');
 	let isLinkRun = $derived($runState.runType === 'links');
+	let isResearchRun = $derived($runState.runType === 'research');
 	let columnNames = $derived($runState.schema.map((c) => c.name));
 
 	async function handleSubmit(e: Event) {
@@ -95,12 +97,16 @@
 					<LinkIcon size={16} />
 					Links
 				</button>
+				<button type="button" class="mode-btn" class:active={runType === 'research'} onclick={() => (runType = 'research')}>
+					<BrainIcon size={16} />
+					Research
+				</button>
 			</div>
 
 			<textarea
 				class="query-input"
 				bind:value={query}
-				placeholder={runType === 'images' ? 'e.g. Photos of modern Japanese architecture...' : runType === 'links' ? 'e.g. Best resources for learning Rust async programming...' : 'e.g. Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website...'}
+				placeholder={runType === 'images' ? 'e.g. Photos of modern Japanese architecture...' : runType === 'links' ? 'e.g. Best resources for learning Rust async programming...' : runType === 'research' ? 'e.g. What are the trade-offs between Tauri and Electron in 2026? Summarize with sources...' : 'e.g. Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website...'}
 				rows={4}
 			></textarea>
 
@@ -116,7 +122,7 @@
 			{#if showStopConditions}
 				<div class="stop-conditions">
 					<div class="stop-field">
-						<label for="targetRows">{runType === 'images' ? 'Max Images' : runType === 'links' ? 'Max Links' : 'Target Rows'}</label>
+						<label for="targetRows">{runType === 'images' ? 'Max Images' : runType === 'links' ? 'Max Links' : runType === 'research' ? 'Max Steps' : 'Target Rows'}</label>
 						<input id="targetRows" type="number" min="1" bind:value={targetRows} />
 					</div>
 					<div class="stop-field">
@@ -135,7 +141,7 @@
 			{/if}
 			<div class="query-actions">
 				<button type="submit" class="btn-primary" disabled={!query.trim()}>
-					{runType === 'images' ? 'Search Images' : runType === 'links' ? 'Find Links' : 'Start Research'}
+					{runType === 'images' ? 'Search Images' : runType === 'links' ? 'Find Links' : runType === 'research' ? 'Start Research' : 'Start Research'}
 				</button>
 			</div>
 		</form>
@@ -153,7 +159,7 @@
 				oncancel={cancelCurrentRun}
 				onreset={handleReset}
 				onexport={() => { showExport = true; }}
-				showExport={isFinished && ($runState.rows.length > 0 || $runState.imageResults.length > 0)}
+				showExport={isFinished && ($runState.rows.length > 0 || $runState.imageResults.length > 0 || $runState.linkResults.length > 0 || !!$runState.researchAnswer)}
 			/>
 		</div>
 
@@ -182,6 +188,8 @@
 			<ImageGallery images={$runState.imageResults} />
 		{:else if isLinkRun}
 			<LinkList links={$runState.linkResults} />
+		{:else if isResearchRun}
+			<ResearchView steps={$runState.researchSteps} answer={$runState.researchAnswer} />
 		{:else if $runState.schema.length > 0 && !isSchemaReview}
 			<ResultsTable
 				schema={$runState.schema}
@@ -202,6 +210,7 @@
 	{#if showExport && $runState.runId}
 		<ExportDialog
 			runId={$runState.runId}
+			runType={$runState.runType}
 			onclose={() => { showExport = false; }}
 		/>
 	{/if}

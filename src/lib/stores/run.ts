@@ -7,6 +7,9 @@ import type {
 	ImageAddedEvent,
 	LinkResult,
 	LinkAddedEvent,
+	ResearchStep,
+	ResearchStepEvent,
+	ResearchAnswerEvent,
 } from '$lib/types';
 import {
 	startRun as apiStartRun,
@@ -22,6 +25,8 @@ import {
 	onRunLogEntry,
 	onImageAdded,
 	onLinkAdded,
+	onResearchStep,
+	onResearchAnswer,
 } from '$lib/api/tauri';
 import { addLog } from '$lib/stores/logs';
 
@@ -40,6 +45,8 @@ export interface RunState {
 	rows: RunRow[];
 	imageResults: ImageResult[];
 	linkResults: LinkResult[];
+	researchSteps: ResearchStep[];
+	researchAnswer: string | null;
 	progress: ProgressStats | null;
 	error: string | null;
 }
@@ -53,6 +60,8 @@ const initialState: RunState = {
 	rows: [],
 	imageResults: [],
 	linkResults: [],
+	researchSteps: [],
+	researchAnswer: null,
 	progress: null,
 	error: null,
 };
@@ -137,6 +146,25 @@ async function subscribeEvents() {
 					relevance_score: e.relevance_score,
 				};
 				return { ...s, linkResults: [...s.linkResults, link] };
+			});
+		}),
+		onResearchStep((e: ResearchStepEvent) => {
+			runState.update((s) => {
+				if (s.runId !== e.run_id) return s;
+				const step: ResearchStep = {
+					id: e.step_id,
+					step_index: e.step_index,
+					step_type: e.step_type,
+					content: e.content,
+					url: e.url,
+				};
+				return { ...s, researchSteps: [...s.researchSteps, step] };
+			});
+		}),
+		onResearchAnswer((e: ResearchAnswerEvent) => {
+			runState.update((s) => {
+				if (s.runId !== e.run_id) return s;
+				return { ...s, researchAnswer: e.markdown };
 			});
 		}),
 	]);

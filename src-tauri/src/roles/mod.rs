@@ -12,3 +12,4 @@ pub mod stopping_controller;
 pub mod image_searcher;
 pub mod image_ranker;
 pub mod link_ranker;
+pub mod research_agent;

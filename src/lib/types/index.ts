@@ -169,3 +169,32 @@ export interface LinkAddedEvent {
 	description: string;
 	relevance_score: number | null;
 }
+
+// --- Research (agentic) types ---
+
+export interface ResearchStep {
+	id: string;
+	step_index: number;
+	step_type: string;
+	content: string;
+	url: string | null;
+}
+
+export interface ResearchResult {
+	answer_markdown: string | null;
+	steps: ResearchStep[];
+}
+
+export interface ResearchStepEvent {
+	run_id: string;
+	step_id: string;
+	step_index: number;
+	step_type: string;
+	content: string;
+	url: string | null;
+}
+
+export interface ResearchAnswerEvent {
+	run_id: string;
+	markdown: string;
+}

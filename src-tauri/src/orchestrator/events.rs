@@ -132,6 +132,34 @@ impl EventPublisher {
         }
         debug!(run_id = %self.run_id, link_id, "Emitted link_added");
     }
+
+    /// Emit a single agent step (search / fetch / think) in research mode.
+    pub fn emit_research_step(&self, step_id: &str, step_index: u32, step_type: &str, content: &str, url: Option<&str>) {
+        let payload = ResearchStepEvent {
+            run_id: self.run_id.clone(),
+            step_id: step_id.to_string(),
+            step_index,
+            step_type: step_type.to_string(),
+            content: content.to_string(),
+            url: url.map(|u| u.to_string()),
+        };
+        if let Err(e) = self.app.emit("run:research_step", &payload) {
+            tracing::error!(error = %e, "Failed to emit research_step event");
+        }
+        debug!(run_id = %self.run_id, step_index, step_type, "Emitted research_step");
+    }
+
+    /// Emit the final markdown answer in research mode.
+    pub fn emit_research_answer(&self, markdown: &str) {
+        let payload = ResearchAnswerEvent {
+            run_id: self.run_id.clone(),
+            markdown: markdown.to_string(),
+        };
+        if let Err(e) = self.app.emit("run:research_answer", &payload) {
+            tracing::error!(error = %e, "Failed to emit research_answer event");
+        }
+        debug!(run_id = %self.run_id, "Emitted research_answer");
+    }
 }
 
 // --- Event payload types ---
@@ -208,6 +236,22 @@ pub struct LinkAddedEvent {
     pub title: String,
     pub description: String,
     pub relevance_score: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ResearchStepEvent {
+    pub run_id: String,
+    pub step_id: String,
+    pub step_index: u32,
+    pub step_type: String,
+    pub content: String,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ResearchAnswerEvent {
+    pub run_id: String,
+    pub markdown: String,
 }
 
 #[cfg(test)]

@@ -592,6 +592,68 @@ impl Repository {
         .await?;
         Ok(count)
     }
+
+    // --- Research Steps & Results ---
+
+    pub async fn create_research_step(
+        &self,
+        run_id: &str,
+        step_index: i64,
+        step_type: &str,
+        content: &str,
+        url: Option<&str>,
+    ) -> Result<String, sqlx::Error> {
+        let id = new_id();
+        sqlx::query(
+            "INSERT INTO research_steps (id, run_id, step_index, step_type, content, url, created_at) VALUES (?, ?, ?, ?, ?, ?, unixepoch())"
+        )
+        .bind(&id)
+        .bind(run_id)
+        .bind(step_index)
+        .bind(step_type)
+        .bind(content)
+        .bind(url)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn get_research_steps(&self, run_id: &str) -> Result<Vec<ResearchStepRow>, sqlx::Error> {
+        let rows = sqlx::query_as::<_, ResearchStepRow>(
+            "SELECT id, run_id, step_index, step_type, content, url, created_at FROM research_steps WHERE run_id = ? ORDER BY step_index"
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn create_research_result(
+        &self,
+        run_id: &str,
+        answer_markdown: &str,
+    ) -> Result<String, sqlx::Error> {
+        let id = new_id();
+        sqlx::query(
+            "INSERT INTO research_results (id, run_id, answer_markdown, created_at) VALUES (?, ?, ?, unixepoch())"
+        )
+        .bind(&id)
+        .bind(run_id)
+        .bind(answer_markdown)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn get_research_result(&self, run_id: &str) -> Result<Option<ResearchResultRow>, sqlx::Error> {
+        let row = sqlx::query_as::<_, ResearchResultRow>(
+            "SELECT id, run_id, answer_markdown, created_at FROM research_results WHERE run_id = ? ORDER BY created_at DESC LIMIT 1"
+        )
+        .bind(run_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
 }
 
 // --- Row types for sqlx::FromRow ---
@@ -716,6 +778,25 @@ pub struct LinkResultRow {
     pub title: String,
     pub description: String,
     pub relevance_score: Option<f64>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ResearchStepRow {
+    pub id: String,
+    pub run_id: String,
+    pub step_index: i64,
+    pub step_type: String,
+    pub content: String,
+    pub url: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ResearchResultRow {
+    pub id: String,
+    pub run_id: String,
+    pub answer_markdown: String,
     pub created_at: i64,
 }
 

@@ -12,6 +12,7 @@ use crate::storage::repository::Repository;
 use crate::orchestrator::pipeline::{Pipeline, PipelineConfig, PipelineCommand};
 use crate::orchestrator::image_pipeline::ImagePipeline;
 use crate::orchestrator::link_pipeline::LinkPipeline;
+use crate::orchestrator::research_pipeline::ResearchPipeline;
 use crate::orchestrator::events::EventPublisher;
 use crate::utils::id::new_id;
 
@@ -122,6 +123,30 @@ pub async fn start_run(
             match &result {
                 Ok(state) => info!(run_id = %rid, state = ?state, "Link pipeline finished"),
                 Err(e) => error!(run_id = %rid, error = %e, "Link pipeline failed"),
+            }
+            let mut active = controller_handle.lock().await;
+            active.remove(&rid);
+        });
+    } else if run_type == "research" {
+        // Agentic web research pipeline
+        let (pipeline, cmd_tx) = ResearchPipeline::new(
+            run_id.clone(),
+            query.clone(),
+            config,
+            repo,
+            events,
+        );
+
+        {
+            let mut active = controller.active.lock().await;
+            active.insert(run_id.clone(), cmd_tx);
+        }
+
+        tokio::spawn(async move {
+            let result = pipeline.run().await;
+            match &result {
+                Ok(state) => info!(run_id = %rid, state = ?state, "Research pipeline finished"),
+                Err(e) => error!(run_id = %rid, error = %e, "Research pipeline failed"),
             }
             let mut active = controller_handle.lock().await;
             active.remove(&rid);
@@ -399,6 +424,41 @@ pub async fn get_link_results(
         description: r.description,
         relevance_score: r.relevance_score,
     }).collect())
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResearchStepInfo {
+    pub id: String,
+    pub step_index: i64,
+    pub step_type: String,
+    pub content: String,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResearchResultInfo {
+    pub answer_markdown: Option<String>,
+    pub steps: Vec<ResearchStepInfo>,
+}
+
+#[tauri::command]
+pub async fn get_research_result(
+    state: State<'_, AppState>,
+    run_id: String,
+) -> Result<ResearchResultInfo, String> {
+    let repo = Repository::new(state.db.pool().clone());
+    let steps = repo.get_research_steps(&run_id).await.map_err(|e| e.to_string())?;
+    let answer = repo.get_research_result(&run_id).await.map_err(|e| e.to_string())?;
+    Ok(ResearchResultInfo {
+        answer_markdown: answer.map(|a| a.answer_markdown),
+        steps: steps.into_iter().map(|s| ResearchStepInfo {
+            id: s.id,
+            step_index: s.step_index,
+            step_type: s.step_type,
+            content: s.content,
+            url: s.url,
+        }).collect(),
+    })
 }
 
 /// Proxy-fetch an image URL through the backend to avoid hotlink protection.

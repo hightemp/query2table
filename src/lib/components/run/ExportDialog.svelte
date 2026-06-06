@@ -5,20 +5,25 @@
 
 	interface Props {
 		runId: string;
+		runType?: string;
 		onclose: () => void;
 	}
 
-	let { runId, onclose }: Props = $props();
+	let { runId, runType = 'table', onclose }: Props = $props();
 
-	let format = $state<'csv' | 'json' | 'xlsx'>('csv');
+	const isResearch = runType === 'research';
+
+	let format = $state<'csv' | 'json' | 'xlsx' | 'md'>(isResearch ? 'md' : 'csv');
 	let exporting = $state(false);
 	let error = $state('');
 
-	const formatOptions = [
-		{ value: 'csv' as const, label: 'CSV', ext: 'csv', description: 'Comma-separated values' },
-		{ value: 'json' as const, label: 'JSON', ext: 'json', description: 'Structured JSON array' },
-		{ value: 'xlsx' as const, label: 'XLSX', ext: 'xlsx', description: 'Excel spreadsheet' },
-	];
+	const formatOptions = isResearch
+		? [{ value: 'md' as const, label: 'Markdown', ext: 'md', description: 'Markdown answer document' }]
+		: [
+			{ value: 'csv' as const, label: 'CSV', ext: 'csv', description: 'Comma-separated values' },
+			{ value: 'json' as const, label: 'JSON', ext: 'json', description: 'Structured JSON array' },
+			{ value: 'xlsx' as const, label: 'XLSX', ext: 'xlsx', description: 'Excel spreadsheet' },
+		];
 
 	async function handleExport() {
 		error = '';

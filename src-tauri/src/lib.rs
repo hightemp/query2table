@@ -123,6 +123,7 @@ pub fn run() {
             commands::run::get_run_rows,
             commands::run::get_image_results,
             commands::run::get_link_results,
+            commands::run::get_research_result,
             commands::run::proxy_image,
             commands::export::export_run,
         ])
