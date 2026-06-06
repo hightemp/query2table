@@ -39,6 +39,8 @@ Available tools:
 
 Rules:
 - Always begin by planning with a search or a think step.
+- Use "think" steps to briefly explain your reasoning and plan between searches and
+  fetches, so your progress stays transparent to the user.
 - Only fetch URLs that appeared in earlier search results.
 - Use multiple searches and fetches to gather enough evidence before answering.
 - Cite sources in the final answer as Markdown links where appropriate.

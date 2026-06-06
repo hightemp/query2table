@@ -10,7 +10,7 @@
 
 **Query2Table** — local-first desktop research tool. You describe what data you need; the app autonomously searches the internet across multiple sources and languages, fetches pages, extracts structured entities with LLMs, deduplicates them, and presents the result as a live-updating table with row-level source links — all running on your machine without a cloud backend.
 
-Beyond tables, it offers two more dedicated modes: **image search**, which finds and LLM-ranks relevant images by visual relevance, and **link search**, which reads the full content of candidate pages and returns only the most relevant links with LLM-generated descriptions and relevance scores.
+Beyond tables, it offers three more dedicated modes: **image search**, which finds and LLM-ranks relevant images by visual relevance; **link search**, which reads the full content of candidate pages and returns only the most relevant links with LLM-generated descriptions and relevance scores; and **research**, an agentic mode where the model autonomously searches, reads pages, reasons, and writes a sourced Markdown answer.
 
 Ask something like *"Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website"* and watch the table fill up in real time.
 
@@ -28,6 +28,7 @@ Ask something like *"Find all YC-backed AI startups from 2024 with their funding
 - **PDF extraction** — automatically detects and extracts text from PDF documents found in search results
 - **Image search mode** — a dedicated pipeline that searches images instead of text: generates 6–12 diverse query variations (LLM or static fallbacks), executes image searches via Brave / Serper, then ranks every result with an LLM using a strict relevance rubric (0.0–1.0); images scoring below 0.7 are dropped, the rest are stored sorted by score with real-time per-image UI updates; budget, cancellation, and stop conditions (count / cost / time) are respected throughout
 - **Link search mode** — a dedicated pipeline that returns the most relevant pages instead of a table: generates search query variations from your request, executes web searches via Brave / Serper (deduplicated by URL), fetches and parses each page, then has an LLM read the full content and score its relevance (0.0–1.0) to your query while generating a short description; pages below the confidence threshold are dropped, the rest are stored sorted by score with real-time per-link UI updates; budget, cancellation, and stop conditions are respected throughout
+- **Research mode** — an agentic mode that answers open-ended questions in Markdown instead of a table: the LLM drives a tool-calling loop (search the web, fetch a page as Markdown, think, answer) for up to a fixed number of steps, streaming each step to a live timeline; reasoning (`think`) steps and any failures (`error` steps, shown in red) are surfaced so the process stays transparent, and the final sourced Markdown answer is rendered (sanitized) and exportable as `.md`; budget, cancellation, and stop conditions are respected throughout
 - **Row-level sources** — every row links back to the pages it was extracted from
 - **Entity deduplication** — fuzzy matching + LLM-assisted disambiguation
 - **Configurable stop conditions** — target row count, max cost, max duration
@@ -123,6 +124,7 @@ Query → Interpret → Plan Schema → [User Confirms] → Plan Searches
 | Validator | Partial | Schema conformance + semantic checks |
 | Deduplicator | Partial | Fuzzy matching (strsim) + LLM for edge cases |
 | LinkRanker | Yes | Read page content and score relevance (0.0–1.0) + generate description (link search mode) |
+| ResearchAgent | Yes | Drive the agentic search/fetch/think/answer loop and produce a Markdown answer (research mode) |
 | StoppingController | No | Evaluate stop conditions (rows, budget, time, saturation) |
 
 ### State Machine
@@ -140,7 +142,7 @@ query2table/
 │   │   ├── main.rs          # Tauri entry point
 │   │   ├── commands/        # IPC command handlers
 │   │   ├── orchestrator/    # Pipeline state machine, budget tracker
-│   │   ├── roles/           # 12 pipeline roles
+│   │   ├── roles/           # Pipeline & research-agent roles
 │   │   ├── providers/       # External API clients (LLM, search, HTTP)
 │   │   ├── storage/         # SQLite models & repository
 │   │   └── export/          # CSV, JSON, XLSX export
@@ -172,6 +174,8 @@ SQLite in WAL mode with the following tables:
 | `row_sources` | Row-level evidence (URL, title, snippet) |
 | `image_results` | Ranked images per run (image search mode) |
 | `link_results` | Ranked relevant links with descriptions and scores (link search mode) |
+| `research_steps` | Agent tool-call steps per run — search/fetch/think/error (research mode) |
+| `research_results` | Final Markdown answer per run (research mode) |
 | `run_logs` | Execution logs per run |
 
 ## Development

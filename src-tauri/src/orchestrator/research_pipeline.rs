@@ -137,7 +137,11 @@ impl ResearchPipeline {
                     Ok(v) => v,
                     Err(e) => {
                         warn!(error = %e, "Agent step failed");
-                        self.log("WARN", "research", &format!("Agent step failed: {e}")).await;
+                        self.record_error(
+                            step_index,
+                            &format!("The model produced an invalid response: {e}"),
+                        )
+                        .await;
                         // Nudge the model to emit valid JSON next time.
                         messages.push(Message::user(
                             "Your previous reply was not a valid tool call. Reply with ONE JSON tool object.".to_string(),
@@ -153,17 +157,25 @@ impl ResearchPipeline {
                     self.log("INFO", "research", &format!("Search: {query}")).await;
                     self.budget.record_search_call();
                     search_count += 1;
-                    let observation = match search
+                    let (observation, failed) = match search
                         .search_with_count(&query, SEARCH_RESULTS_PER_QUERY)
                         .await
                     {
-                        Ok(results) => format_search_results(&results),
+                        Ok(results) => (format_search_results(&results), false),
                         Err(e) => {
                             warn!(error = %e, "Search failed");
-                            format!("Search failed: {e}")
+                            (format!("Search failed: {e}"), true)
                         }
                     };
-                    self.record_step(step_index, "search", &query, None).await;
+                    if failed {
+                        self.record_error(
+                            step_index,
+                            &format!("Search failed for \"{query}\": {observation}"),
+                        )
+                        .await;
+                    } else {
+                        self.record_step(step_index, "search", &query, None).await;
+                    }
                     messages.push(Message::assistant(
                         serde_json::json!({ "action": "search", "query": query }).to_string(),
                     ));
@@ -172,22 +184,38 @@ impl ResearchPipeline {
                 AgentAction::Fetch { url } => {
                     self.log("INFO", "research", &format!("Fetch: {url}")).await;
                     fetch_count += 1;
-                    let observation = match fetcher.fetch(&url).await {
+                    let (observation, failed) = match fetcher.fetch(&url).await {
                         Ok(page) => {
                             let markdown = if page.is_pdf() {
                                 PdfParser::parse(&page.body_bytes, &url, max_pdf_chars).text
                             } else {
                                 ResearchAgent::html_to_markdown(&page.body, &url)
                             };
-                            crate::utils::text::truncate_chars(&markdown, FETCH_MARKDOWN_CHAR_LIMIT)
-                                .to_string()
+                            let truncated = crate::utils::text::truncate_chars(
+                                &markdown,
+                                FETCH_MARKDOWN_CHAR_LIMIT,
+                            )
+                            .to_string();
+                            (truncated, false)
                         }
                         Err(e) => {
                             warn!(url = %url, error = %e, "Fetch failed");
-                            format!("Failed to fetch page: {e}")
+                            (format!("Failed to fetch page: {e}"), true)
                         }
                     };
-                    self.record_step(step_index, "fetch", &observation, Some(&url)).await;
+                    if failed {
+                        self.record_error(
+                            step_index,
+                            &format!("Failed to fetch {url}: {observation}"),
+                        )
+                        .await;
+                    } else {
+                        // The full page text is fed to the model below, but only a
+                        // short summary is shown in the UI step timeline.
+                        let chars = observation.chars().count();
+                        let summary = format!("Read page ({chars} characters of content).");
+                        self.record_step(step_index, "fetch", &summary, Some(&url)).await;
+                    }
                     messages.push(Message::assistant(
                         serde_json::json!({ "action": "fetch", "url": url }).to_string(),
                     ));
@@ -225,6 +253,11 @@ impl ResearchPipeline {
                     self.store_answer(&markdown).await;
                 }
                 _ => {
+                    self.record_error(
+                        step_index,
+                        "The agent reached its step/time limit without producing a final answer.",
+                    )
+                    .await;
                     let fallback = "_The research agent did not produce a final answer within its limits._";
                     self.store_answer(fallback).await;
                 }
@@ -270,6 +303,12 @@ impl ResearchPipeline {
         if let Some(ref events) = self.events {
             events.emit_research_step(&step_id, step_index, step_type, content, url);
         }
+    }
+
+    /// Record a visible error step so the user can see what went wrong, and log it.
+    async fn record_error(&self, step_index: u32, message: &str) {
+        self.log("WARN", "research", message).await;
+        self.record_step(step_index, "error", message, None).await;
     }
 
     fn emit_progress(&self, steps_done: u32, max_steps: u32, searches: u32, fetches: u32) {

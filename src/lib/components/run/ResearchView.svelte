@@ -2,9 +2,13 @@
 	import type { ResearchStep } from '$lib/types';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
-	import { SearchIcon, FileTextIcon, BrainIcon } from '@lucide/svelte';
+	import { SearchIcon, FileTextIcon, BrainIcon, AlertTriangleIcon } from '@lucide/svelte';
 
-	let { steps, answer }: { steps: ResearchStep[]; answer: string | null } = $props();
+	let {
+		steps,
+		answer,
+		running = false
+	}: { steps: ResearchStep[]; answer: string | null; running?: boolean } = $props();
 
 	const renderedAnswer = $derived(
 		answer ? DOMPurify.sanitize(marked.parse(answer, { async: false }) as string) : ''
@@ -13,6 +17,7 @@
 	function stepIcon(type: string) {
 		if (type === 'search') return SearchIcon;
 		if (type === 'fetch') return FileTextIcon;
+		if (type === 'error') return AlertTriangleIcon;
 		return BrainIcon;
 	}
 
@@ -20,6 +25,7 @@
 		if (type === 'search') return 'Search';
 		if (type === 'fetch') return 'Fetch';
 		if (type === 'think') return 'Think';
+		if (type === 'error') return 'Error';
 		return type;
 	}
 
@@ -31,7 +37,7 @@
 </script>
 
 <div class="research-view">
-	{#if steps.length > 0}
+	{#if steps.length > 0 || running}
 		<section class="steps">
 			<h2 class="section-title">Agent steps</h2>
 			<ol class="timeline">
@@ -50,6 +56,16 @@
 						</div>
 					</li>
 				{/each}
+				{#if running && !answer}
+					<li class="step step-working">
+						<div class="step-icon"><span class="spinner"></span></div>
+						<div class="step-body">
+							<div class="working-label">
+								The research agent is working<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+							</div>
+						</div>
+					</li>
+				{/if}
 			</ol>
 		</section>
 	{/if}
@@ -60,7 +76,7 @@
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized with DOMPurify -->
 			<div class="markdown">{@html renderedAnswer}</div>
 		</section>
-	{:else if steps.length === 0}
+	{:else if steps.length === 0 && !running}
 		<div class="research-empty">The research agent is getting started…</div>
 	{/if}
 </div>
@@ -119,6 +135,78 @@
 	}
 	.step-think .step-icon {
 		color: var(--color-secondary-500);
+	}
+
+	.step-error {
+		border-color: var(--color-error-500);
+		background: color-mix(in srgb, var(--color-error-500) 8%, var(--color-surface-50-950));
+	}
+	.step-error .step-icon {
+		color: var(--color-error-500);
+		background: color-mix(in srgb, var(--color-error-500) 18%, transparent);
+	}
+	.step-error .step-label {
+		color: var(--color-error-500);
+	}
+
+	/* Animated in-progress indicator */
+	.step-working {
+		border-style: dashed;
+		animation: pulse-border 1.6s ease-in-out infinite;
+	}
+
+	.working-label {
+		font-size: 0.88rem;
+		font-weight: 600;
+		color: var(--color-surface-600-400);
+		display: flex;
+		align-items: center;
+	}
+
+	.spinner {
+		width: 16px;
+		height: 16px;
+		border: 2px solid var(--color-surface-300-700);
+		border-top-color: var(--color-primary-500);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	.dots span {
+		animation: blink 1.4s infinite both;
+	}
+	.dots span:nth-child(2) {
+		animation-delay: 0.2s;
+	}
+	.dots span:nth-child(3) {
+		animation-delay: 0.4s;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	@keyframes blink {
+		0%,
+		80%,
+		100% {
+			opacity: 0;
+		}
+		40% {
+			opacity: 1;
+		}
+	}
+
+	@keyframes pulse-border {
+		0%,
+		100% {
+			border-color: var(--color-surface-300-700);
+		}
+		50% {
+			border-color: var(--color-primary-500);
+		}
 	}
 
 	.step-body {

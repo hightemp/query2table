@@ -189,7 +189,7 @@
 		{:else if isLinkRun}
 			<LinkList links={$runState.linkResults} />
 		{:else if isResearchRun}
-			<ResearchView steps={$runState.researchSteps} answer={$runState.researchAnswer} />
+			<ResearchView steps={$runState.researchSteps} answer={$runState.researchAnswer} running={isActive} />
 		{:else if $runState.schema.length > 0 && !isSchemaReview}
 			<ResultsTable
 				schema={$runState.schema}
