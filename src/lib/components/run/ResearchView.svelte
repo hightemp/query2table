@@ -2,6 +2,7 @@
 	import type { ResearchStep } from '$lib/types';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
+	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { SearchIcon, FileTextIcon, BrainIcon, AlertTriangleIcon } from '@lucide/svelte';
 
 	let {
@@ -33,6 +34,17 @@
 		const text = step.content ?? '';
 		const limit = step.step_type === 'fetch' ? 240 : 600;
 		return text.length > limit ? text.slice(0, limit) + '…' : text;
+	}
+
+	// Open links inside the rendered answer in the external browser
+	// instead of navigating the in-app webview.
+	function handleAnswerClick(event: MouseEvent) {
+		const anchor = (event.target as HTMLElement)?.closest('a');
+		if (!anchor) return;
+		const href = anchor.getAttribute('href');
+		if (!href || href.startsWith('#')) return;
+		event.preventDefault();
+		openUrl(href);
 	}
 </script>
 
@@ -74,7 +86,7 @@
 		<section class="answer">
 			<h2 class="section-title">Answer</h2>
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized with DOMPurify -->
-			<div class="markdown">{@html renderedAnswer}</div>
+			<div class="markdown" onclick={handleAnswerClick} role="presentation">{@html renderedAnswer}</div>
 		</section>
 	{:else if steps.length === 0 && !running}
 		<div class="research-empty">The research agent is getting started…</div>
