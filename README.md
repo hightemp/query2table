@@ -109,6 +109,10 @@ You need at least one search API key and a configured LLM provider. Local Ollama
 
 Select the provider in **Settings → LLM Provider**, fill in its fields, and click **Save**. Each provider keeps its own model and credentials when you switch.
 
+Settings migrations run automatically at startup: newly added options receive defaults and existing values are preserved. Renamed settings are migrated explicitly in the backend before defaults are inserted; changes to stored formats also require migration code when implementing a new version.
+
+At the bottom of **Settings**, **Application files** shows the actual data folder, `data.db` database, and log folder. Use **Copy path** to copy a location to the system clipboard or **Open folder** to open it in your file manager. Opening the database location opens its containing folder. Settings, history, results, and sources live in `data.db`; diagnostic logs are stored separately.
+
 - **OpenRouter:** enter your API key and select a model from the searchable [OpenRouter catalog](https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties). Type to filter model IDs, choose with the mouse or arrow keys and Enter, and use **Refresh** to reload the list. The catalog can be browsed before entering a key; a key is required for inference.
 - **Ollama (Local):** URL `http://localhost:11434` and the name of an installed model.
 - **Ollama Cloud:** URL `https://ollama.com`, an Ollama API key, and a model selected from the searchable server catalog. Click the model field and type to filter, then choose with the mouse or arrow keys and Enter; **Refresh** reloads the catalog. Filtering does not change the selected model until you choose a result. Direct cloud access uses the [native Ollama API](https://docs.ollama.com/cloud). Cloud currently lacks [structured output support](https://docs.ollama.com/capabilities/structured-outputs), so JSON is requested through prompts and parsed by the existing pipeline.

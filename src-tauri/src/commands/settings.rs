@@ -1,8 +1,78 @@
 use crate::providers::llm::ollama::OllamaProvider;
 use crate::providers::llm::openrouter::OpenRouterProvider;
+use crate::storage::db::Database;
 use crate::AppState;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use tauri::State;
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_opener::OpenerExt;
+
+#[derive(Debug, Serialize)]
+pub struct AppPaths {
+    pub data_dir: String,
+    pub database_file: String,
+    pub log_dir: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppLocation {
+    Data,
+    Database,
+    Logs,
+}
+
+impl AppLocation {
+    fn path(self) -> Result<PathBuf, String> {
+        let path = match self {
+            Self::Data => Database::data_dir(),
+            Self::Database => Database::db_path(),
+            Self::Logs => crate::utils::logging::log_dir(),
+        };
+        if path.is_absolute() {
+            Ok(path)
+        } else {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(path))
+                .map_err(|e| e.to_string())
+        }
+    }
+
+    fn folder(self) -> Result<PathBuf, String> {
+        match self {
+            Self::Database => Self::Data.path(),
+            _ => self.path(),
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_app_paths() -> Result<AppPaths, String> {
+    Ok(AppPaths {
+        data_dir: AppLocation::Data.path()?.to_string_lossy().into_owned(),
+        database_file: AppLocation::Database.path()?.to_string_lossy().into_owned(),
+        log_dir: AppLocation::Logs.path()?.to_string_lossy().into_owned(),
+    })
+}
+
+#[tauri::command]
+pub fn copy_app_path(app: tauri::AppHandle, location: AppLocation) -> Result<(), String> {
+    app.clipboard()
+        .write_text(location.path()?.to_string_lossy().into_owned())
+        .map_err(|e| format!("Could not copy the application path: {e}"))
+}
+
+#[tauri::command]
+pub async fn open_app_folder(app: tauri::AppHandle, location: AppLocation) -> Result<(), String> {
+    let folder = location.folder()?;
+    tokio::fs::create_dir_all(&folder)
+        .await
+        .map_err(|e| format!("Could not access the application folder: {e}"))?;
+    app.opener()
+        .open_path(folder.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|e| format!("Could not open the application folder: {e}"))
+}
 
 #[tauri::command]
 pub async fn list_openrouter_models(api_key: String) -> Result<Vec<String>, String> {
@@ -77,4 +147,32 @@ pub async fn update_setting(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod file_location_tests {
+    use super::*;
+
+    #[test]
+    fn displayed_locations_match_storage_and_logging_paths() {
+        let paths = get_app_paths().unwrap();
+        assert_eq!(
+            PathBuf::from(&paths.database_file),
+            PathBuf::from(&paths.data_dir).join("data.db")
+        );
+        assert_eq!(
+            PathBuf::from(paths.log_dir),
+            AppLocation::Logs.folder().unwrap()
+        );
+        assert!(PathBuf::from(paths.data_dir).is_absolute());
+    }
+
+    #[test]
+    fn database_open_action_targets_its_folder_and_rejects_arbitrary_paths() {
+        assert_eq!(
+            AppLocation::Database.folder().unwrap(),
+            AppLocation::Data.path().unwrap()
+        );
+        assert!(serde_json::from_str::<AppLocation>("\"/tmp/arbitrary\"").is_err());
+    }
 }

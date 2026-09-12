@@ -10,6 +10,8 @@ const mockInvoke = async (cmd: string, _args?: Record<string, unknown>) => {
 			];
 		case 'get_setting':
 			return null;
+		case 'get_app_paths':
+			return { data_dir: '/test/app-data', database_file: '/test/app-data/data.db', log_dir: '/test/app-logs' };
 		case 'list_ollama_cloud_models':
 			return ['cloud-model', 'gpt-oss:120b', 'qwen3.5:397b'];
 		case 'list_openrouter_models':

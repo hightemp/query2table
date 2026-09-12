@@ -27,19 +27,7 @@ pub fn run() {
     providers::http::proxy::init_and_strip_env();
 
     // Initialize logging early (before Tauri setup) so all startup messages are captured.
-    let data_dir = std::env::var("XDG_DATA_HOME")
-        .ok()
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var("HOME")
-                .ok()
-                .map(|h| std::path::PathBuf::from(h).join(".local").join("share"))
-        })
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let log_dir = data_dir
-        .join("com.hightemp.query2table")
-        .join("logs");
-    let _log_guard = utils::logging::init_logging(log_dir);
+    let _log_guard = utils::logging::init_logging(utils::logging::log_dir());
 
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
 
@@ -66,6 +54,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(app_state)
@@ -108,6 +97,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings,
+            commands::settings::get_app_paths,
+            commands::settings::copy_app_path,
+            commands::settings::open_app_folder,
             commands::settings::update_setting,
             commands::settings::get_setting,
             commands::settings::list_ollama_cloud_models,

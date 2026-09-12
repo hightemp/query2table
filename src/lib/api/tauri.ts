@@ -26,6 +26,26 @@ export interface Setting {
 	value: string;
 }
 
+export interface AppPaths {
+	data_dir: string;
+	database_file: string;
+	log_dir: string;
+}
+
+export type AppLocation = 'data' | 'database' | 'logs';
+
+export function getAppPaths(): Promise<AppPaths> {
+	return invoke('get_app_paths');
+}
+
+export function copyAppPath(location: AppLocation): Promise<void> {
+	return invoke('copy_app_path', { location });
+}
+
+export function openAppFolder(location: AppLocation): Promise<void> {
+	return invoke('open_app_folder', { location });
+}
+
 export async function getSettings(): Promise<Setting[]> {
 	return invoke('get_settings');
 }

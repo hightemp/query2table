@@ -2,6 +2,20 @@ use std::path::PathBuf;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+/// Existing log location, shared by startup and Settings so the displayed path is accurate.
+pub fn log_dir() -> PathBuf {
+    let data_dir = std::env::var("XDG_DATA_HOME")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|home| PathBuf::from(home).join(".local").join("share"))
+        })
+        .unwrap_or_else(|| PathBuf::from("."));
+    data_dir.join("com.hightemp.query2table").join("logs")
+}
+
 /// Initialize the tracing/logging subsystem.
 /// Returns a guard that must be held for the lifetime of the application
 /// to ensure all logs are flushed.

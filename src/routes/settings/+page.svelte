@@ -2,6 +2,7 @@
 	import { settings } from '$lib/stores/settings';
 	import { onDestroy } from 'svelte';
 	import LlmModelPicker from '$lib/components/settings/LlmModelPicker.svelte';
+	import AppFiles from '$lib/components/settings/AppFiles.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { errorText } from '$lib/utils/errors';
 	import type { SettingGroup, SettingDef } from '$lib/types';
@@ -357,6 +358,8 @@
 			</button>
 		</div>
 	</section>
+
+	<AppFiles />
 </div>
 
 <style>

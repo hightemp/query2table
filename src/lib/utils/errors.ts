@@ -1,6 +1,6 @@
 import type { LlmIssueCode } from '$lib/types';
 
-export type ErrorContext = 'run' | 'control' | 'settings' | 'settings_load' | 'catalog' | 'history' | 'export' | 'search' | 'fetch';
+export type ErrorContext = 'run' | 'control' | 'settings' | 'settings_load' | 'catalog' | 'history' | 'export' | 'search' | 'fetch' | 'app_files';
 
 export interface ErrorPresentation {
 	title: string;
@@ -24,6 +24,15 @@ export function presentError(error: unknown, context: ErrorContext = 'run', code
 	const result = (title: string, cause: string, action: string, settingsHref?: string): ErrorPresentation =>
 		({ title, cause, action, settingsHref, details });
 	const matches = (value: LlmIssueCode, pattern: RegExp) => code ? code === value : pattern.test(text);
+
+	if (context === 'app_files' && /clipboard|could not copy/.test(text)) {
+		return result('Could not copy the path', 'The system clipboard could not accept the path.',
+			'Select the path field and copy it manually, or try Copy path again.');
+	}
+	if (context === 'app_files' && /could not open.*folder|file manager/.test(text)) {
+		return result('Could not open the folder', 'The folder could not be opened in the system file manager.',
+			'Copy the displayed path and open it manually in your file manager.');
+	}
 
 	if (matches('model_not_found', /model.*(?:not found|not available|does not exist|unavailable)|(?:unknown|missing) model/)) {
 		return result('The selected model is unavailable', 'The service could not find or provide the requested model.',
@@ -101,6 +110,7 @@ export function presentError(error: unknown, context: ErrorContext = 'run', code
 			'Check disk space and access to the app’s data folder, then retry. Keep the technical details if the problem continues.');
 	}
 	const actions: Record<ErrorContext, string> = {
+		app_files: 'Retry the action, or use the displayed path directly in your file manager.',
 		run: 'Try a new run. If it fails again, use the technical details and logs to investigate.',
 		control: 'Check the run status and retry the command. Keep the technical details if the problem continues.',
 		settings: 'Your unsaved edits are still available. Retry saving and keep the technical details if it fails again.',

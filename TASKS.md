@@ -49,6 +49,16 @@ Implemented: `llm_reasoning_effort` supports Auto, Provider default, Off, On, Lo
 
 Verification: `cargo test --locked` — 242 passed, 5 live tests ignored by default; `npm test` — 65 passed; `npm run check` — 0 errors (4 existing warnings); `npm run build`, `cargo build --locked`, and `git diff --check` — passed. HTTP tests cover all eight effort settings across three provider protocols, model compatibility, permanent/transient errors, output/reasoning usage, setup and parsing diagnostics, and credential redaction. Integration tests cover persisted nonfatal issues and responsive controls during database contention. An explicitly executed live Ollama test with deepseek-v4.1-flash, reasoning On, and a 64-token cap returned `output_limit` with model/stage/cap metadata after one attempt; the exhausted output allowance was not retried. Credentials were used only in memory.
 
+### Settings migrations and application file locations
+
+- [x] Explain automatic settings initialization/migration and preserve legacy values when renaming keys before inserting defaults.
+- [x] Show application data, settings database, and log paths at the bottom of Settings with native Copy path / Open folder actions and readable errors.
+- [x] Verify migration idempotence and preserved values, path resolution, settings actions, and frontend/backend checks.
+
+Implemented: migrations run on startup; existing saved values are retained and missing options are inserted with defaults. Legacy key renames now run before default insertion so older settings are not shadowed. Application files appears below Network / Proxy and shows the actual data folder, database file, and log folder using the same backend path helpers as startup. Copy path uses the native Tauri clipboard plugin; Open folder accepts only predefined locations and opens the database's containing folder.
+
+Verification: `cargo test --locked` — 246 passed, 5 live tests ignored; `npm test` — 69 passed; `npm run check` — 0 errors (4 existing warnings); `npm run build`, `cargo build --locked`, and `git diff --check` — passed. Tests cover legacy values/current-value precedence/repeated migration, newly inserted defaults, path mapping and allowed locations, and frontend copy/open/retry/error behavior. Native clipboard/file-manager integration is compiled; UI action dispatch is tested with mocks.
+
 ### Application branding (2026-09-12)
 
 - [x] Create a new Query2Table logo and save the canonical asset in `images/query2table-logo.png`.

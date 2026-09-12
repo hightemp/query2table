@@ -36,9 +36,13 @@ impl Database {
         &self.pool
     }
 
-    fn db_path() -> PathBuf {
+    pub fn data_dir() -> PathBuf {
         let data_dir = dirs_next().unwrap_or_else(|| PathBuf::from("."));
-        data_dir.join("query2table").join("data.db")
+        data_dir.join("query2table")
+    }
+
+    pub fn db_path() -> PathBuf {
+        Self::data_dir().join("data.db")
     }
 
     pub async fn migrate(&self) -> Result<(), sqlx::Error> {
@@ -275,6 +279,27 @@ impl Database {
         .await
         .ok(); // ok() — ignore error if column already exists
 
+        // Rename legacy keys before inserting defaults; defaults must not shadow saved values.
+        let renames = vec![
+            ("default_model", "openrouter_model"),
+            ("primary_search_provider", "search_provider"),
+            ("ollama_base_url", "ollama_url"),
+            ("max_results_per_query", "search_results_per_query"),
+        ];
+        for (old_key, new_key) in renames {
+            sqlx::query(
+                "UPDATE OR IGNORE settings SET key = ? WHERE key = ?"
+            )
+            .bind(new_key)
+            .bind(old_key)
+            .execute(&self.pool)
+            .await?;
+            // Clean up old key if rename failed due to new key already existing
+            sqlx::query("DELETE FROM settings WHERE key = ?")
+                .bind(old_key)
+                .execute(&self.pool)
+                .await?;
+        }
         // Insert default settings if not present
         // Keys must match what backend reads in providers/ and orchestrator/
         let defaults = vec![
@@ -336,27 +361,6 @@ impl Database {
             .await?;
         }
 
-        // Rename legacy keys from older databases
-        let renames = vec![
-            ("default_model", "openrouter_model"),
-            ("primary_search_provider", "search_provider"),
-            ("ollama_base_url", "ollama_url"),
-            ("max_results_per_query", "search_results_per_query"),
-        ];
-        for (old_key, new_key) in renames {
-            sqlx::query(
-                "UPDATE OR IGNORE settings SET key = ? WHERE key = ?"
-            )
-            .bind(new_key)
-            .bind(old_key)
-            .execute(&self.pool)
-            .await?;
-            // Clean up old key if rename failed due to new key already existing
-            sqlx::query("DELETE FROM settings WHERE key = ?")
-                .bind(old_key)
-                .execute(&self.pool)
-                .await?;
-        }
 
         Ok(())
     }
@@ -500,5 +504,41 @@ mod tests {
             let val = db.get_setting(key).await.unwrap();
             assert!(val.is_some(), "Default setting '{}' should exist", key);
         }
+    }
+
+    #[tokio::test]
+    async fn legacy_settings_are_renamed_before_defaults_and_migration_is_repeatable() {
+        let db = test_db().await;
+        let legacy = [
+            ("default_model", "openrouter_model", "saved-model"),
+            ("primary_search_provider", "search_provider", "serper"),
+            ("ollama_base_url", "ollama_url", "http://saved-server:11434"),
+            ("max_results_per_query", "search_results_per_query", "7"),
+        ];
+        for (old, new, value) in legacy {
+            sqlx::query("DELETE FROM settings WHERE key = ?").bind(new).execute(db.pool()).await.unwrap();
+            db.set_setting(old, value).await.unwrap();
+        }
+        sqlx::query("DELETE FROM settings WHERE key = 'llm_reasoning_effort'").execute(db.pool()).await.unwrap();
+        db.migrate().await.unwrap();
+        for (old, new, value) in legacy {
+            assert_eq!(db.get_setting(new).await.unwrap().as_deref(), Some(value));
+            assert_eq!(db.get_setting(old).await.unwrap(), None);
+        }
+        assert_eq!(db.get_setting("llm_reasoning_effort").await.unwrap().as_deref(), Some("auto"));
+        db.set_setting("llm_reasoning_effort", "high").await.unwrap();
+        let saved = db.get_all_settings().await.unwrap();
+        db.migrate().await.unwrap();
+        assert_eq!(db.get_all_settings().await.unwrap(), saved);
+    }
+
+    #[tokio::test]
+    async fn migration_keeps_current_value_when_legacy_and_current_keys_both_exist() {
+        let db = test_db().await;
+        db.set_setting("default_model", "older-model").await.unwrap();
+        db.set_setting("openrouter_model", "current-model").await.unwrap();
+        db.migrate().await.unwrap();
+        assert_eq!(db.get_setting("openrouter_model").await.unwrap().as_deref(), Some("current-model"));
+        assert_eq!(db.get_setting("default_model").await.unwrap(), None);
     }
 }
