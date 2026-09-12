@@ -4,6 +4,7 @@
 	import DOMPurify from 'dompurify';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { SearchIcon, FileTextIcon, BrainIcon, AlertTriangleIcon } from '@lucide/svelte';
+	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 
 	let {
 		steps,
@@ -64,7 +65,9 @@
 									<a class="step-url" href={step.url} target="_blank" rel="noreferrer">{step.url}</a>
 								{/if}
 							</div>
-							<div class="step-content">{previewContent(step)}</div>
+							{#if step.step_type === 'error'}
+								<ErrorNotice error={step.content} />
+							{:else}<div class="step-content">{previewContent(step)}</div>{/if}
 						</div>
 					</li>
 				{/each}

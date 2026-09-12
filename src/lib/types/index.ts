@@ -127,6 +127,27 @@ export interface RunErrorEvent {
 	error: string;
 }
 
+export type LlmIssueCode = 'output_limit' | 'context_limit' | 'rate_limit' | 'quota' | 'auth'
+	| 'access_denied' | 'timeout' | 'connection' | 'invalid_response' | 'empty_response'
+	| 'not_configured' | 'unsupported_setting' | 'model_not_found' | 'provider_error';
+
+export interface LlmIssueEvent {
+	run_id: string;
+	code: LlmIssueCode;
+	provider: string;
+	model: string;
+	stage: string | null;
+	message: string;
+	max_tokens: number;
+	prompt_tokens: number | null;
+	completion_tokens: number | null;
+	reasoning_tokens: number | null;
+	retry_after_ms: number | null;
+	attempt: number;
+	max_attempts: number;
+	will_retry: boolean;
+}
+
 // --- Image Search types ---
 
 export interface ImageResult {

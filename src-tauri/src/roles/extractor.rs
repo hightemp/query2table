@@ -78,7 +78,7 @@ impl Extractor {
             )),
         ];
 
-        let response = llm.complete(messages, true).await?;
+        let response = llm.complete_for_stage("extractor", messages, true).await?;
 
         #[derive(Deserialize)]
         struct LlmResponse {
@@ -92,10 +92,11 @@ impl Extractor {
         }
 
         let parsed: LlmResponse = serde_json::from_str(&response.content)
-            .map_err(|e| LlmError::ParseError(format!(
-                "Failed to parse extraction result: {}. Response: {}",
-                e, response.content
-            )))?;
+            .map_err(|e| {
+                let message = format!("Failed to parse extraction result: {e}");
+                llm.report_invalid_response("extractor", &message, &response);
+                LlmError::ParseError(message)
+            })?;
 
         let rows: Vec<ExtractedRow> = parsed.rows.into_iter().map(|r| {
             ExtractedRow {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { llmIssue } from '../fixtures/llm-issue';
 import {
 	cancelCurrentRun, confirmCurrentSchema, pauseCurrentRun, resetRun,
 	resumeCurrentRun, runState, startNewRun,
@@ -52,11 +53,31 @@ describe('run controls and startup events', () => {
 		});
 	});
 
+	it('buffers early model issues without failing the run and bounds retained events', async () => {
+		apiInvoke.mockImplementationOnce(async () => {
+			emit('llm_issue', { ...llmIssue });
+			return { run_id: 'run-1' } as never;
+		});
+		await startNewRun('query');
+		expect(get(runState)).toMatchObject({ status: 'pending', llmIssues: [llmIssue] });
+		for (let i = 0; i < 120; i++) emit('llm_issue', { ...llmIssue, message: `issue-${i}` });
+		expect(get(runState).llmIssues).toHaveLength(100);
+		expect(get(runState).llmIssues[0].message).toBe('issue-20');
+		status('completed');
+		expect(get(runState).llmIssues).toHaveLength(100);
+		const stale = callbacks.get('run:llm_issue')!;
+		resetRun();
+		await startNewRun('new query');
+		stale({ payload: llmIssue });
+		emit('llm_issue', { ...llmIssue, run_id: 'different-run' });
+		expect(get(runState).llmIssues).toEqual([]);
+	});
+
 	it('shows startup failures and releases listeners instead of remaining pending', async () => {
 		apiInvoke.mockRejectedValueOnce('Provider not configured');
 		await expect(startNewRun('query')).rejects.toBe('Provider not configured');
 		expect(get(runState)).toMatchObject({ status: 'failed', error: 'Provider not configured' });
-		expect(unlisten).toHaveBeenCalledTimes(10);
+		expect(unlisten).toHaveBeenCalledTimes(11);
 	});
 
 	it('cleans partial subscriptions and reports a listener setup failure', async () => {
@@ -64,7 +85,7 @@ describe('run controls and startup events', () => {
 		await expect(startNewRun('query')).rejects.toThrow('Listener unavailable');
 		expect(get(runState).status).toBe('failed');
 		expect(apiInvoke).not.toHaveBeenCalled();
-		expect(unlisten).toHaveBeenCalledTimes(9);
+		expect(unlisten).toHaveBeenCalledTimes(10);
 	});
 
 	it('queues Cancel during startup and waits for backend cancellation before changing status', async () => {

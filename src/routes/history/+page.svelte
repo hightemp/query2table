@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listRuns, deleteRun, getRunSchema, getRunRows, getImageResults, getLinkResults, getResearchResult, type RunSchemaInfo, type EntityRowInfo } from '$lib/api/tauri';
-	import type { RunInfo, SchemaColumn, ImageResult, LinkResult, ResearchStep } from '$lib/types';
+	import { listRuns, deleteRun, getRunSchema, getRunRows, getImageResults, getLinkResults, getResearchResult, getRunIssues } from '$lib/api/tauri';
+	import type { RunInfo, SchemaColumn, ImageResult, LinkResult, ResearchStep, LlmIssueEvent } from '$lib/types';
 	import type { RunRow } from '$lib/stores/run';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
@@ -9,6 +9,9 @@
 	import ImageGallery from '$lib/components/run/ImageGallery.svelte';
 	import LinkList from '$lib/components/run/LinkList.svelte';
 	import ResearchView from '$lib/components/run/ResearchView.svelte';
+	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
+	import LlmIssues from '$lib/components/run/LlmIssues.svelte';
+	import { errorText, presentError } from '$lib/utils/errors';
 	import { TrashIcon, ExternalLinkIcon, ArrowLeftIcon, DownloadIcon, TableIcon, ImageIcon, LinkIcon, BrainIcon } from '@lucide/svelte';
 
 	let runs = $state<RunInfo[]>([]);
@@ -24,6 +27,10 @@
 	let viewResearchSteps = $state<ResearchStep[]>([]);
 	let viewResearchAnswer = $state<string | null>(null);
 	let viewLoading = $state(false);
+	let viewIssues = $state<LlmIssueEvent[]>([]);
+	let issueError = $state('');
+	let issuesLoading = $state(false);
+	let viewRequest = 0;
 	let selectedRow = $state<RunRow | null>(null);
 	let showExport = $state(false);
 
@@ -37,26 +44,42 @@
 		try {
 			runs = await listRuns(100);
 		} catch (e) {
-			error = String(e);
+			error = errorText(e);
 		} finally {
 			loading = false;
 		}
 	}
 
 	async function handleView(run: RunInfo) {
+		const request = ++viewRequest;
 		viewLoading = true;
+		viewingRun = run;
 		error = '';
 		selectedRow = null;
+		viewIssues = [];
+		issueError = '';
+		issuesLoading = true;
+		void getRunIssues(run.id).then((issues) => {
+			if (request === viewRequest) viewIssues = issues.filter((issue) => issue.run_id === run.id).slice(-100);
+		}).catch((e) => {
+			if (request === viewRequest) issueError = errorText(e);
+		}).finally(() => {
+			if (request === viewRequest) issuesLoading = false;
+		});
 		try {
 			if (run.run_type === 'images') {
-				viewImages = await getImageResults(run.id);
+				const images = await getImageResults(run.id);
+				if (request !== viewRequest) return;
+				viewImages = images;
 				viewSchema = [];
 				viewRows = [];
 				viewLinks = [];
 				viewResearchSteps = [];
 				viewResearchAnswer = null;
 			} else if (run.run_type === 'links') {
-				viewLinks = await getLinkResults(run.id);
+				const links = await getLinkResults(run.id);
+				if (request !== viewRequest) return;
+				viewLinks = links;
 				viewSchema = [];
 				viewRows = [];
 				viewImages = [];
@@ -64,6 +87,7 @@
 				viewResearchAnswer = null;
 			} else if (run.run_type === 'research') {
 				const res = await getResearchResult(run.id);
+				if (request !== viewRequest) return;
 				viewResearchSteps = res.steps;
 				viewResearchAnswer = res.answer_markdown;
 				viewSchema = [];
@@ -75,6 +99,7 @@
 					getRunSchema(run.id),
 					getRunRows(run.id),
 				]);
+				if (request !== viewRequest) return;
 				viewSchema = schemaInfo?.columns ?? [];
 				viewRows = rows.map((r) => ({
 					id: r.id,
@@ -86,16 +111,21 @@
 				viewResearchSteps = [];
 				viewResearchAnswer = null;
 			}
-			viewingRun = run;
 		} catch (e) {
-			error = String(e);
+			if (request === viewRequest) error = errorText(e);
 		} finally {
-			viewLoading = false;
+			if (request === viewRequest) viewLoading = false;
 		}
 	}
 
 	function handleBack() {
+		viewRequest++;
 		viewingRun = null;
+		viewLoading = false;
+		viewIssues = [];
+		issueError = '';
+		issuesLoading = false;
+		error = '';
 		viewSchema = [];
 		viewRows = [];
 		viewImages = [];
@@ -107,11 +137,12 @@
 	}
 
 	async function handleDelete(runId: string) {
+		error = '';
 		try {
 			await deleteRun(runId);
 			runs = runs.filter((r) => r.id !== runId);
 		} catch (e) {
-			error = String(e);
+			error = errorText(e);
 		}
 	}
 
@@ -128,7 +159,7 @@
 	}
 </script>
 
-<div class="history-page">
+<div class="history-page" class:has-issues={viewIssues.length > 0 || !!error || !!issueError || !!viewingRun?.error}>
 	{#if viewingRun}
 		<div class="view-header">
 			<button class="btn-back" onclick={handleBack}>
@@ -151,6 +182,12 @@
 			</div>
 		</div>
 
+		{#if error}<ErrorNotice {error} context="history" />{/if}
+		{#if viewingRun.error}<ErrorNotice error={viewingRun.error} />{/if}
+		{#if issuesLoading}<p>Loading model request issues…</p>{/if}
+		{#if issueError}<ErrorNotice error={issueError} context="history" />{/if}
+		<LlmIssues issues={viewIssues} runStatus={viewingRun.status} />
+
 		{#if showExport}
 			<ExportDialog
 				runId={viewingRun.id}
@@ -159,7 +196,9 @@
 			/>
 		{/if}
 
-		{#if viewingRun.run_type === 'images'}
+		{#if viewLoading}
+			<div class="empty-state">Loading run results…</div>
+		{:else if viewingRun.run_type === 'images'}
 			{#if viewImages.length > 0}
 				<ImageGallery images={viewImages} />
 			{:else}
@@ -199,7 +238,7 @@
 		<p class="subtitle">View past research queries and their results.</p>
 
 		{#if error}
-			<p class="error-msg">{error}</p>
+			<ErrorNotice {error} context="history" />
 		{/if}
 
 		{#if loading}
@@ -227,7 +266,7 @@
 						<div class="run-card-meta">
 							<span class="run-date">{formatDate(run.created_at)}</span>
 							{#if run.error}
-								<span class="run-error">{run.error}</span>
+								<span class="run-error">{presentError(run.error).title}</span>
 							{/if}
 						</div>
 						<div class="run-card-actions">
@@ -257,6 +296,9 @@
 		overflow: hidden;
 	}
 
+	.history-page.has-issues { overflow-y: auto; }
+	.history-page.has-issues :global(.results-table-wrap) { min-height: 180px; }
+
 	h1 {
 		font-size: 1.8rem;
 		font-weight: 700;
@@ -274,11 +316,6 @@
 		border: 2px dashed var(--color-surface-300-700);
 		border-radius: 12px;
 		color: var(--color-surface-400-600);
-	}
-
-	.error-msg {
-		color: var(--color-error-500);
-		margin-bottom: 12px;
 	}
 
 	.runs-list {

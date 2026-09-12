@@ -10,6 +10,7 @@ import type {
 	ResearchStep,
 	ResearchStepEvent,
 	ResearchAnswerEvent,
+	LlmIssueEvent,
 } from '$lib/types';
 import {
 	startRun as apiStartRun,
@@ -27,6 +28,7 @@ import {
 	onLinkAdded,
 	onResearchStep,
 	onResearchAnswer,
+	onLlmIssue,
 } from '$lib/api/tauri';
 import { addLog } from '$lib/stores/logs';
 
@@ -54,6 +56,7 @@ export interface RunState {
 	controlPending: RunControl | null;
 	controlError: string | null;
 	pausedFrom: string | null;
+	llmIssues: LlmIssueEvent[];
 }
 
 const initialState: RunState = {
@@ -72,6 +75,7 @@ const initialState: RunState = {
 	controlPending: null,
 	controlError: null,
 	pausedFrom: null,
+	llmIssues: [],
 };
 
 export const runState = writable<RunState>({ ...initialState });
@@ -143,6 +147,9 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 				if (s.runId !== e.run_id) return s;
 				return { ...s, error: e.error, status: 'failed', controlPending: null };
 			});
+		}),
+		subscribe(onLlmIssue, (issue) => {
+			runState.update((s) => ({ ...s, llmIssues: [...s.llmIssues, issue].slice(-100) }));
 		}),
 		subscribe(onRunLogEntry, (e) => {
 			const current = get(runState);

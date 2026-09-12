@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import SettingsPage from '../routes/settings/+page.svelte';
@@ -8,7 +8,48 @@ describe('LLM provider settings', () => {
 	beforeEach(async () => {
 		await settings.load();
 	});
-	afterEach(cleanup);
+	afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+	it('keeps reasoning changes local until Save and restores the saved choice', async () => {
+		const page = render(SettingsPage);
+		const effort = screen.getByRole('combobox', { name: /^Thinking \/ reasoning effort / });
+		expect(effort).toHaveValue('auto');
+		await fireEvent.change(effort, { target: { value: 'high' } });
+		expect(get(settings).get('llm_reasoning_effort')).toBeUndefined();
+		expect(screen.getByText(/Auto disables thinking/)).toHaveTextContent('Provider default leaves thinking unchanged');
+		await fireEvent.click(screen.getByRole('button', { name: /^Save \(/ }));
+		await waitFor(() => expect(get(settings).get('llm_reasoning_effort')).toBe('high'));
+		page.unmount();
+		render(SettingsPage);
+		expect(screen.getByRole('combobox', { name: /^Thinking \/ reasoning effort / })).toHaveValue('high');
+	});
+
+	it('explains unsupported GPT-OSS effort choices only for Ollama providers', async () => {
+		render(SettingsPage);
+		await fireEvent.change(screen.getByRole('combobox', { name: /^Provider / }), { target: { value: 'ollama' } });
+		await fireEvent.input(screen.getByLabelText(/^Ollama Model /), { target: { value: 'gpt-oss:120b' } });
+		const effort = screen.getByRole('combobox', { name: /^Thinking \/ reasoning effort / });
+		expect(within(effort).getByRole('option', { name: 'Off' })).toBeDisabled();
+		expect(within(effort).getByRole('option', { name: 'Max' })).toBeDisabled();
+		expect(screen.getByText(/GPT-OSS cannot use Off or Max/)).toBeInTheDocument();
+		await fireEvent.change(effort, { target: { value: 'low' } });
+		await fireEvent.change(screen.getByRole('combobox', { name: /^Provider / }), { target: { value: 'openrouter' } });
+		expect(within(effort).getByRole('option', { name: 'Off' })).toBeEnabled();
+		expect(within(effort).getByRole('option', { name: 'Max' })).toBeEnabled();
+	});
+
+	it('shows save failures and keeps unsaved edits available for retry', async () => {
+		render(SettingsPage);
+		await fireEvent.change(screen.getByRole('combobox', { name: /^Thinking \/ reasoning effort / }), { target: { value: 'medium' } });
+		vi.spyOn(settings, 'save').mockRejectedValueOnce(new Error('sqlite: database is locked'));
+		await fireEvent.click(screen.getByRole('button', { name: /^Save \(/ }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('Local data could not be accessed');
+		expect(screen.getByRole('combobox', { name: /^Thinking \/ reasoning effort / })).toHaveValue('medium');
+		expect(get(settings).get('llm_reasoning_effort')).toBeUndefined();
+		await fireEvent.click(screen.getByRole('button', { name: /^Save \(/ }));
+		await waitFor(() => expect(get(settings).get('llm_reasoning_effort')).toBe('medium'));
+		expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+	});
 
 	it('selects an OpenRouter model from the filtered catalog and saves its ID', async () => {
 		const page = render(SettingsPage);

@@ -1,5 +1,7 @@
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,6 +9,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 use tracing::{error, info};
 
+use crate::providers::llm::types::LlmIssue;
 use crate::storage::models::SchemaColumn;
 use crate::storage::repository::Repository;
 
@@ -25,6 +28,7 @@ pub(crate) struct RunControl {
     stage_tx: mpsc::Sender<StageUpdate>,
     paused: watch::Receiver<bool>,
     schema: watch::Receiver<Option<Vec<SchemaColumn>>>,
+    issues: mpsc::UnboundedSender<LlmIssue>,
 }
 
 pub(crate) struct RunSupervisor {
@@ -35,6 +39,7 @@ pub(crate) struct RunSupervisor {
     stages: mpsc::Receiver<StageUpdate>,
     paused: watch::Sender<bool>,
     schema: watch::Sender<Option<Vec<SchemaColumn>>>,
+    issues: mpsc::UnboundedReceiver<LlmIssue>,
 }
 
 impl RunControl {
@@ -47,11 +52,13 @@ impl RunControl {
         let (stage_tx, stages) = mpsc::channel(1);
         let (paused_tx, paused) = watch::channel(false);
         let (schema_tx, schema) = watch::channel(None);
+        let (issue_tx, issues) = mpsc::unbounded_channel();
         (
             Self {
                 stage_tx,
                 paused,
                 schema,
+                issues: issue_tx,
             },
             RunSupervisor {
                 run_id,
@@ -61,6 +68,7 @@ impl RunControl {
                 stages,
                 paused: paused_tx,
                 schema: schema_tx,
+                issues,
             },
         )
     }
@@ -82,6 +90,10 @@ impl RunControl {
 
     pub(crate) fn pause_signal(&self) -> watch::Receiver<bool> {
         self.paused.clone()
+    }
+
+    pub(crate) fn issue_sender(&self) -> mpsc::UnboundedSender<LlmIssue> {
+        self.issues.clone()
     }
 
     pub(crate) async fn confirmed_schema(&self) -> Option<Vec<SchemaColumn>> {
@@ -117,6 +129,100 @@ impl RunControl {
     }
 }
 
+/// Persistence progresses alongside the pipeline, never inline in a command
+/// handler: a suspended SQLx future may still own the pool's only connection.
+struct ControlWriter {
+    run_id: String,
+    repo: Arc<Repository>,
+    queue: VecDeque<ControlWrite>,
+    active: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
+}
+
+enum ControlWrite {
+    Status {
+        status: String,
+        acknowledged: Option<oneshot::Sender<()>>,
+    },
+    Failure(String),
+    Log {
+        level: &'static str,
+        role: &'static str,
+        message: String,
+        details: Option<String>,
+    },
+}
+
+impl ControlWriter {
+    fn new(run_id: String, repo: Arc<Repository>) -> Self {
+        Self {
+            run_id,
+            repo,
+            queue: VecDeque::new(),
+            active: None,
+        }
+    }
+
+    fn pending(&self) -> bool {
+        self.active.is_some() || !self.queue.is_empty()
+    }
+
+    async fn progress(&mut self) {
+        if self.active.is_none() {
+            let Some(write) = self.queue.pop_front() else {
+                return;
+            };
+            let repo = self.repo.clone();
+            let run_id = self.run_id.clone();
+            // The future lives in the writer, so losing a select! branch does
+            // not cancel a database operation or discard a queued write.
+            self.active = Some(Box::pin(async move {
+                let (result, acknowledged) = match write {
+                    ControlWrite::Status {
+                        status,
+                        acknowledged,
+                    } => (repo.update_run_status(&run_id, &status).await, acknowledged),
+                    ControlWrite::Failure(message) => {
+                        (repo.update_run_error(&run_id, &message).await, None)
+                    }
+                    ControlWrite::Log {
+                        level,
+                        role,
+                        message,
+                        details,
+                    } => (
+                        repo.create_run_log(
+                            &run_id,
+                            level,
+                            Some(role),
+                            &message,
+                            details.as_deref(),
+                        )
+                        .await
+                        .map(|_| ()),
+                        None,
+                    ),
+                };
+                if let Err(e) = result {
+                    error!(run_id = %run_id, error = %e, "Failed to persist run control update");
+                }
+                if let Some(acknowledged) = acknowledged {
+                    let _ = acknowledged.send(());
+                }
+            }));
+        }
+        if let Some(active) = &mut self.active {
+            active.await;
+        }
+        self.active = None;
+    }
+
+    async fn flush(&mut self) {
+        while self.pending() {
+            self.progress().await;
+        }
+    }
+}
+
 impl RunSupervisor {
     /// Keep the same pinned future across pause/resume. In-flight requests are
     /// retained; cancelling drops them and the scoped worker pools immediately.
@@ -129,30 +235,35 @@ impl RunSupervisor {
         let mut paused = false;
         let mut commands_open = true;
         let mut stage = "pending".to_string();
+        let mut writes = ControlWriter::new(self.run_id.clone(), self.repo.clone());
 
         loop {
             tokio::select! {
                 biased;
                 command = self.commands.recv(), if commands_open => {
                     match command {
-                        Some(_) if matches!(stage.as_str(), "completed" | "failed" | "cancelled") => {}
+                        Some(_) if !paused && matches!(stage.as_str(), "completed" | "failed" | "cancelled") => {}
                         Some(PipelineCommand::Cancel) => {
                             drop(work);
-                            self.publish_status("cancelled").await;
-                            self.log("INFO", "[FIX:run-control] Cancelled active pipeline and worker requests").await;
+                            self.drain_issues(&mut writes);
+                            self.publish_status("cancelled", &mut writes, None);
+                            self.log("INFO", "[FIX:run-control] Cancelled active pipeline and worker requests", &mut writes);
+                            writes.flush().await;
                             return Ok(PipelineState::Cancelled);
                         }
                         Some(PipelineCommand::Pause) if !paused => {
                             paused = true;
                             self.paused.send_replace(true);
-                            self.publish_status("paused").await;
-                            self.log("INFO", &format!("[FIX:run-control] Pipeline paused at {stage}")).await;
+                            self.publish_status("paused", &mut writes, None);
+                            self.log("INFO", &format!("[FIX:run-control] Pipeline paused at {stage}"), &mut writes);
                         }
                         Some(PipelineCommand::Resume) if paused => {
-                            self.publish_status(&stage).await;
+                            if !matches!(stage.as_str(), "completed" | "failed" | "cancelled") {
+                                self.publish_status(&stage, &mut writes, None);
+                            }
                             paused = false;
                             self.paused.send_replace(false);
-                            self.log("INFO", &format!("[FIX:run-control] Pipeline resumed at {stage}")).await;
+                            self.log("INFO", &format!("[FIX:run-control] Pipeline resumed at {stage}"), &mut writes);
                         }
                         Some(PipelineCommand::ConfirmSchema(columns)) => {
                             self.schema.send_replace(Some(columns));
@@ -161,7 +272,9 @@ impl RunSupervisor {
                             commands_open = false;
                             if paused {
                                 drop(work);
-                                self.publish_status("cancelled").await;
+                                self.drain_issues(&mut writes);
+                                self.publish_status("cancelled", &mut writes, None);
+                                writes.flush().await;
                                 return Ok(PipelineState::Cancelled);
                             }
                         }
@@ -170,55 +283,93 @@ impl RunSupervisor {
                 }
                 Some(update) = self.stages.recv() => {
                     stage = update.status;
-                    if !paused {
-                        self.publish_status(&stage).await;
+                    // Terminal status is published only after the work returns
+                    // and all diagnostics have been drained. Schema and other
+                    // active stages still acknowledge their persisted status.
+                    if !paused && !matches!(stage.as_str(), "completed" | "failed" | "cancelled") {
+                        self.publish_status(&stage, &mut writes, Some(update.acknowledged));
+                    } else {
+                        let _ = update.acknowledged.send(());
                     }
-                    let _ = update.acknowledged.send(());
                 }
+                Some(issue) = self.issues.recv() => self.publish_issue(issue, &mut writes),
+                () = writes.progress(), if writes.pending() => {}
                 result = &mut work, if !paused => {
                     drop(work);
+                    self.drain_issues(&mut writes);
                     let failure = match &result {
                         Err(err) => Some(err.to_string()),
                         Ok(PipelineState::Failed(message)) => Some(message.clone()),
                         _ => None,
                     };
                     if let Some(message) = failure {
-                        if let Err(e) = self.repo.update_run_error(&self.run_id, &message).await {
-                            error!(run_id = %self.run_id, error = %e, "Failed to persist pipeline error");
-                        }
+                        writes.queue.push_back(ControlWrite::Failure(message.clone()));
                         if let Some(events) = &self.events {
                             events.emit_error(&message);
                             events.emit_status_changed("failed");
                         }
-                        self.log("ERROR", &format!("[FIX:run-control] Pipeline failed: {message}")).await;
+                        self.log("ERROR", &format!("[FIX:run-control] Pipeline failed: {message}"), &mut writes);
                     } else if let Ok(state) = &result {
-                        if state.as_status_str() != stage {
-                            self.publish_status(state.as_status_str()).await;
-                        }
+                        self.publish_status(state.as_status_str(), &mut writes, None);
                     }
+                    // Work has been dropped, so it can no longer retain a DB
+                    // connection. Ordered writes make the terminal status last.
+                    writes.flush().await;
                     return result;
                 }
             }
         }
     }
 
-    async fn publish_status(&self, status: &str) {
-        if let Err(e) = self.repo.update_run_status(&self.run_id, status).await {
-            error!(run_id = %self.run_id, error = %e, "Failed to persist pipeline status");
-        }
+    fn publish_status(
+        &self,
+        status: &str,
+        writes: &mut ControlWriter,
+        acknowledged: Option<oneshot::Sender<()>>,
+    ) {
+        writes.queue.push_back(ControlWrite::Status {
+            status: status.to_string(),
+            acknowledged,
+        });
         if let Some(events) = &self.events {
             events.emit_status_changed(status);
         }
     }
 
-    async fn log(&self, level: &str, message: &str) {
-        if let Err(e) = self
-            .repo
-            .create_run_log(&self.run_id, level, Some("run_control"), message, None)
-            .await
-        {
-            error!(run_id = %self.run_id, error = %e, "Failed to persist run control log");
+    fn drain_issues(&mut self, writes: &mut ControlWriter) {
+        while let Ok(issue) = self.issues.try_recv() {
+            self.publish_issue(issue, writes);
         }
+    }
+
+    fn publish_issue(&self, issue: LlmIssue, writes: &mut ControlWriter) {
+        let details = match serde_json::to_string(&issue) {
+            Ok(details) => details,
+            Err(e) => {
+                error!(error = %e, "Failed to serialize LLM issue");
+                return;
+            }
+        };
+        let message = format!("{} / {}: {}", issue.provider, issue.model, issue.message);
+        writes.queue.push_back(ControlWrite::Log {
+            level: "WARN",
+            role: "llm_issue",
+            message: message.clone(),
+            details: Some(details),
+        });
+        if let Some(events) = &self.events {
+            events.emit_llm_issue(&issue);
+            events.emit_log("WARN", "llm_issue", &message);
+        }
+    }
+
+    fn log(&self, level: &'static str, message: &str, writes: &mut ControlWriter) {
+        writes.queue.push_back(ControlWrite::Log {
+            level,
+            role: "run_control",
+            message: message.to_string(),
+            details: None,
+        });
         if let Some(events) = &self.events {
             events.emit_log(level, "run_control", message);
         }
@@ -289,6 +440,10 @@ mod tests {
     use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
 
     async fn test_repo() -> Arc<Repository> {
+        test_repo_with_pool().await.0
+    }
+
+    async fn test_repo_with_pool() -> (Arc<Repository>, sqlx::SqlitePool) {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .connect("sqlite::memory:")
@@ -296,7 +451,176 @@ mod tests {
             .unwrap();
         let db = Database::with_pool(pool.clone()).await;
         db.migrate().await.unwrap();
-        Arc::new(Repository::new(pool))
+        (Arc::new(Repository::new(pool.clone())), pool)
+    }
+
+    fn output_limit_issue() -> LlmIssue {
+        LlmIssue {
+            code: "output_limit".into(),
+            provider: "ollama_cloud".into(),
+            model: "test-model".into(),
+            stage: Some("extractor".into()),
+            message: "Model reached its output token limit".into(),
+            max_tokens: 4096,
+            prompt_tokens: Some(800),
+            completion_tokens: Some(4096),
+            reasoning_tokens: None,
+            retry_after_ms: None,
+            attempt: 1,
+            max_attempts: 1,
+            will_retry: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn issue_persistence_does_not_block_work_holding_the_only_database_connection() {
+        let (repo, pool) = test_repo_with_pool().await;
+        repo.create_run("db-progress", "query", "{}").await.unwrap();
+        let (_tx, rx) = mpsc::channel(16);
+        let (control, supervisor) = RunControl::new("db-progress".into(), repo.clone(), None, rx);
+        let task = supervisor.run(async move {
+            let mut connection = pool.acquire().await.unwrap();
+            control.issue_sender().send(output_limit_issue()).unwrap();
+            // The supervisor sees the issue before this future can release the
+            // connection. Awaiting diagnostic persistence inline deadlocks.
+            tokio::task::yield_now().await;
+            sqlx::query("SELECT 1")
+                .execute(&mut *connection)
+                .await
+                .unwrap();
+            drop(connection);
+            Ok::<_, String>(PipelineState::Completed)
+        });
+        assert_eq!(
+            timeout(Duration::from_secs(1), task)
+                .await
+                .unwrap()
+                .unwrap(),
+            PipelineState::Completed
+        );
+        assert_eq!(
+            repo.get_run_llm_issue_details("db-progress")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn pause_allows_resume_or_cancel_while_work_holds_a_database_connection() {
+        for cancel in [false, true] {
+            let (repo, pool) = test_repo_with_pool().await;
+            repo.create_run("db-control", "query", "{}").await.unwrap();
+            let (tx, rx) = mpsc::channel(16);
+            let (control, supervisor) =
+                RunControl::new("db-control".into(), repo.clone(), None, rx);
+            let mut paused = control.pause_signal();
+            let (started_tx, started_rx) = oneshot::channel();
+            let (release_tx, release_rx) = oneshot::channel();
+            let task = tokio::spawn(supervisor.run(async move {
+                control.set_status("running").await;
+                let connection = pool.acquire().await.unwrap();
+                control.issue_sender().send(output_limit_issue()).unwrap();
+                started_tx.send(()).unwrap();
+                let _ = release_rx.await;
+                drop(connection);
+                control.set_status("completed").await;
+                Ok::<_, String>(PipelineState::Completed)
+            }));
+            started_rx.await.unwrap();
+            tx.send(PipelineCommand::Pause).await.unwrap();
+            timeout(Duration::from_secs(1), paused.wait_for(|value| *value))
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(!task.is_finished());
+            let expected = if cancel {
+                tx.send(PipelineCommand::Cancel).await.unwrap();
+                PipelineState::Cancelled
+            } else {
+                release_tx.send(()).unwrap();
+                tx.send(PipelineCommand::Resume).await.unwrap();
+                PipelineState::Completed
+            };
+            assert_eq!(
+                timeout(Duration::from_secs(1), task)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .unwrap(),
+                expected
+            );
+            assert_eq!(
+                repo.get_run("db-control").await.unwrap().unwrap().status,
+                expected.as_status_str()
+            );
+            assert_eq!(
+                repo.get_run_llm_issue_details("db-control")
+                    .await
+                    .unwrap()
+                    .len(),
+                1
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn swallowed_llm_limit_is_persisted_even_when_run_completes_in_the_same_poll() {
+        let repo = test_repo().await;
+        repo.create_run("partial", "query", "{}").await.unwrap();
+        let (_tx, rx) = mpsc::channel(16);
+        let (control, supervisor) = RunControl::new("partial".into(), repo.clone(), None, rx);
+        let result = supervisor
+            .run(async move {
+                control.issue_sender().send(output_limit_issue()).unwrap();
+                Ok::<_, String>(PipelineState::Completed)
+            })
+            .await
+            .unwrap();
+        assert_eq!(result, PipelineState::Completed);
+        let details = repo.get_run_llm_issue_details("partial").await.unwrap();
+        assert_eq!(details.len(), 1);
+        let issue: LlmIssue = serde_json::from_str(&details[0]).unwrap();
+        assert_eq!(issue.code, "output_limit");
+        assert_eq!(issue.stage.as_deref(), Some("extractor"));
+        assert_eq!(issue.completion_tokens, Some(4096));
+        assert_eq!(issue.max_tokens, 4096);
+    }
+
+    #[tokio::test]
+    async fn fatal_llm_limit_retains_diagnostics_and_failed_status() {
+        let repo = test_repo().await;
+        repo.create_run("limited", "query", "{}").await.unwrap();
+        let (_tx, rx) = mpsc::channel(16);
+        let (control, supervisor) = RunControl::new("limited".into(), repo.clone(), None, rx);
+        let result = supervisor
+            .run(async move {
+                control.issue_sender().send(output_limit_issue()).unwrap();
+                Err::<PipelineState, _>("Token limit reached".to_string())
+            })
+            .await;
+        assert!(result.is_err());
+        repo.create_run_log(
+            "limited",
+            "ERROR",
+            Some("other"),
+            "unrelated error",
+            Some("not JSON"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            repo.get_run_llm_issue_details("limited")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            repo.get_run("limited").await.unwrap().unwrap().status,
+            "failed"
+        );
     }
 
     async fn wait_status(repo: &Repository, id: &str, expected: &str) {
@@ -551,7 +875,7 @@ mod tests {
             let (_tx, task) = spawn_pipeline(mode, config, repo.clone());
             let _ = timeout(Duration::from_secs(2), task)
                 .await
-                .unwrap()
+                .unwrap_or_else(|_| panic!("{mode}: failed provider setup did not finish"))
                 .unwrap();
             let run = repo.get_run(mode).await.unwrap().unwrap();
             assert_eq!(

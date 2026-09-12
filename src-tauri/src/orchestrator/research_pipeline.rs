@@ -85,7 +85,7 @@ impl ResearchPipeline {
         self.log("INFO", "research", "Starting agentic research...").await;
 
         // LLM is mandatory for research mode.
-        let llm = match LlmManager::from_config(self.config.llm.clone()) {
+        let llm = match LlmManager::from_config_with_diagnostics(self.config.llm.clone(), self.control.issue_sender()) {
             Ok(m) => m,
             Err(e) => {
                 let msg = format!("LLM not configured: {e}");

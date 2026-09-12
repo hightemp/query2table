@@ -14,6 +14,7 @@ use crate::orchestrator::image_pipeline::ImagePipeline;
 use crate::orchestrator::link_pipeline::LinkPipeline;
 use crate::orchestrator::research_pipeline::ResearchPipeline;
 use crate::orchestrator::events::EventPublisher;
+use crate::orchestrator::events::LlmIssueEvent;
 use crate::utils::id::new_id;
 
 /// Holds senders for controlling active pipelines.
@@ -301,6 +302,15 @@ pub async fn get_run_logs(
         role: l.role,
         message: l.message,
         created_at: l.created_at,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn get_run_issues(state: State<'_, AppState>, run_id: String) -> Result<Vec<LlmIssueEvent>, String> {
+    let repo = Repository::new(state.db.pool().clone());
+    let details = repo.get_run_llm_issue_details(&run_id).await.map_err(|e| e.to_string())?;
+    Ok(details.into_iter().filter_map(|detail| {
+        serde_json::from_str(&detail).ok().map(|issue| LlmIssueEvent { run_id: run_id.clone(), issue })
     }).collect())
 }
 

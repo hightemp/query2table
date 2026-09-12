@@ -11,6 +11,7 @@ import type {
 	LogEntryEvent,
 	SchemaProposedEvent,
 	RunErrorEvent,
+	LlmIssueEvent,
 	ImageResult,
 	ImageAddedEvent,
 	LinkResult,
@@ -126,6 +127,14 @@ export function onSchemaProposed(cb: (e: SchemaProposedEvent) => void): Promise<
 
 export function onRunError(cb: (e: RunErrorEvent) => void): Promise<UnlistenFn> {
 	return listen<RunErrorEvent>('run:error', (event) => cb(event.payload));
+}
+
+export function onLlmIssue(cb: (e: LlmIssueEvent) => void): Promise<UnlistenFn> {
+	return listen<LlmIssueEvent>('run:llm_issue', (event) => cb(event.payload));
+}
+
+export async function getRunIssues(runId: string): Promise<LlmIssueEvent[]> {
+	return invoke('get_run_issues', { runId });
 }
 
 // --- History data fetching ---

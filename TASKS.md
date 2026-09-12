@@ -39,6 +39,16 @@ Root cause verified: QueryExpander exhausted all 4096 output tokens on DeepSeek 
 
 Verification: `cargo test --locked` — 223 passed, 4 live tests ignored by default; `npm test` — 35 passed; `npm run check` — 0 errors (4 existing warnings); `npm run build`, `cargo build --locked`, and `git diff --check` — passed. Regression tests cover reasoning-only/truncated output, active-request cancellation in every mode, pause/resume without duplicate requests, paused schema review, failed status persistence, registry mutex release, startup event races, and visible control errors. The explicitly executed `live_ollama_json` test ran the original Russian query with deepseek-v4.1-flash through interpretation, schema planning, search planning, and expansion in 8.4 seconds: 4 columns, 13 planned queries, 39 expansions. It did not execute the later web-search/fetch/extraction stages. Credentials were supplied in memory and were not recorded in source or diagnostic output.
 
+### Reasoning effort and actionable errors
+
+- [x] Expose configurable LLM thinking/reasoning effort, preserving safe Auto defaults and explaining provider/model compatibility.
+- [x] Show distinct output/context/account/rate limits with provider, model, stage, known token usage, retry status, and corrective actions; retain nonfatal LLM issues and history diagnostics.
+- [x] Replace opaque user-facing errors with readable explanations and optional technical details; verify settings, provider payloads, issue delivery/persistence, and frontend behavior.
+
+Implemented: `llm_reasoning_effort` supports Auto, Provider default, Off, On, Low, Medium, High, and Max. Provider adapters send their native parameters and report unsupported modes rather than silently reducing an explicit choice. Typed diagnostics retain provider/model/stage, known token usage, requested output cap, retry attempts and scheduling. Output/context/account/rate limits, authentication/access, missing models, unsupported settings, timeouts, and invalid/empty responses have distinct UI explanations and actions. Issues persist even for skipped pages and can be reviewed in history; technical details are collapsible. Settings, catalog, startup/control, history, export, and research errors use the shared readable presentation. Ordered diagnostic/status persistence is polled alongside work to avoid a deadlock when an in-flight database operation retains the only connection.
+
+Verification: `cargo test --locked` — 242 passed, 5 live tests ignored by default; `npm test` — 65 passed; `npm run check` — 0 errors (4 existing warnings); `npm run build`, `cargo build --locked`, and `git diff --check` — passed. HTTP tests cover all eight effort settings across three provider protocols, model compatibility, permanent/transient errors, output/reasoning usage, setup and parsing diagnostics, and credential redaction. Integration tests cover persisted nonfatal issues and responsive controls during database contention. An explicitly executed live Ollama test with deepseek-v4.1-flash, reasoning On, and a 64-token cap returned `output_limit` with model/stage/cap metadata after one attempt; the exhausted output allowance was not retried. Credentials were used only in memory.
+
 ### Application branding (2026-09-12)
 
 - [x] Create a new Query2Table logo and save the canonical asset in `images/query2table-logo.png`.
@@ -941,6 +951,7 @@ fn should_stop(&self, state: &RunState) -> StopReason {
 | `ollama_cloud_model` | string | Ollama Cloud model (default: gpt-oss:120b) |
 | `openai_model` | string | Required model ID or alias served by the OpenAI-compatible endpoint |
 | `openai_json_mode` | bool | Send response_format for JSON requests (default: true); disable for servers without support |
+| `llm_reasoning_effort` | enum | auto (safe default), default (provider default), off, on, low, medium, high, max; model/provider support varies |
 | `model_query_interpreter` | string? | Override model for QueryInterpreter |
 | `model_schema_planner` | string? | Override model for SchemaPlanner |
 | `model_search_planner` | string? | Override model for SearchPlanner |

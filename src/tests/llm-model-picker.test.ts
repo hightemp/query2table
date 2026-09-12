@@ -62,7 +62,7 @@ describe('LLM model picker', () => {
 	it('shows failures and empty catalogs and lets the user retry', async () => {
 		listModels.mockRejectedValueOnce('HTTP 503').mockResolvedValueOnce([]);
 		render(LlmModelPicker, props);
-		await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('HTTP 503'));
+		await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('The service could not complete the request'));
 		expect(screen.getByRole('combobox')).toHaveValue('saved-model');
 		await fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
 		await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('The server returned no models'));
@@ -101,6 +101,6 @@ describe('LLM model picker', () => {
 		expect(props.onchange).toHaveBeenCalledExactlyOnceWith('openai/gpt-test');
 		listRouterModels.mockRejectedValueOnce('HTTP 503');
 		await fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-		await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('HTTP 503'));
+		await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('The service could not complete the request'));
 	});
 });

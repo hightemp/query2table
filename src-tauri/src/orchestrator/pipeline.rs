@@ -208,10 +208,10 @@ impl Pipeline {
     async fn run_inner(mut self) -> Result<PipelineState, PipelineError> {
         // Initialize providers (use overrides if set, otherwise create from config)
         let llm = if let Some(llm) = self.llm_override.take() {
-            llm
+            Arc::new(llm.as_ref().clone().with_diagnostics(self.control.issue_sender()))
         } else {
             Arc::new(
-                LlmManager::from_config(self.config.llm.clone())
+                LlmManager::from_config_with_diagnostics(self.config.llm.clone(), self.control.issue_sender())
                     .map_err(|e| PipelineError::Config(format!("LLM: {e}")))?
             )
         };

@@ -56,11 +56,15 @@ Rules:
         messages: Vec<Message>,
     ) -> Result<(AgentAction, u32, u32), String> {
         let response = llm
-            .complete(messages, true)
+            .complete_for_stage("research", messages, true)
             .await
             .map_err(|e| format!("LLM error: {e}"))?;
 
-        let action = Self::parse_action(&response.content)?;
+        let action = Self::parse_action(&response.content).map_err(|_| {
+            let message = "The model response did not contain a valid research action".to_string();
+            llm.report_invalid_response("research", &message, &response);
+            message
+        })?;
         Ok((action, response.prompt_tokens, response.completion_tokens))
     }
 

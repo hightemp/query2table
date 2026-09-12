@@ -2,6 +2,8 @@
 	import { save } from '@tauri-apps/plugin-dialog';
 	import { DownloadIcon, XIcon } from '@lucide/svelte';
 	import { exportRun } from '$lib/api/tauri';
+	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
+	import { errorText } from '$lib/utils/errors';
 
 	interface Props {
 		runId: string;
@@ -27,20 +29,18 @@
 
 	async function handleExport() {
 		error = '';
-		const opt = formatOptions.find((o) => o.value === format)!;
-		const filePath = await save({
-			defaultPath: `query2table-export.${opt.ext}`,
-			filters: [{ name: opt.label, extensions: [opt.ext] }],
-		});
-
-		if (!filePath) return; // User cancelled
-
 		exporting = true;
 		try {
+			const opt = formatOptions.find((o) => o.value === format)!;
+			const filePath = await save({
+				defaultPath: `query2table-export.${opt.ext}`,
+				filters: [{ name: opt.label, extensions: [opt.ext] }],
+			});
+			if (!filePath) return;
 			await exportRun(runId, format, filePath);
 			onclose();
 		} catch (e) {
-			error = String(e);
+			error = errorText(e);
 		} finally {
 			exporting = false;
 		}
@@ -73,7 +73,7 @@
 			</div>
 
 			{#if error}
-				<p class="error-msg">{error}</p>
+				<ErrorNotice {error} context="export" />
 			{/if}
 		</div>
 
@@ -103,6 +103,8 @@
 		border-radius: 12px;
 		width: 420px;
 		max-width: 90vw;
+		max-height: 90vh;
+		overflow-y: auto;
 		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 	}
 
@@ -187,12 +189,6 @@
 	.format-desc {
 		font-size: 0.8rem;
 		color: var(--color-surface-600-400);
-	}
-
-	.error-msg {
-		color: var(--color-error-500);
-		font-size: 0.85rem;
-		margin-top: 12px;
 	}
 
 	.dialog-footer {

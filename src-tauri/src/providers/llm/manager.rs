@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::info;
+use tokio::sync::mpsc::UnboundedSender;
+use tracing::{info, warn};
 
 use super::ollama::OllamaProvider;
 use super::openai_compatible::OpenAiCompatibleProvider;
@@ -34,6 +35,7 @@ pub struct LlmConfig {
     pub openai_json_mode: bool,
     pub temperature: f32,
     pub max_tokens: u32,
+    pub reasoning_effort: ReasoningEffort,
 }
 
 impl Default for LlmConfig {
@@ -53,17 +55,53 @@ impl Default for LlmConfig {
             openai_json_mode: true,
             temperature: 0.2,
             max_tokens: 4096,
+            reasoning_effort: ReasoningEffort::Auto,
         }
     }
 }
 
 /// Manages LLM providers and routes requests to the configured backend.
+#[derive(Clone)]
 pub struct LlmManager {
     provider: Arc<dyn LlmProvider>,
     config: LlmConfig,
+    diagnostics: Option<UnboundedSender<LlmIssue>>,
 }
 
 impl LlmManager {
+    pub fn from_config_with_diagnostics(
+        config: LlmConfig,
+        sender: UnboundedSender<LlmIssue>,
+    ) -> Result<Self, LlmError> {
+        match Self::from_config(config.clone()) {
+            Ok(manager) => Ok(manager.with_diagnostics(sender)),
+            Err(error) => {
+                let (provider, model) = match config.backend {
+                    LlmBackend::OpenRouter => ("openrouter", &config.openrouter_model),
+                    LlmBackend::Ollama => ("ollama", &config.ollama_model),
+                    LlmBackend::OllamaCloud => ("ollama_cloud", &config.ollama_cloud_model),
+                    LlmBackend::OpenAiCompatible => ("openai_compatible", &config.openai_model),
+                };
+                let _ = sender.send(LlmIssue {
+                    code: error.code().into(),
+                    provider: provider.into(),
+                    model: safe_diagnostic_text(&config, model, 200),
+                    stage: Some("setup".into()),
+                    message: safe_diagnostic_text(&config, &error.to_string(), 1200),
+                    max_tokens: config.max_tokens,
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    reasoning_tokens: None,
+                    retry_after_ms: None,
+                    attempt: 1,
+                    max_attempts: 1,
+                    will_retry: false,
+                });
+                Err(error)
+            }
+        }
+    }
+
     /// Create a new LLM manager from configuration.
     pub fn from_config(config: LlmConfig) -> Result<Self, LlmError> {
         let provider: Arc<dyn LlmProvider> = match config.backend {
@@ -94,14 +132,77 @@ impl LlmManager {
                 provider.provider_name()
             )));
         }
+        if matches!(config.backend, LlmBackend::Ollama | LlmBackend::OllamaCloud) {
+            super::ollama::validate_reasoning(model, config.reasoning_effort)?;
+        }
         info!(backend = ?config.backend, "LLM manager initialized");
 
-        Ok(Self { provider, config })
+        Ok(Self {
+            provider,
+            config,
+            diagnostics: None,
+        })
     }
 
     /// Send a chat completion using the configured model and settings.
     pub async fn complete(
         &self,
+        messages: Vec<Message>,
+        json_mode: bool,
+    ) -> Result<CompletionResponse, LlmError> {
+        self.complete_with_stage(None, messages, json_mode).await
+    }
+
+    /// Attach a run-scoped diagnostic sink. The manager never owns run/UI state.
+    pub fn with_diagnostics(mut self, sender: UnboundedSender<LlmIssue>) -> Self {
+        self.diagnostics = Some(sender);
+        self
+    }
+
+    /// Report a role's parse/shape failure without moving its fallback policy
+    /// into the transport client. Callers must not include raw model content.
+    pub fn report_invalid_response(
+        &self,
+        stage: &str,
+        message: &str,
+        response: &CompletionResponse,
+    ) {
+        let issue = LlmIssue {
+            code: "invalid_response".into(),
+            provider: self.safe_diagnostic_text(self.provider_name(), 64),
+            model: self.safe_diagnostic_text(&response.model, 200),
+            stage: Some(self.safe_diagnostic_text(stage, 80)),
+            message: self.safe_diagnostic_text(message, 1200),
+            max_tokens: self.config.max_tokens,
+            prompt_tokens: (response.prompt_tokens > 0).then_some(response.prompt_tokens),
+            completion_tokens: (response.completion_tokens > 0)
+                .then_some(response.completion_tokens),
+            reasoning_tokens: None,
+            retry_after_ms: None,
+            attempt: 1,
+            max_attempts: 1,
+            will_retry: false,
+        };
+        warn!(provider = %issue.provider, model = %issue.model, stage = ?issue.stage,
+            "[FIX:llm-diagnostics] Role could not parse the model response");
+        if let Some(sender) = &self.diagnostics {
+            let _ = sender.send(issue);
+        }
+    }
+
+    pub async fn complete_for_stage(
+        &self,
+        stage: &str,
+        messages: Vec<Message>,
+        json_mode: bool,
+    ) -> Result<CompletionResponse, LlmError> {
+        self.complete_with_stage(Some(stage), messages, json_mode)
+            .await
+    }
+
+    async fn complete_with_stage(
+        &self,
+        stage: Option<&str>,
         messages: Vec<Message>,
         json_mode: bool,
     ) -> Result<CompletionResponse, LlmError> {
@@ -118,9 +219,10 @@ impl LlmManager {
             temperature: self.config.temperature,
             max_tokens: self.config.max_tokens,
             json_mode,
+            reasoning_effort: self.config.reasoning_effort,
         };
 
-        self.complete_with_retry(request).await
+        self.complete_with_retry(request, stage).await
     }
 
     /// Send a chat completion with a specific model override.
@@ -136,15 +238,17 @@ impl LlmManager {
             temperature: self.config.temperature,
             max_tokens: self.config.max_tokens,
             json_mode,
+            reasoning_effort: self.config.reasoning_effort,
         };
 
-        self.complete_with_retry(request).await
+        self.complete_with_retry(request, None).await
     }
 
     /// Internal: execute a completion request with retry on transient errors.
     async fn complete_with_retry(
         &self,
         request: CompletionRequest,
+        stage: Option<&str>,
     ) -> Result<CompletionResponse, LlmError> {
         let config = RetryConfig {
             max_retries: 3,
@@ -152,42 +256,51 @@ impl LlmManager {
             max_delay: Duration::from_secs(60),
             multiplier: 2.0,
         };
-
-        let provider = self.provider.clone();
-
+        let max_attempts = config.max_retries + 1;
+        let mut attempt = 0;
         retry_with_backoff(&config, "llm_complete", || {
-            let req = CompletionRequest {
-                messages: request.messages.clone(),
-                model: request.model.clone(),
-                temperature: request.temperature,
-                max_tokens: request.max_tokens,
-                json_mode: request.json_mode,
-            };
-            let provider = provider.clone();
+            attempt += 1;
+            let current_attempt = attempt;
+            let req = request.clone();
+            let request = &request;
             async move {
-                match provider.chat_completion(req).await {
+                match self.provider.chat_completion(req).await {
                     Ok(resp) => (Ok(resp), RetryAction::Success, None),
-                    Err(LlmError::RateLimited { retry_after_ms }) => {
-                        let hint = Duration::from_millis(retry_after_ms);
-                        (
-                            Err(LlmError::RateLimited { retry_after_ms }),
-                            RetryAction::Retry,
-                            Some(hint),
-                        )
+                    Err(error) => {
+                        let will_retry = error.retryable() && current_attempt < max_attempts;
+                        let retry_after_ms = error.retry_after_ms().map(|ms| ms.min(60_000));
+                        let usage = error.usage();
+                        let issue = LlmIssue {
+                            code: error.code().into(),
+                            provider: self.safe_diagnostic_text(self.provider_name(), 64),
+                            model: self.safe_diagnostic_text(&request.model, 200),
+                            stage: stage.map(|s| self.safe_diagnostic_text(s, 80)),
+                            message: self.safe_diagnostic_text(&error.to_string(), 1200),
+                            max_tokens: request.max_tokens,
+                            prompt_tokens: usage.prompt_tokens,
+                            completion_tokens: usage.completion_tokens,
+                            reasoning_tokens: usage.reasoning_tokens,
+                            retry_after_ms,
+                            attempt: current_attempt,
+                            max_attempts,
+                            will_retry,
+                        };
+                        warn!(code = %issue.code, provider = %issue.provider, model = %issue.model,
+                            stage = ?issue.stage, attempt = current_attempt, max_attempts, will_retry,
+                            "[FIX:llm-diagnostics] Provider attempt failed");
+                        if let Some(sender) = &self.diagnostics {
+                            let _ = sender.send(issue);
+                        }
+                        let action = if will_retry { RetryAction::Retry } else { RetryAction::Fail };
+                        (Err(error), action, retry_after_ms.map(Duration::from_millis))
                     }
-                    Err(LlmError::ConnectionError(msg)) => (
-                        Err(LlmError::ConnectionError(msg)),
-                        RetryAction::Retry,
-                        None,
-                    ),
-                    Err(LlmError::RequestFailed(msg)) => {
-                        (Err(LlmError::RequestFailed(msg)), RetryAction::Retry, None)
-                    }
-                    Err(e) => (Err(e), RetryAction::Fail, None),
                 }
             }
-        })
-        .await
+        }).await
+    }
+
+    fn safe_diagnostic_text(&self, value: &str, max_chars: usize) -> String {
+        safe_diagnostic_text(&self.config, value, max_chars)
     }
 
     /// Check if the configured provider is healthy.
@@ -207,7 +320,11 @@ impl LlmManager {
 
     /// Create an LlmManager with a custom provider (for testing).
     pub fn with_provider(provider: Arc<dyn LlmProvider>, config: LlmConfig) -> Self {
-        Self { provider, config }
+        Self {
+            provider,
+            config,
+            diagnostics: None,
+        }
     }
 
     /// Build LlmConfig from settings stored in the database.
@@ -264,12 +381,34 @@ impl LlmManager {
                 .get("llm_temperature")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0.2),
+            reasoning_effort: settings
+                .get("llm_reasoning_effort")
+                .map(|value| ReasoningEffort::from_setting(value))
+                .unwrap_or_default(),
             max_tokens: settings
                 .get("llm_max_tokens")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(4096),
         }
     }
+}
+
+fn safe_diagnostic_text(config: &LlmConfig, value: &str, max_chars: usize) -> String {
+    let mut sanitized = value.to_string();
+    for secret in [
+        &config.openrouter_api_key,
+        &config.ollama_cloud_api_key,
+        &config.openai_api_key,
+    ] {
+        if !secret.trim().is_empty() {
+            sanitized = sanitized.replace(secret.trim(), "[REDACTED]");
+        }
+    }
+    sanitized
+        .chars()
+        .filter(|ch| !ch.is_control() || *ch == '\n')
+        .take(max_chars)
+        .collect()
 }
 
 #[cfg(test)]

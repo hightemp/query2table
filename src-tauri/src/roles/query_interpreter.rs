@@ -45,13 +45,14 @@ impl QueryInterpreter {
             )),
         ];
 
-        let response = llm.complete(messages, true).await?;
+        let response = llm.complete_for_stage("interpreter", messages, true).await?;
 
         let mut intent: QueryIntent = serde_json::from_str(&response.content)
-            .map_err(|e| LlmError::ParseError(format!(
-                "Failed to parse query intent: {}. Response: {}",
-                e, response.content
-            )))?;
+            .map_err(|e| {
+                let message = format!("Failed to parse query intent: {e}");
+                llm.report_invalid_response("interpreter", &message, &response);
+                LlmError::ParseError(message)
+            })?;
 
         intent.original_query = query.to_string();
 

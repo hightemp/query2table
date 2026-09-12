@@ -1,6 +1,14 @@
-use serde::Serialize;
+use crate::providers::llm::types::LlmIssue;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tracing::debug;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmIssueEvent {
+    pub run_id: String,
+    #[serde(flatten)]
+    pub issue: LlmIssue,
+}
 
 /// Publishes pipeline events to the frontend via Tauri event system.
 #[derive(Clone)]
@@ -12,6 +20,16 @@ pub struct EventPublisher {
 impl EventPublisher {
     pub fn new(app: AppHandle, run_id: String) -> Self {
         Self { app, run_id }
+    }
+
+    pub fn emit_llm_issue(&self, issue: &LlmIssue) {
+        let payload = LlmIssueEvent {
+            run_id: self.run_id.clone(),
+            issue: issue.clone(),
+        };
+        if let Err(e) = self.app.emit("run:llm_issue", &payload) {
+            tracing::error!(error = %e, "Failed to emit LLM issue");
+        }
     }
 
     pub fn emit_status_changed(&self, status: &str) {
@@ -26,16 +44,26 @@ impl EventPublisher {
 
         // Send desktop notification on terminal states
         match status {
-            "completed" => self.send_notification("Research Complete", "Your query has finished and results are ready."),
-            "failed" => self.send_notification("Research Failed", "Your query encountered an error."),
-            "cancelled" => self.send_notification("Research Cancelled", "Your query was cancelled."),
+            "completed" => self.send_notification(
+                "Research Complete",
+                "Your query has finished and results are ready.",
+            ),
+            "failed" => {
+                self.send_notification("Research Failed", "Your query encountered an error.")
+            }
+            "cancelled" => {
+                self.send_notification("Research Cancelled", "Your query was cancelled.")
+            }
             _ => {}
         }
     }
 
     fn send_notification(&self, title: &str, body: &str) {
         use tauri_plugin_notification::NotificationExt;
-        if let Err(e) = self.app.notification().builder()
+        if let Err(e) = self
+            .app
+            .notification()
+            .builder()
             .title(title)
             .body(body)
             .show()
@@ -100,7 +128,17 @@ impl EventPublisher {
         }
     }
 
-    pub fn emit_image_added(&self, image_id: &str, image_url: &str, thumbnail_url: &str, title: &str, source_url: &str, width: Option<u32>, height: Option<u32>, relevance_score: Option<f64>) {
+    pub fn emit_image_added(
+        &self,
+        image_id: &str,
+        image_url: &str,
+        thumbnail_url: &str,
+        title: &str,
+        source_url: &str,
+        width: Option<u32>,
+        height: Option<u32>,
+        relevance_score: Option<f64>,
+    ) {
         let payload = ImageAddedEvent {
             run_id: self.run_id.clone(),
             image_id: image_id.to_string(),
@@ -118,7 +156,14 @@ impl EventPublisher {
         debug!(run_id = %self.run_id, image_id, "Emitted image_added");
     }
 
-    pub fn emit_link_added(&self, link_id: &str, url: &str, title: &str, description: &str, relevance_score: Option<f64>) {
+    pub fn emit_link_added(
+        &self,
+        link_id: &str,
+        url: &str,
+        title: &str,
+        description: &str,
+        relevance_score: Option<f64>,
+    ) {
         let payload = LinkAddedEvent {
             run_id: self.run_id.clone(),
             link_id: link_id.to_string(),
@@ -134,7 +179,14 @@ impl EventPublisher {
     }
 
     /// Emit a single agent step (search / fetch / think) in research mode.
-    pub fn emit_research_step(&self, step_id: &str, step_index: u32, step_type: &str, content: &str, url: Option<&str>) {
+    pub fn emit_research_step(
+        &self,
+        step_id: &str,
+        step_index: u32,
+        step_type: &str,
+        content: &str,
+        url: Option<&str>,
+    ) {
         let payload = ResearchStepEvent {
             run_id: self.run_id.clone(),
             step_id: step_id.to_string(),
@@ -257,6 +309,20 @@ pub struct ResearchAnswerEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn llm_issue_event_keeps_flat_frontend_contract() {
+        let payload = serde_json::json!({
+            "run_id":"run-1", "code":"output_limit", "provider":"ollama_cloud",
+            "model":"test-model", "stage":"query_expander", "message":"Output limit reached",
+            "max_tokens":4096, "prompt_tokens":123, "completion_tokens":4096,
+            "reasoning_tokens":null, "retry_after_ms":null, "attempt":1,
+            "max_attempts":1, "will_retry":false
+        });
+        let event: LlmIssueEvent = serde_json::from_value(payload.clone()).unwrap();
+        assert_eq!(event.issue.code, "output_limit");
+        assert_eq!(serde_json::to_value(event).unwrap(), payload);
+    }
 
     #[test]
     fn test_progress_stats_serialize() {

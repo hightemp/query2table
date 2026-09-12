@@ -2,12 +2,15 @@
 	import { settings } from '$lib/stores/settings';
 	import { onDestroy } from 'svelte';
 	import LlmModelPicker from '$lib/components/settings/LlmModelPicker.svelte';
+	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
+	import { errorText } from '$lib/utils/errors';
 	import type { SettingGroup, SettingDef } from '$lib/types';
 	import { EyeIcon, EyeOffIcon, SaveIcon, TrashIcon, PlusIcon } from '@lucide/svelte';
 
 	let settingsMap: Map<string, string> = $state(new Map());
 	let dirty = $state(new Set<string>());
 	let saving = $state(false);
+	let saveError = $state('');
 	let showPasswords = $state(new Set<string>());
 
 	const unsubscribe = settings.subscribe((v) => {
@@ -44,7 +47,8 @@
 				{ key: 'openai_model', provider: 'openai_compatible', label: 'Model', description: 'Required model ID from your server; use the loaded model name or alias in llama.cpp', type: 'text', placeholder: 'Your loaded model ID' },
 				{ key: 'openai_json_mode', provider: 'openai_compatible', label: 'JSON Mode', description: 'Disable if your server does not support response_format; prompts still request JSON', type: 'select', options: [{ label: 'Enabled', value: 'true' }, { label: 'Disabled', value: 'false' }] },
 				{ key: 'llm_temperature', label: 'Temperature', description: 'LLM temperature (0.0 - 1.0)', type: 'number' },
-				{ key: 'llm_max_tokens', label: 'Max Tokens', description: 'Maximum tokens per LLM request', type: 'number' },
+				{ key: 'llm_reasoning_effort', label: 'Thinking / reasoning effort', description: 'Controls model thinking before its answer; supported levels depend on the provider and model', type: 'select', options: [{ label: 'Auto', value: 'auto' }, { label: 'Provider default', value: 'default' }, { label: 'Off', value: 'off' }, { label: 'On', value: 'on' }, { label: 'Low', value: 'low' }, { label: 'Medium', value: 'medium' }, { label: 'High', value: 'high' }, { label: 'Max', value: 'max' }] },
+				{ key: 'llm_max_tokens', label: 'Max output tokens', description: 'Requested output cap per model call, potentially shared by thinking and the answer. Separate from run cost/time limits.', type: 'number' },
 			]
 		},
 		{
@@ -89,8 +93,15 @@
 	];
 
 	function getValue(key: string): string {
-		return settingsMap.get(key) ?? '';
+		return settingsMap.get(key) ?? (key === 'llm_reasoning_effort' ? 'auto' : '');
 	}
+
+	let activeModel = $derived(settingsMap.get({
+		openrouter: 'openrouter_model', ollama: 'ollama_model',
+		ollama_cloud: 'ollama_cloud_model', openai_compatible: 'openai_model',
+	}[settingsMap.get('llm_provider') || 'openrouter'] ?? 'openrouter_model') ?? '');
+	let isGptOss = $derived(['ollama', 'ollama_cloud'].includes(settingsMap.get('llm_provider') ?? '') && /(?:^|\/)gpt-oss(?:[:\-]|$)/i.test(activeModel));
+	let invalidReasoning = $derived(isGptOss && ['off', 'max'].includes(getValue('llm_reasoning_effort')));
 
 	function visibleSettings(group: SettingGroup): SettingDef[] {
 		const provider = settingsMap.get('llm_provider') || 'openrouter';
@@ -98,6 +109,7 @@
 	}
 
 	function handleChange(key: string, value: string) {
+		saveError = '';
 		settingsMap.set(key, value);
 		settingsMap = new Map(settingsMap);
 		dirty.add(key);
@@ -167,7 +179,9 @@
 	}
 
 	async function saveAll() {
+		if (invalidReasoning) return;
 		saving = true;
+		saveError = '';
 		try {
 			// Snapshot values before saving to avoid subscription race
 			const toSave = new Map<string, string>();
@@ -182,7 +196,7 @@
 			}
 			dirty = new Set();
 		} catch (e) {
-			console.error('Failed to save settings:', e);
+			saveError = errorText(e);
 		} finally {
 			saving = false;
 		}
@@ -196,12 +210,13 @@
 			<p class="subtitle">Configure API keys, models, and execution parameters.</p>
 		</div>
 		{#if dirty.size > 0}
-			<button class="btn-save" onclick={saveAll} disabled={saving}>
+			<button class="btn-save" onclick={saveAll} disabled={saving || invalidReasoning}>
 				<SaveIcon size={16} />
 				{saving ? 'Saving...' : `Save (${dirty.size})`}
 			</button>
 		{/if}
 	</div>
+	{#if saveError}<ErrorNotice error={saveError} context="settings" />{/if}
 
 	{#each groups as group}
 		<section class="settings-section">
@@ -240,9 +255,14 @@
 								onchange={(e) => handleChange(setting.key, (e.target as HTMLSelectElement).value)}
 							>
 								{#each setting.options ?? [] as opt}
-									<option value={opt.value}>{opt.label}</option>
+									<option value={opt.value} disabled={setting.key === 'llm_reasoning_effort' && isGptOss && ['off', 'max'].includes(opt.value)}>{opt.label}</option>
 								{/each}
 							</select>
+							{#if setting.key === 'llm_reasoning_effort'}
+								<p class="reasoning-help">Auto disables thinking for structured Ollama requests (Low for GPT-OSS) and uses the provider default elsewhere. Provider default leaves thinking unchanged. Other choices request that level explicitly. Changes apply after Save and affect new runs.</p>
+								{#if isGptOss}<p class="reasoning-help">GPT-OSS cannot use Off or Max. Choose Low, Medium, or High; Auto uses Low with Ollama.</p>{/if}
+								{#if invalidReasoning}<ErrorNotice error="GPT-OSS does not support the selected reasoning effort. Choose Auto, Provider default, On, Low, Medium, or High." code="unsupported_setting" context="settings" />{/if}
+							{/if}
 						{:else if setting.type === 'password'}
 							<div class="password-field">
 								<input
@@ -340,6 +360,7 @@
 </div>
 
 <style>
+	.reasoning-help { font-size: 0.8rem; line-height: 1.45; color: var(--color-surface-600-400); margin: 6px 0 0; }
 	.settings-page {
 		max-width: 800px;
 		margin: 0 auto;

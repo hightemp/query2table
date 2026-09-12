@@ -73,10 +73,13 @@ impl ImageRanker {
                 Message::user(prompt),
             ];
 
-            let response = llm.complete(messages, true).await
+            let response = llm.complete_for_stage("image_ranker", messages, true).await
                 .map_err(|e| format!("LLM ranking failed: {e}"))?;
 
-            let scores = Self::parse_scores(&response.content, chunk.len());
+            let scores = Self::parse_scores(&response.content, chunk.len()).unwrap_or_else(|e| {
+                llm.report_invalid_response("image_ranker", &format!("Invalid relevance scores: {e}. This image batch was skipped."), &response);
+                vec![0.0; chunk.len()]
+            });
 
             debug!(
                 query = %query,
@@ -108,8 +111,8 @@ impl ImageRanker {
     }
 
     /// Parse a JSON array of f64 scores from LLM response.
-    /// On failure, assigns 0.0 (reject) instead of passing everything through.
-    fn parse_scores(response: &str, expected_count: usize) -> Vec<f64> {
+    /// Reports invalid JSON so the caller can explain why a batch was rejected.
+    fn parse_scores(response: &str, expected_count: usize) -> Result<Vec<f64>, serde_json::Error> {
         // Try to find a JSON array in the response
         let trimmed = response.trim();
         let json_str = if let Some(start) = trimmed.find('[') {
@@ -122,36 +125,28 @@ impl ImageRanker {
             trimmed
         };
 
-        if let Ok(scores) = serde_json::from_str::<Vec<f64>>(json_str) {
-            if scores.len() == expected_count {
-                return scores.into_iter().map(|s| s.clamp(0.0, 1.0)).collect();
-            }
-            // If count doesn't match exactly but close, try to use what we have
-            if scores.len() >= expected_count {
-                warn!(
-                    expected = expected_count,
-                    got = scores.len(),
-                    "LLM returned more scores than expected, truncating"
-                );
-                return scores.into_iter().take(expected_count).map(|s| s.clamp(0.0, 1.0)).collect();
-            }
-            // Fewer scores — pad remainder with 0.0 (reject)
+        let scores = serde_json::from_str::<Vec<f64>>(json_str)?;
+        if scores.len() == expected_count {
+            return Ok(scores.into_iter().map(|s| s.clamp(0.0, 1.0)).collect());
+        }
+        // If count doesn't match exactly but close, try to use what we have
+        if scores.len() >= expected_count {
             warn!(
                 expected = expected_count,
                 got = scores.len(),
-                "LLM returned fewer scores than expected, padding with 0.0"
+                "LLM returned more scores than expected, truncating"
             );
-            let mut padded: Vec<f64> = scores.into_iter().map(|s| s.clamp(0.0, 1.0)).collect();
-            padded.resize(expected_count, 0.0);
-            return padded;
+            return Ok(scores.into_iter().take(expected_count).map(|s| s.clamp(0.0, 1.0)).collect());
         }
-
-        // Total parse failure — reject all rather than accept all
+        // Fewer scores — pad remainder with 0.0 (reject)
         warn!(
-            response = %trimmed.chars().take(100).collect::<String>(),
-            "Failed to parse LLM ranking scores, rejecting batch"
+            expected = expected_count,
+            got = scores.len(),
+            "LLM returned fewer scores than expected, padding with 0.0"
         );
-        vec![0.0; expected_count]
+        let mut padded: Vec<f64> = scores.into_iter().map(|s| s.clamp(0.0, 1.0)).collect();
+        padded.resize(expected_count, 0.0);
+        Ok(padded)
     }
 }
 
@@ -161,37 +156,36 @@ mod tests {
 
     #[test]
     fn test_parse_scores_valid() {
-        let scores = ImageRanker::parse_scores("[0.9, 0.7, 0.3]", 3);
+        let scores = ImageRanker::parse_scores("[0.9, 0.7, 0.3]", 3).unwrap();
         assert_eq!(scores, vec![0.9, 0.7, 0.3]);
     }
 
     #[test]
     fn test_parse_scores_with_text() {
-        let scores = ImageRanker::parse_scores("Here are the scores: [0.8, 0.6, 0.4]", 3);
+        let scores = ImageRanker::parse_scores("Here are the scores: [0.8, 0.6, 0.4]", 3).unwrap();
         assert_eq!(scores, vec![0.8, 0.6, 0.4]);
     }
 
     #[test]
     fn test_parse_scores_fallback_rejects_all() {
-        let scores = ImageRanker::parse_scores("invalid response", 3);
-        assert_eq!(scores, vec![0.0, 0.0, 0.0]);
+        assert!(ImageRanker::parse_scores("invalid response", 3).is_err());
     }
 
     #[test]
     fn test_parse_scores_fewer_pads_with_zero() {
-        let scores = ImageRanker::parse_scores("[0.9, 0.7]", 3);
+        let scores = ImageRanker::parse_scores("[0.9, 0.7]", 3).unwrap();
         assert_eq!(scores, vec![0.9, 0.7, 0.0]);
     }
 
     #[test]
     fn test_parse_scores_more_truncates() {
-        let scores = ImageRanker::parse_scores("[0.9, 0.7, 0.3, 0.5]", 3);
+        let scores = ImageRanker::parse_scores("[0.9, 0.7, 0.3, 0.5]", 3).unwrap();
         assert_eq!(scores, vec![0.9, 0.7, 0.3]);
     }
 
     #[test]
     fn test_parse_scores_clamp() {
-        let scores = ImageRanker::parse_scores("[1.5, -0.3, 0.7]", 3);
+        let scores = ImageRanker::parse_scores("[1.5, -0.3, 0.7]", 3).unwrap();
         assert_eq!(scores, vec![1.0, 0.0, 0.7]);
     }
 }

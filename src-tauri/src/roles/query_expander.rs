@@ -50,13 +50,14 @@ impl QueryExpander {
             )),
         ];
 
-        let response = llm.complete(messages, true).await?;
+        let response = llm.complete_for_stage("query_expander", messages, true).await?;
 
         let expanded: ExpandedQueries = serde_json::from_str(&response.content)
-            .map_err(|e| LlmError::ParseError(format!(
-                "Failed to parse expanded queries: {}. Response: {}",
-                e, response.content
-            )))?;
+            .map_err(|e| {
+                let message = format!("Failed to parse expanded queries: {e}");
+                llm.report_invalid_response("query_expander", &message, &response);
+                LlmError::ParseError(message)
+            })?;
 
         debug!(expanded_count = expanded.queries.len(), "Queries expanded");
 

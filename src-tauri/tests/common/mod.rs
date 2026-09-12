@@ -139,15 +139,7 @@ impl LlmProvider for MockLlmProvider {
         self.call_count.fetch_add(1, Ordering::Relaxed);
 
         if let Some(ref err) = self.error {
-            return Err(match err {
-                LlmError::RequestFailed(msg) => LlmError::RequestFailed(msg.clone()),
-                LlmError::AuthError => LlmError::AuthError,
-                LlmError::RateLimited { retry_after_ms } => LlmError::RateLimited { retry_after_ms: *retry_after_ms },
-                LlmError::NotConfigured(msg) => LlmError::NotConfigured(msg.clone()),
-                LlmError::ConnectionError(msg) => LlmError::ConnectionError(msg.clone()),
-                LlmError::ParseError(msg) => LlmError::ParseError(msg.clone()),
-                LlmError::ModelNotFound(msg) => LlmError::ModelNotFound(msg.clone()),
-            });
+            return Err(err.clone());
         }
 
         let role = self.detect_role(&request);

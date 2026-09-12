@@ -488,6 +488,15 @@ impl Repository {
 
     // --- Delete run (cascade) ---
 
+    /// Read only structured LLM diagnostics, independent of the volume of ordinary logs.
+    pub async fn get_run_llm_issue_details(&self, run_id: &str) -> Result<Vec<String>, sqlx::Error> {
+        let mut details = sqlx::query_scalar::<_, String>(
+            "SELECT details FROM run_logs WHERE run_id = ? AND role = 'llm_issue' AND details IS NOT NULL ORDER BY id DESC LIMIT 100"
+        ).bind(run_id).fetch_all(&self.pool).await?;
+        details.reverse();
+        Ok(details)
+    }
+
     pub async fn delete_run(&self, run_id: &str) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM runs WHERE id = ?")
             .bind(run_id)

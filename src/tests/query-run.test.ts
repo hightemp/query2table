@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import QueryPage from '../routes/+page.svelte';
 import { resetRun, runState, startNewRun } from '$lib/stores/run';
+import { llmIssue } from './fixtures/llm-issue';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
@@ -38,9 +39,33 @@ describe('query page run feedback', () => {
 		render(QueryPage);
 		vi.mocked(invoke).mockRejectedValueOnce('Run is not active');
 		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-		expect(await screen.findByRole('alert')).toHaveTextContent('Could not cancel: Run is not active');
+		expect(await screen.findByRole('alert')).toHaveTextContent('This run can no longer receive commands');
+		expect(screen.getByText('Could not cancel: Run is not active')).not.toBeVisible();
 		expect(get(runState).status).toBe('running');
 		expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+	});
+
+	it('shows a nonfatal model limit and preserves it in a completed run until reset', async () => {
+		await startNewRun('Find robot channels');
+		status('running');
+		render(QueryPage);
+		callbacks.get('run:llm_issue')?.({ payload: llmIssue });
+		expect(await screen.findByRole('region', { name: 'Model request issues' })).toHaveTextContent('The model reached its output limit');
+		expect(get(runState).status).toBe('running');
+		status('completed');
+		await waitFor(() => expect(screen.getByRole('region', { name: 'Model request issues' })).toHaveTextContent('The run completed'));
+		await fireEvent.click(screen.getByRole('button', { name: 'New query' }));
+		expect(screen.queryByRole('region', { name: 'Model request issues' })).not.toBeInTheDocument();
+	});
+
+	it('shows query expansion as the active phase when its log arrives', async () => {
+		await startNewRun('Find robot channels');
+		status('running');
+		render(QueryPage);
+		callbacks.get('run:log_entry')?.({ payload: {
+			run_id: 'run-1', level: 'INFO', role: 'query_expander', message: 'Expanding search queries',
+		} });
+		await waitFor(() => expect(screen.getByText('Expanding search queries', { selector: '.phase-label' }).parentElement).toHaveClass('active'));
 	});
 
 	it('shows a failed startup after the query form has been replaced', async () => {

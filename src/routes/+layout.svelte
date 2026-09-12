@@ -9,8 +9,18 @@
 	import { currentTheme, loadTheme } from '$lib/stores/ui';
 	import type { LogEntry } from '$lib/types';
 	import type { Snippet } from 'svelte';
+	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
+	import { errorText } from '$lib/utils/errors';
 
 	let { children }: { children: Snippet } = $props();
+	let settingsError = $state('');
+	let eventError = $state('');
+
+	async function loadSettings() {
+		settingsError = '';
+		try { await settings.load(); }
+		catch (error) { settingsError = errorText(error); }
+	}
 
 	$effect(() => {
 		const theme = $currentTheme;
@@ -22,14 +32,20 @@
 	});
 
 	onMount(() => {
-		settings.load();
+		void loadSettings();
 		loadTheme();
 
 		const unlisteners: (() => void)[] = [];
+		let disposed = false;
+		function registered(unsubscribe: () => void) {
+			if (disposed) unsubscribe();
+			else unlisteners.push(unsubscribe);
+		}
+		function failed(error: unknown) { if (!disposed) eventError = errorText(error); }
 
 		onLogEvent((entry) => {
 			addLog(entry as LogEntry);
-		}).then((fn) => unlisteners.push(fn));
+		}).then(registered).catch(failed);
 
 		onRunLogEntry((e) => {
 			addLog({
@@ -37,9 +53,10 @@
 				level: e.level as 'DEBUG' | 'INFO' | 'WARN' | 'ERROR',
 				message: `[${e.role}] ${e.message}`,
 			});
-		}).then((fn) => unlisteners.push(fn));
+		}).then(registered).catch(failed);
 
 		return () => {
+			disposed = true;
 			for (const fn of unlisteners) fn();
 		};
 	});
@@ -49,6 +66,11 @@
 	<Sidebar />
 	<div class="app-main">
 		<main class="app-content">
+			{#if settingsError}
+				<ErrorNotice error={settingsError} context="settings_load" />
+				<button onclick={loadSettings}>Retry loading settings</button>
+			{/if}
+			{#if eventError}<ErrorNotice error={eventError} />{/if}
 			{@render children()}
 		</main>
 		<LogPanel />

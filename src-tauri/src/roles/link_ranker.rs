@@ -128,11 +128,14 @@ impl LinkRanker {
         ];
 
         let response = llm
-            .complete(messages, true)
+            .complete_for_stage("link_ranker", messages, true)
             .await
             .map_err(|e| format!("LLM scoring failed: {e}"))?;
 
-        let (score, description) = Self::parse_score(&response.content);
+        let (score, description) = Self::parse_score(&response.content).unwrap_or_else(|e| {
+            llm.report_invalid_response("link_ranker", &format!("Invalid relevance score: {e}. The page was skipped."), &response);
+            (0.0, String::new())
+        });
 
         debug!(
             url = %candidate.url,
@@ -145,8 +148,8 @@ impl LinkRanker {
     }
 
     /// Parse a JSON object `{ "relevance": f64, "description": String }` from the LLM response.
-    /// On failure, returns score 0.0 (reject) and an empty description.
-    fn parse_score(response: &str) -> (f64, String) {
+    /// Reports invalid JSON so the caller can explain why the page was rejected.
+    fn parse_score(response: &str) -> Result<(f64, String), serde_json::Error> {
         let trimmed = response.trim();
         let json_str = if let Some(start) = trimmed.find('{') {
             if let Some(end) = trimmed.rfind('}') {
@@ -166,16 +169,8 @@ impl LinkRanker {
             description: String,
         }
 
-        match serde_json::from_str::<ScoreResponse>(json_str) {
-            Ok(parsed) => (parsed.relevance.clamp(0.0, 1.0), parsed.description),
-            Err(_) => {
-                warn!(
-                    response = %trimmed.chars().take(100).collect::<String>(),
-                    "Failed to parse link relevance score, rejecting page"
-                );
-                (0.0, String::new())
-            }
-        }
+        let parsed = serde_json::from_str::<ScoreResponse>(json_str)?;
+        Ok((parsed.relevance.clamp(0.0, 1.0), parsed.description))
     }
 }
 
@@ -185,29 +180,27 @@ mod tests {
 
     #[test]
     fn test_parse_score_valid() {
-        let (score, desc) = LinkRanker::parse_score("{\"relevance\": 0.9, \"description\": \"A great page\"}");
+        let (score, desc) = LinkRanker::parse_score("{\"relevance\": 0.9, \"description\": \"A great page\"}").unwrap();
         assert_eq!(score, 0.9);
         assert_eq!(desc, "A great page");
     }
 
     #[test]
     fn test_parse_score_with_text() {
-        let (score, desc) = LinkRanker::parse_score("Here: {\"relevance\": 0.5, \"description\": \"ok\"}");
+        let (score, desc) = LinkRanker::parse_score("Here: {\"relevance\": 0.5, \"description\": \"ok\"}").unwrap();
         assert_eq!(score, 0.5);
         assert_eq!(desc, "ok");
     }
 
     #[test]
     fn test_parse_score_clamp() {
-        let (score, _) = LinkRanker::parse_score("{\"relevance\": 1.7, \"description\": \"x\"}");
+        let (score, _) = LinkRanker::parse_score("{\"relevance\": 1.7, \"description\": \"x\"}").unwrap();
         assert_eq!(score, 1.0);
     }
 
     #[test]
     fn test_parse_score_invalid_rejects() {
-        let (score, desc) = LinkRanker::parse_score("not json");
-        assert_eq!(score, 0.0);
-        assert_eq!(desc, "");
+        assert!(LinkRanker::parse_score("not json").is_err());
     }
 
     #[test]

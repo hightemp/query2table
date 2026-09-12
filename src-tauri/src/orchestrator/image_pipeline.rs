@@ -79,7 +79,7 @@ impl ImagePipeline {
             SearchManager::from_config(self.config.search.clone())
                 .map_err(|e| format!("Search config: {e}"))?
         );
-        let llm = LlmManager::from_config(self.config.llm.clone()).ok();
+        let llm = LlmManager::from_config_with_diagnostics(self.config.llm.clone(), self.control.issue_sender()).ok();
 
         // Generate search query variations (LLM-based or static fallback)
         let queries = match &llm {
@@ -246,7 +246,7 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
             Message::user(format!("Generate image search queries for: {}", query)),
         ];
 
-        let response = llm.complete(messages, true).await
+        let response = llm.complete_for_stage("image_search_planner", messages, true).await
             .map_err(|e| format!("LLM error: {e}"))?;
 
         #[derive(serde::Deserialize)]
@@ -255,9 +255,14 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
         }
 
         let parsed: QueriesResponse = serde_json::from_str(&response.content)
-            .map_err(|e| format!("Failed to parse LLM response: {e}"))?;
+            .map_err(|e| {
+                let message = format!("Failed to parse search queries: {e}");
+                llm.report_invalid_response("image_search_planner", &message, &response);
+                message
+            })?;
 
         if parsed.queries.is_empty() {
+            llm.report_invalid_response("image_search_planner", "LLM returned an empty query list", &response);
             return Err("LLM returned empty query list".to_string());
         }
 

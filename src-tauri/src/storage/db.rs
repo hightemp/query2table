@@ -284,6 +284,7 @@ impl Database {
             ("openrouter_model", "openai/gpt-4.1-mini"),
             ("llm_temperature", "0.7"),
             ("llm_max_tokens", "4096"),
+            ("llm_reasoning_effort", "auto"),
             ("ollama_url", "http://localhost:11434"),
             ("ollama_model", "llama3"),
             ("ollama_cloud_url", "https://ollama.com"),
@@ -492,6 +493,7 @@ mod tests {
             "theme", "llm_provider", "openrouter_model", "search_provider",
             "target_row_count", "max_budget_usd", "max_duration_seconds",
             "ollama_url", "llm_temperature", "llm_max_tokens", "ollama_model",
+            "llm_reasoning_effort",
             "search_results_per_query", "max_pages_per_query",
         ];
         for key in expected_keys {

@@ -511,6 +511,13 @@ async fn test_extraction_failure_invalid_json() {
     // No rows because extraction always fails
     let rows = repo.get_entity_rows_by_run(&run_id).await.unwrap();
     assert_eq!(rows.len(), 0, "Should have 0 rows since extraction fails");
+    let issues = repo.get_run_llm_issue_details(&run_id).await.unwrap();
+    assert!(!issues.is_empty(), "Skipped invalid extractions must remain visible to the user");
+    for details in issues {
+        let issue: query2table_lib::providers::llm::types::LlmIssue = serde_json::from_str(&details).unwrap();
+        assert_eq!(issue.code, "invalid_response");
+        assert_eq!(issue.stage.as_deref(), Some("extractor"));
+    }
 }
 
 // =============================================================================

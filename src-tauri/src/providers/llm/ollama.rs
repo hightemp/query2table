@@ -3,7 +3,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
-use super::endpoint::{normalize_base_url, status_error};
+use super::endpoint::{normalize_base_url, response_json, transport_error};
 use super::types::*;
 use crate::providers::http::apply_proxy;
 
@@ -34,9 +34,7 @@ impl OllamaProvider {
         let builder = reqwest::ClientBuilder::new()
             .timeout(std::time::Duration::from_secs(300))
             .connect_timeout(std::time::Duration::from_secs(10));
-        let client = apply_proxy(builder)
-            .build()
-            .map_err(|e| LlmError::ConnectionError(e.to_string()))?;
+        let client = apply_proxy(builder).build().map_err(transport_error)?;
         Ok(Self {
             client,
             base_url: base_url.trim_end_matches("/api").to_string(),
@@ -64,20 +62,11 @@ impl OllamaProvider {
             .timeout(std::time::Duration::from_secs(20))
             .send()
             .await
-            .map_err(|e| LlmError::ConnectionError(e.to_string()))?;
-        if let Some(error) = status_error(&response) {
-            return Err(error);
-        }
-        if !response.status().is_success() {
-            return Err(LlmError::RequestFailed(format!(
-                "Ollama model list returned HTTP {}",
-                response.status()
-            )));
-        }
-        let catalog: OllamaModelList = response
-            .json()
-            .await
-            .map_err(|e| LlmError::ParseError(e.to_string()))?;
+            .map_err(transport_error)?;
+        let catalog: OllamaModelList = serde_json::from_value(response_json(response, "").await?)
+            .map_err(|_| {
+            LlmError::ParseError("Ollama returned an invalid model catalog.".into())
+        })?;
         let mut models: Vec<String> = catalog
             .models
             .into_iter()
@@ -149,9 +138,40 @@ struct OllamaResponseMessage {
     thinking: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct OllamaErrorResponse {
-    error: Option<String>,
+pub(super) fn validate_reasoning(model: &str, effort: ReasoningEffort) -> Result<(), LlmError> {
+    let gpt_oss = model
+        .rsplit('/')
+        .next()
+        .unwrap_or(model)
+        .starts_with("gpt-oss");
+    if gpt_oss && matches!(effort, ReasoningEffort::Off | ReasoningEffort::Max) {
+        return Err(LlmError::UnsupportedSetting(
+            "Ollama GPT-OSS supports Low, Medium, and High reasoning. Off and Max are not supported; choose a supported level or Provider default.".into()
+        ));
+    }
+    Ok(())
+}
+
+fn reasoning_setting(request: &CompletionRequest) -> Result<Option<OllamaThinking>, LlmError> {
+    validate_reasoning(&request.model, request.reasoning_effort)?;
+    let gpt_oss = request
+        .model
+        .rsplit('/')
+        .next()
+        .unwrap_or(&request.model)
+        .starts_with("gpt-oss");
+    match request.reasoning_effort {
+        ReasoningEffort::Auto if request.json_mode => Ok(Some(if gpt_oss {
+            OllamaThinking::Level("low")
+        } else {
+            OllamaThinking::Enabled(false)
+        })),
+        ReasoningEffort::Auto | ReasoningEffort::ProviderDefault => Ok(None),
+        ReasoningEffort::Off => Ok(Some(OllamaThinking::Enabled(false))),
+        ReasoningEffort::On if gpt_oss => Ok(Some(OllamaThinking::Level("medium"))),
+        ReasoningEffort::On => Ok(Some(OllamaThinking::Enabled(true))),
+        level => Ok(level.level().map(OllamaThinking::Level)),
+    }
 }
 
 #[async_trait]
@@ -189,22 +209,8 @@ impl LlmProvider for OllamaProvider {
             None
         };
 
-        // Structured pipeline stages need answer tokens, not a reasoning-only response.
-        // GPT-OSS cannot disable thinking; its lowest supported level is "low".
-        // https://docs.ollama.com/capabilities/thinking
-        let think = request.json_mode.then(|| {
-            if request
-                .model
-                .rsplit('/')
-                .next()
-                .unwrap_or(&request.model)
-                .starts_with("gpt-oss")
-            {
-                OllamaThinking::Level("low")
-            } else {
-                OllamaThinking::Enabled(false)
-            }
-        });
+        // Explicit user settings take precedence over automatic JSON defaults.
+        let think = reasoning_setting(&request)?;
 
         let body = OllamaChatRequest {
             model: request.model.clone(),
@@ -227,60 +233,53 @@ impl LlmProvider for OllamaProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| LlmError::ConnectionError(e.to_string()))?;
+            .map_err(transport_error)?;
 
-        let status = resp.status();
-        if let Some(error) = status_error(&resp) {
-            return Err(error);
-        }
-
-        if !status.is_success() {
-            let error_text = resp.text().await.unwrap_or_default();
-            if let Ok(err_resp) = serde_json::from_str::<OllamaErrorResponse>(&error_text) {
-                if let Some(err) = err_resp.error {
-                    if err.contains("not found") || err.contains("no such model") {
-                        return Err(LlmError::ModelNotFound(request.model));
-                    }
-                    return Err(LlmError::RequestFailed(err));
-                }
-            }
-            return Err(LlmError::RequestFailed(format!(
-                "HTTP {}: {}",
-                status, error_text
-            )));
-        }
-
-        let chat_resp: OllamaChatResponse = resp
-            .json()
-            .await
-            .map_err(|e| LlmError::ParseError(e.to_string()))?;
+        let chat_resp: OllamaChatResponse =
+            serde_json::from_value(response_json(resp, &request.model).await?).map_err(|_| {
+                LlmError::ParseError("Ollama returned an invalid completion response.".into())
+            })?;
 
         let prompt_tokens = chat_resp.prompt_eval_count.unwrap_or(0);
         let completion_tokens = chat_resp.eval_count.unwrap_or(0);
-        let message = chat_resp
-            .message
-            .ok_or_else(|| LlmError::ParseError("Ollama response contains no message".into()))?;
-        let content = message.content.unwrap_or_default();
-        let thinking_chars = message.thinking.as_deref().map(str::len).unwrap_or(0);
         let done_reason = chat_resp.done_reason.as_deref().unwrap_or("unknown");
+        let (content, thinking_chars) = match chat_resp.message {
+            Some(message) => (
+                message.content.unwrap_or_default(),
+                message.thinking.as_deref().map(str::len).unwrap_or(0),
+            ),
+            None if done_reason == "length" => (String::new(), 0),
+            None => {
+                return Err(LlmError::ParseError(
+                    "Ollama response contains no message".into(),
+                ))
+            }
+        };
         debug!(model = %request.model, elapsed_ms = started.elapsed().as_millis(),
             prompt_tokens, completion_tokens, content_chars = content.len(), thinking_chars, done_reason,
             "[FIX:ollama-json] Completion received");
         if done_reason == "length" {
             warn!(model = %request.model, max_tokens = request.max_tokens, completion_tokens,
                 thinking_chars, "[FIX:ollama-json] Token limit reached before a complete answer");
-            return Err(LlmError::ParseError(format!(
-                "Ollama model '{}' reached the token limit ({}, done_reason=length) before finishing its answer. Increase Max Tokens or request a smaller output.",
-                request.model, request.max_tokens
-            )));
+            return Err(LlmError::OutputLimit {
+                limit: request.max_tokens,
+                usage: LlmUsage {
+                    prompt_tokens: chat_resp.prompt_eval_count,
+                    completion_tokens: chat_resp.eval_count,
+                    reasoning_tokens: None,
+                },
+            });
         }
         if content.trim().is_empty() {
             warn!(model = %request.model, completion_tokens, thinking_chars, done_reason,
                 "[FIX:ollama-json] Model returned an empty answer");
-            return Err(LlmError::ParseError(format!(
-                "Ollama model '{}' returned an empty answer (done_reason={done_reason}, generated_tokens={completion_tokens}).",
-                request.model
-            )));
+            return Err(LlmError::EmptyResponse {
+                usage: LlmUsage {
+                    prompt_tokens: chat_resp.prompt_eval_count,
+                    completion_tokens: chat_resp.eval_count,
+                    reasoning_tokens: None,
+                },
+            });
         }
 
         Ok(CompletionResponse {
@@ -288,7 +287,7 @@ impl LlmProvider for OllamaProvider {
             model: chat_resp.model.unwrap_or(request.model),
             prompt_tokens,
             completion_tokens,
-            total_tokens: prompt_tokens + completion_tokens,
+            total_tokens: prompt_tokens.saturating_add(completion_tokens),
         })
     }
 
@@ -305,22 +304,8 @@ impl LlmProvider for OllamaProvider {
             .authenticate(self.client.get(format!("{}/api/tags", self.base_url)))
             .send()
             .await
-            .map_err(|e| {
-                LlmError::ConnectionError(format!(
-                    "Cannot connect to Ollama at {}: {}",
-                    self.base_url, e
-                ))
-            })?;
-
-        if let Some(error) = status_error(&resp) {
-            return Err(error);
-        }
-        if !resp.status().is_success() {
-            return Err(LlmError::ConnectionError(format!(
-                "Ollama returned HTTP {}",
-                resp.status()
-            )));
-        }
+            .map_err(transport_error)?;
+        response_json(resp, "").await?;
 
         Ok(())
     }

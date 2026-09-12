@@ -15,6 +15,7 @@
 		{ key: 'planner', label: 'Planning schema' },
 		{ key: 'schema_review', label: 'Waiting for schema confirmation' },
 		{ key: 'search_planner', label: 'Planning search queries' },
+		{ key: 'query_expander', label: 'Expanding search queries' },
 		{ key: 'search_executor', label: 'Searching the web' },
 		{ key: 'fetcher', label: 'Fetching pages' },
 		{ key: 'extractor', label: 'Extracting data' },

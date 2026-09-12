@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { listOllamaCloudModels, listOpenRouterModels } from '$lib/api/tauri';
+	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
+	import { errorText } from '$lib/utils/errors';
 
 	let { id, value, provider, baseUrl = '', apiKey, onchange }: {
 		id: string;
@@ -42,7 +44,7 @@
 					: await listOllamaCloudModels(url, key);
 				if (current) models = result;
 			} catch (e) {
-				if (current) error = `Could not load models: ${String(e)}`;
+				if (current) error = errorText(e);
 			} finally {
 				if (current) loading = false;
 			}
@@ -139,13 +141,14 @@
 			Refresh
 		</button>
 	</div>
-	<p id={`${id}-status`} class:error role="status">
+	<p id={`${id}-status`} role="status">
 		{#if loading}Loading models…
-		{:else if error}{error}
+		{:else if error}The model list could not be loaded.
 		{:else if models.length === 0}The server returned no models.
 		{:else}{models.length} models available. Type to filter, then select a model.
 		{/if}
 	</p>
+	{#if error}<ErrorNotice {error} context="catalog" />{/if}
 </div>
 
 <style>
@@ -192,5 +195,4 @@
 	[aria-selected='true'] { font-weight: 600; color: var(--color-primary-500); }
 	p { margin: 6px 0 0; font-size: 0.82rem; color: var(--color-surface-600-400); overflow-wrap: anywhere; }
 	.dropdown p { padding: 8px 12px; margin: 0; }
-	p.error { color: var(--color-error-500); }
 </style>

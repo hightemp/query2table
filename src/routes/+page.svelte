@@ -13,6 +13,8 @@
 	import ImageGallery from '$lib/components/run/ImageGallery.svelte';
 	import LinkList from '$lib/components/run/LinkList.svelte';
 	import ResearchView from '$lib/components/run/ResearchView.svelte';
+	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
+	import LlmIssues from '$lib/components/run/LlmIssues.svelte';
 	import { ChevronDownIcon, ChevronUpIcon, TableIcon, ImageIcon, LinkIcon, BrainIcon } from '@lucide/svelte';
 	import { logPanelOpen } from '$lib/stores/logs';
 
@@ -79,7 +81,7 @@
 	}
 </script>
 
-<div class="query-page">
+<div class="query-page" class:has-issues={$runState.llmIssues.length > 0 || !!$runState.error || !!$runState.controlError}>
 	{#if isIdle}
 		<h1>New Research Query</h1>
 		<p class="subtitle">Describe what you want to research. Query2Table will search, extract, and organize results into a structured table.</p>
@@ -138,7 +140,7 @@
 			{/if}
 
 			{#if submitError}
-				<p class="error-msg">{submitError}</p>
+				<ErrorNotice error={submitError} />
 			{/if}
 			<div class="query-actions">
 				<button type="submit" class="btn-primary" disabled={!query.trim()}>
@@ -166,13 +168,12 @@
 		</div>
 
 		{#if $runState.error}
-			<div class="error-banner" role="alert">
-				<strong>Error:</strong> {$runState.error}
-			</div>
+			<ErrorNotice error={$runState.error} />
 		{/if}
 		{#if $runState.controlError}
-			<div class="error-banner" role="alert">{$runState.controlError}</div>
+			<ErrorNotice error={$runState.controlError} context="control" />
 		{/if}
+		<LlmIssues issues={$runState.llmIssues} runStatus={$runState.status} />
 
 		{#if isActive || isFinished}
 			<ProgressBar stats={$runState.progress} status={$runState.status} runType={$runState.runType} />
@@ -232,6 +233,9 @@
 		flex: 1;
 		overflow: hidden;
 	}
+
+	.query-page.has-issues { overflow-y: auto; }
+	.query-page.has-issues :global(.results-table-wrap) { min-height: 180px; }
 
 	h1 {
 		font-size: 1.8rem;
@@ -379,11 +383,6 @@
 		cursor: not-allowed;
 	}
 
-	.error-msg {
-		color: var(--color-error-500);
-		font-size: 0.9rem;
-	}
-
 	.run-header {
 		display: flex;
 		justify-content: space-between;
@@ -398,13 +397,4 @@
 		margin: 0;
 	}
 
-	.error-banner {
-		padding: 10px 16px;
-		border: 1px solid var(--color-error-500);
-		border-radius: 8px;
-		background: rgba(239, 68, 68, 0.1);
-		color: var(--color-error-500);
-		margin-bottom: 12px;
-		font-size: 0.9rem;
-	}
 </style>
