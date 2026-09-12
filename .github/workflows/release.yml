@@ -68,7 +68,10 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Query2Table ${{ github.ref_name }}'
-          releaseBody: 'See the assets below to download the installer for your platform.'
+          releaseBody: |
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) for the changes in this release.
+
+            Download the installer for your platform from the assets below. Existing settings migrate automatically when the app starts.
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

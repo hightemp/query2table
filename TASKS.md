@@ -2,6 +2,13 @@
 
 ## 1. Executive Summary
 
+### Release 0.5.0
+
+- [x] Synchronize VERSION, frontend/backend manifests and lockfiles; prepare release notes and verify the release source.
+- [ ] Publish v0.5.0 and verify successful Linux, Windows, and macOS builds plus downloadable release assets.
+
+Release-source checks: version metadata consistently reports 0.5.0; 246 Rust tests and 69 frontend tests passed; `npm run check` reports no errors (4 existing warnings); `git diff --check` and the release credential scan passed. `make bump-version` now updates both lockfiles, and `make release` publishes the branch and new tag atomically. Changes are summarized in CHANGELOG.md.
+
 Query2Table is a local-first desktop application that converts natural-language research queries into structured tables of entities. The system uses a controlled orchestrator with fixed roles — not free-form autonomous agents — to search the internet, fetch pages, extract structured data via LLMs, deduplicate results, and stream them into a live table with row-level evidence.
 
 The stack is Tauri v2 (desktop shell) + Rust (backend orchestration) + Svelte/SvelteKit (frontend) + SQLite (local persistence). LLM access is via OpenRouter, local Ollama, Ollama Cloud, or a configurable OpenAI-compatible API. Search is via Brave Search API and Serper with user-configurable primary/fallback.

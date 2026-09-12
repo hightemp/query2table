@@ -21,14 +21,13 @@ bump-version:
 	@sed -i 's/"version": "[^"]*"/"version": "$(VERSION)"/' package.json
 	@sed -i 's/"version": "[^"]*"/"version": "$(VERSION)"/' src-tauri/tauri.conf.json
 	@sed -i 's/^version = "[^"]*"/version = "$(VERSION)"/' src-tauri/Cargo.toml
-	@cd src-tauri && cargo update -p query2table --offline 2>/dev/null || true
+	@node -e 'const fs = require("fs"); const p = "package-lock.json"; const lock = JSON.parse(fs.readFileSync(p, "utf8")); lock.version = "$(VERSION)"; lock.packages[""].version = "$(VERSION)"; fs.writeFileSync(p, JSON.stringify(lock, null, 2) + "\n");'
+	@cd src-tauri && cargo update -p query2table --offline
 
 release: bump-version
 	@echo "Releasing v$(VERSION)..."
-	git add VERSION package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
-	git commit -m "release: v$(VERSION)" --allow-empty
-	git tag -f "v$(VERSION)"
-	git push -f origin main
-	git push -f origin "v$(VERSION)"
+	git add VERSION package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+	git commit -m "chore(release): v$(VERSION)"
+	git tag "v$(VERSION)"
+	git push --atomic origin main "refs/tags/v$(VERSION)"
 	@echo "Release v$(VERSION) pushed. CI will build and publish."
-
