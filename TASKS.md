@@ -29,6 +29,16 @@ Verification: `cargo test --locked` — 209 passed, 2 live tests ignored by defa
 
 Verification: `cargo test --locked` — 211 passed, 3 live tests ignored by default; `npm test` — 19 passed; `npm run check` — 0 errors (4 existing warnings); `npm run build`, formatting checks for changed Rust files, and `git diff --check` — passed. The shared combobox preserves filtering/keyboard/mouse/error behavior for Ollama Cloud and stores the selected OpenRouter model ID. `cargo test --locked --test live_openrouter_catalog -- --ignored --nocapture` returned 445 model IDs from the live OpenRouter server using the application's existing environment proxy setup. Direct requests returned HTTP 403, while the configured proxy route returned HTTP 200; proxy initialization is isolated in a separate live-test executable so mock tests remain local.
 
+### Ollama Cloud empty responses and run controls
+
+- [x] Diagnose and fix the apparent hang for the robot YouTube-channel query with deepseek-v4.1-flash, including empty LLM output and failures left as running.
+- [x] Make Cancel/Pause/Resume responsive during active requests in all pipeline modes; surface command errors and preserve work/schema state on resume.
+- [x] Add regression coverage and verify the affected Ollama stages with live requests without recording credentials.
+
+Root cause verified: QueryExpander exhausted all 4096 output tokens on DeepSeek thinking (`done_reason=length`, empty content); the returned error was only file-logged, leaving database/UI status `running`. A live comparison with `think=false` produced valid JSON in 3.01 seconds. Structured Ollama requests now disable thinking (GPT-OSS uses `low`), and truncated/empty responses produce clear errors. A shared supervisor persists/emits terminal failures and handles controls throughout all four pipeline modes; scoped workers stop on cancellation, and pause retains the stage/request/schema. Frontend handles early events and displays command errors.
+
+Verification: `cargo test --locked` — 223 passed, 4 live tests ignored by default; `npm test` — 35 passed; `npm run check` — 0 errors (4 existing warnings); `npm run build`, `cargo build --locked`, and `git diff --check` — passed. Regression tests cover reasoning-only/truncated output, active-request cancellation in every mode, pause/resume without duplicate requests, paused schema review, failed status persistence, registry mutex release, startup event races, and visible control errors. The explicitly executed `live_ollama_json` test ran the original Russian query with deepseek-v4.1-flash through interpretation, schema planning, search planning, and expansion in 8.4 seconds: 4 columns, 13 planned queries, 39 expansions. It did not execute the later web-search/fetch/extraction stages. Credentials were supplied in memory and were not recorded in source or diagnostic output.
+
 ### Application branding (2026-09-12)
 
 - [x] Create a new Query2Table logo and save the canonical asset in `images/query2table-logo.png`.

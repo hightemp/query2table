@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use super::endpoint::{normalize_base_url, status_error};
 use super::types::*;
@@ -111,6 +111,15 @@ struct OllamaChatRequest {
     options: OllamaOptions,
     #[serde(skip_serializing_if = "Option::is_none")]
     format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    think: Option<OllamaThinking>,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum OllamaThinking {
+    Enabled(bool),
+    Level(&'static str),
 }
 
 #[derive(Serialize)]
@@ -131,11 +140,13 @@ struct OllamaChatResponse {
     model: Option<String>,
     prompt_eval_count: Option<u32>,
     eval_count: Option<u32>,
+    done_reason: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct OllamaResponseMessage {
     content: Option<String>,
+    thinking: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -178,6 +189,23 @@ impl LlmProvider for OllamaProvider {
             None
         };
 
+        // Structured pipeline stages need answer tokens, not a reasoning-only response.
+        // GPT-OSS cannot disable thinking; its lowest supported level is "low".
+        // https://docs.ollama.com/capabilities/thinking
+        let think = request.json_mode.then(|| {
+            if request
+                .model
+                .rsplit('/')
+                .next()
+                .unwrap_or(&request.model)
+                .starts_with("gpt-oss")
+            {
+                OllamaThinking::Level("low")
+            } else {
+                OllamaThinking::Enabled(false)
+            }
+        });
+
         let body = OllamaChatRequest {
             model: request.model.clone(),
             messages,
@@ -187,9 +215,12 @@ impl LlmProvider for OllamaProvider {
                 num_predict: request.max_tokens,
             },
             format,
+            think,
         };
 
         debug!(provider = self.provider_name(), model = %request.model, json_mode = request.json_mode, "Ollama chat_completion");
+
+        let started = std::time::Instant::now();
 
         let resp = self
             .authenticate(self.client.post(format!("{}/api/chat", self.base_url)))
@@ -224,13 +255,33 @@ impl LlmProvider for OllamaProvider {
             .await
             .map_err(|e| LlmError::ParseError(e.to_string()))?;
 
-        let content = chat_resp
-            .message
-            .and_then(|m| m.content)
-            .ok_or_else(|| LlmError::ParseError("No message content in response".to_string()))?;
-
         let prompt_tokens = chat_resp.prompt_eval_count.unwrap_or(0);
         let completion_tokens = chat_resp.eval_count.unwrap_or(0);
+        let message = chat_resp
+            .message
+            .ok_or_else(|| LlmError::ParseError("Ollama response contains no message".into()))?;
+        let content = message.content.unwrap_or_default();
+        let thinking_chars = message.thinking.as_deref().map(str::len).unwrap_or(0);
+        let done_reason = chat_resp.done_reason.as_deref().unwrap_or("unknown");
+        debug!(model = %request.model, elapsed_ms = started.elapsed().as_millis(),
+            prompt_tokens, completion_tokens, content_chars = content.len(), thinking_chars, done_reason,
+            "[FIX:ollama-json] Completion received");
+        if done_reason == "length" {
+            warn!(model = %request.model, max_tokens = request.max_tokens, completion_tokens,
+                thinking_chars, "[FIX:ollama-json] Token limit reached before a complete answer");
+            return Err(LlmError::ParseError(format!(
+                "Ollama model '{}' reached the token limit ({}, done_reason=length) before finishing its answer. Increase Max Tokens or request a smaller output.",
+                request.model, request.max_tokens
+            )));
+        }
+        if content.trim().is_empty() {
+            warn!(model = %request.model, completion_tokens, thinking_chars, done_reason,
+                "[FIX:ollama-json] Model returned an empty answer");
+            return Err(LlmError::ParseError(format!(
+                "Ollama model '{}' returned an empty answer (done_reason={done_reason}, generated_tokens={completion_tokens}).",
+                request.model
+            )));
+        }
 
         Ok(CompletionResponse {
             content,
@@ -300,11 +351,13 @@ mod tests {
                 num_predict: 4096,
             },
             format: Some("json".to_string()),
+            think: Some(OllamaThinking::Enabled(false)),
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains("\"stream\":false"));
         assert!(json.contains("\"format\":\"json\""));
         assert!(json.contains("\"num_predict\":4096"));
+        assert!(json.contains("\"think\":false"));
     }
 
     #[test]
@@ -318,6 +371,7 @@ mod tests {
                 num_predict: 100,
             },
             format: None,
+            think: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("format"));

@@ -1,5 +1,7 @@
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
+
+use super::control::WorkerResults;
 use tracing::{debug, warn};
 
 use crate::providers::llm::manager::LlmManager;
@@ -44,10 +46,12 @@ pub fn spawn_extract_pool(
     columns: Vec<SchemaColumn>,
     num_workers: usize,
     max_text_chars: Option<usize>,
-) -> (mpsc::Sender<ExtractionJob>, mpsc::UnboundedReceiver<ExtractResult>) {
+    paused: watch::Receiver<bool>,
+) -> (mpsc::Sender<ExtractionJob>, WorkerResults<ExtractResult>) {
     let (job_tx, job_rx) = mpsc::channel::<ExtractionJob>(num_workers * 4);
     let (result_tx, result_rx) = mpsc::unbounded_channel::<ExtractResult>();
 
+    let mut results = WorkerResults::new(result_rx);
     let job_rx = Arc::new(tokio::sync::Mutex::new(job_rx));
     let columns = Arc::new(columns);
 
@@ -57,7 +61,7 @@ pub fn spawn_extract_pool(
         let result_tx = result_tx.clone();
         let columns = columns.clone();
 
-        tokio::spawn(async move {
+        results.spawn(paused.clone(), async move {
             debug!(worker_id, "Extract worker started");
             loop {
                 let job = {
@@ -112,7 +116,7 @@ pub fn spawn_extract_pool(
         });
     }
 
-    (job_tx, result_rx)
+    (job_tx, results)
 }
 
 #[cfg(test)]

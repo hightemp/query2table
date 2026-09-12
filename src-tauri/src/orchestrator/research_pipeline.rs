@@ -13,6 +13,7 @@ use crate::storage::repository::Repository;
 use crate::roles::pdf_parser::PdfParser;
 use crate::roles::research_agent::{AgentAction, ResearchAgent};
 
+use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
 use super::events::{EventPublisher, ProgressStats};
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
@@ -33,7 +34,8 @@ pub struct ResearchPipeline {
     config: PipelineConfig,
     repo: Arc<Repository>,
     events: Option<EventPublisher>,
-    cmd_rx: mpsc::Receiver<PipelineCommand>,
+    control: RunControl,
+    supervisor: Option<RunSupervisor>,
     budget: BudgetTracker,
     start_time: Instant,
 }
@@ -48,6 +50,7 @@ impl ResearchPipeline {
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
         let budget = BudgetTracker::new(config.max_budget_usd);
+        let (control, supervisor) = RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
 
         let pipeline = Self {
             run_id,
@@ -55,7 +58,8 @@ impl ResearchPipeline {
             config,
             repo,
             events,
-            cmd_rx,
+            control,
+            supervisor: Some(supervisor),
             budget,
             start_time: Instant::now(),
         };
@@ -72,6 +76,11 @@ impl ResearchPipeline {
             .await
             .map_err(|e| format!("Storage: {e}"))?;
 
+        let supervisor = self.supervisor.take().ok_or_else(|| "Pipeline already started".to_string())?;
+        supervisor.run(self.run_inner()).await
+    }
+
+    async fn run_inner(self) -> Result<PipelineState, String> {
         self.set_status("running").await;
         self.log("INFO", "research", "Starting agentic research...").await;
 
@@ -81,7 +90,6 @@ impl ResearchPipeline {
             Err(e) => {
                 let msg = format!("LLM not configured: {e}");
                 self.log("ERROR", "research", &msg).await;
-                self.fail(&msg).await;
                 return Ok(PipelineState::Failed(msg));
             }
         };
@@ -91,7 +99,6 @@ impl ResearchPipeline {
             Err(e) => {
                 let msg = format!("Search not configured: {e}");
                 self.log("ERROR", "research", &msg).await;
-                self.fail(&msg).await;
                 return Ok(PipelineState::Failed(msg));
             }
         };
@@ -120,12 +127,6 @@ impl ResearchPipeline {
         let mut fetch_count: u32 = 0;
 
         while step_index < max_steps {
-            // Handle pause/resume/cancel.
-            if self.handle_commands().await {
-                self.set_status("cancelled").await;
-                return Ok(PipelineState::Cancelled);
-            }
-
             // Stop on budget/time limits.
             if let Some(reason) = self.check_limits() {
                 self.log("INFO", "research", &format!("Stopping: {reason}")).await;
@@ -325,31 +326,6 @@ impl ResearchPipeline {
         }
     }
 
-    /// Returns true if the run was cancelled. Blocks while paused.
-    async fn handle_commands(&mut self) -> bool {
-        loop {
-            match self.cmd_rx.try_recv() {
-                Ok(PipelineCommand::Cancel) => return true,
-                Ok(PipelineCommand::Pause) => {
-                    self.set_status("paused").await;
-                    // Block until resumed or cancelled.
-                    while let Some(cmd) = self.cmd_rx.recv().await {
-                        match cmd {
-                            PipelineCommand::Resume => {
-                                self.set_status("running").await;
-                                break;
-                            }
-                            PipelineCommand::Cancel => return true,
-                            _ => {}
-                        }
-                    }
-                }
-                Ok(_) => {}
-                Err(_) => return false,
-            }
-        }
-    }
-
     fn check_limits(&self) -> Option<String> {
         if self.budget.spent_usd() >= self.config.max_budget_usd {
             return Some(format!("budget limit reached (${:.4})", self.budget.spent_usd()));
@@ -362,20 +338,7 @@ impl ResearchPipeline {
     }
 
     async fn set_status(&self, status: &str) {
-        if let Err(e) = self.repo.update_run_status(&self.run_id, status).await {
-            error!(error = %e, "Failed to update run status");
-        }
-        if let Some(ref events) = self.events {
-            events.emit_status_changed(status);
-        }
-    }
-
-    async fn fail(&self, error_msg: &str) {
-        let _ = self.repo.update_run_error(&self.run_id, error_msg).await;
-        if let Some(ref events) = self.events {
-            events.emit_error(error_msg);
-            events.emit_status_changed("failed");
-        }
+        self.control.set_status(status).await;
     }
 
     async fn log(&self, level: &str, role: &str, message: &str) {

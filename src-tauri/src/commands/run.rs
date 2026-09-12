@@ -28,6 +28,21 @@ impl RunController {
             active: Arc::new(Mutex::new(HashMap::new())),
         }
     }
+
+    async fn send(&self, run_id: &str, command: PipelineCommand) -> Result<(), String> {
+        let tx = self.active.lock().await.get(run_id).cloned()
+            .ok_or_else(|| format!("Run {run_id} is not active"))?;
+        let action = match &command {
+            PipelineCommand::Cancel => "cancel",
+            PipelineCommand::Pause => "pause",
+            PipelineCommand::Resume => "resume",
+            PipelineCommand::ConfirmSchema(_) => "confirm_schema",
+        };
+        // A full command queue must not lock control/cleanup for every active run.
+        tx.send(command).await.map_err(|_| format!("Run {run_id} is no longer active"))?;
+        info!(run_id, action, "[FIX:run-control] Command queued");
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -187,13 +202,7 @@ pub async fn cancel_run(
     controller: State<'_, RunController>,
     run_id: String,
 ) -> Result<(), String> {
-    let active = controller.active.lock().await;
-    if let Some(tx) = active.get(&run_id) {
-        tx.send(PipelineCommand::Cancel).await.map_err(|e| e.to_string())?;
-        Ok(())
-    } else {
-        Err(format!("Run {} is not active", run_id))
-    }
+    controller.send(&run_id, PipelineCommand::Cancel).await
 }
 
 #[tauri::command]
@@ -201,13 +210,7 @@ pub async fn pause_run(
     controller: State<'_, RunController>,
     run_id: String,
 ) -> Result<(), String> {
-    let active = controller.active.lock().await;
-    if let Some(tx) = active.get(&run_id) {
-        tx.send(PipelineCommand::Pause).await.map_err(|e| e.to_string())?;
-        Ok(())
-    } else {
-        Err(format!("Run {} is not active", run_id))
-    }
+    controller.send(&run_id, PipelineCommand::Pause).await
 }
 
 #[tauri::command]
@@ -215,13 +218,7 @@ pub async fn resume_run(
     controller: State<'_, RunController>,
     run_id: String,
 ) -> Result<(), String> {
-    let active = controller.active.lock().await;
-    if let Some(tx) = active.get(&run_id) {
-        tx.send(PipelineCommand::Resume).await.map_err(|e| e.to_string())?;
-        Ok(())
-    } else {
-        Err(format!("Run {} is not active", run_id))
-    }
+    controller.send(&run_id, PipelineCommand::Resume).await
 }
 
 #[tauri::command]
@@ -230,13 +227,7 @@ pub async fn confirm_schema(
     run_id: String,
     columns: Vec<SchemaColumn>,
 ) -> Result<(), String> {
-    let active = controller.active.lock().await;
-    if let Some(tx) = active.get(&run_id) {
-        tx.send(PipelineCommand::ConfirmSchema(columns)).await.map_err(|e| e.to_string())?;
-        Ok(())
-    } else {
-        Err(format!("Run {} is not active", run_id))
-    }
+    controller.send(&run_id, PipelineCommand::ConfirmSchema(columns)).await
 }
 
 #[derive(Debug, Serialize)]
@@ -503,4 +494,38 @@ pub async fn proxy_image(url: String) -> Result<String, String> {
 
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Ok(format!("data:{content_type};base64,{b64}"))
+}
+
+#[cfg(test)]
+mod control_tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn queued_command_does_not_hold_active_runs_mutex() {
+        let controller = RunController::new();
+        let (tx, mut rx) = mpsc::channel(1);
+        tx.send(PipelineCommand::Pause).await.unwrap();
+        controller.active.lock().await.insert("run".into(), tx);
+        let send = controller.send("run", PipelineCommand::Cancel);
+        tokio::pin!(send);
+        // Poll the send until it blocks on the full queue.
+        assert!(tokio::time::timeout(Duration::from_millis(20), &mut send).await.is_err());
+        let guard = tokio::time::timeout(Duration::from_millis(100), controller.active.lock())
+            .await.expect("a blocked send must release the registry mutex");
+        drop(guard);
+        assert_eq!(rx.recv().await, Some(PipelineCommand::Pause));
+        send.await.unwrap();
+        assert_eq!(rx.recv().await, Some(PipelineCommand::Cancel));
+    }
+
+    #[tokio::test]
+    async fn inactive_or_finished_runs_return_a_control_error() {
+        let controller = RunController::new();
+        assert!(controller.send("missing", PipelineCommand::Pause).await.is_err());
+        let (tx, rx) = mpsc::channel(1);
+        controller.active.lock().await.insert("finished".into(), tx);
+        drop(rx);
+        assert!(controller.send("finished", PipelineCommand::Cancel).await.is_err());
+    }
 }

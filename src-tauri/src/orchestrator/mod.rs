@@ -6,3 +6,4 @@ pub mod extract_pool;
 pub mod image_pipeline;
 pub mod link_pipeline;
 pub mod research_pipeline;
+pub mod control;

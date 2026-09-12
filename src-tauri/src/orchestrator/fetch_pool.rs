@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
+
+use super::control::WorkerResults;
 use tracing::{debug, warn};
 
 use crate::providers::http::client::{HttpFetcher, FetchError, FetchedPage};
@@ -48,9 +50,12 @@ pub fn spawn_fetch_pool(
     fetcher: Arc<HttpFetcher>,
     num_workers: usize,
     max_pdf_chars: Option<usize>,
-) -> (mpsc::Sender<FetchJob>, mpsc::UnboundedReceiver<FetchResult>) {
+    paused: watch::Receiver<bool>,
+) -> (mpsc::Sender<FetchJob>, WorkerResults<FetchResult>) {
     let (job_tx, job_rx) = mpsc::channel::<FetchJob>(num_workers * 4);
     let (result_tx, result_rx) = mpsc::unbounded_channel::<FetchResult>();
+
+    let mut results = WorkerResults::new(result_rx);
 
     // Wrap receiver in Arc<Mutex> so multiple workers can pull from it
     let job_rx = Arc::new(tokio::sync::Mutex::new(job_rx));
@@ -60,7 +65,7 @@ pub fn spawn_fetch_pool(
         let job_rx = job_rx.clone();
         let result_tx = result_tx.clone();
 
-        tokio::spawn(async move {
+        results.spawn(paused.clone(), async move {
             debug!(worker_id, "Fetch worker started");
             loop {
                 let job = {
@@ -129,7 +134,7 @@ pub fn spawn_fetch_pool(
         });
     }
 
-    (job_tx, result_rx)
+    (job_tx, results)
 }
 
 async fn fetch_and_parse(

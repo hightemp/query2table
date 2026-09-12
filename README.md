@@ -114,6 +114,10 @@ Select the provider in **Settings → LLM Provider**, fill in its fields, and cl
 - **Ollama Cloud:** URL `https://ollama.com`, an Ollama API key, and a model selected from the searchable server catalog. Click the model field and type to filter, then choose with the mouse or arrow keys and Enter; **Refresh** reloads the catalog. Filtering does not change the selected model until you choose a result. Direct cloud access uses the [native Ollama API](https://docs.ollama.com/cloud). Cloud currently lacks [structured output support](https://docs.ollama.com/capabilities/structured-outputs), so JSON is requested through prompts and parsed by the existing pipeline.
 - **OpenAI-compatible:** enter the API base URL including `/v1` and the server's model ID. For [llama.cpp](https://github.com/ggml-org/llama.cpp/tree/master/tools/server), the default URL is `http://localhost:8080/v1`; use the loaded model name or configured alias. Leave the API key empty unless your server requires one. Disable **JSON Mode** if the server rejects `response_format`.
 
+Ollama requests for structured JSON disable thinking, or use `low` for GPT-OSS, so the token budget is available for the answer. Empty answers and responses cut off by the token limit produce an explicit error.
+
+**Pause** suspends processing at the current stage, including schema review, and **Resume** continues without resubmitting the request. A request already sent to a remote model may still finish there while paused. **Cancel** stops local work and closes pending requests. Pipeline failures are shown and saved as `failed`, with the underlying error available in the run log.
+
 ## Architecture
 
 The backend uses a **pipeline state machine** with fixed roles orchestrated in sequence:

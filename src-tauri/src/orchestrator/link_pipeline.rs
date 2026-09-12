@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use crate::providers::http::client::HttpFetcher;
 use crate::providers::http::rate_limiter::RateLimiter;
@@ -14,6 +14,7 @@ use crate::roles::search_executor::SearchExecutor;
 use crate::roles::search_planner::PlannedSearch;
 use crate::roles::stopping_controller::{PipelineStats, StoppingController};
 
+use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
 use super::events::{EventPublisher, ProgressStats};
 use super::fetch_pool::{self, FetchJob, FetchResult};
@@ -27,7 +28,8 @@ pub struct LinkPipeline {
     config: PipelineConfig,
     repo: Arc<Repository>,
     events: Option<EventPublisher>,
-    cmd_rx: mpsc::Receiver<PipelineCommand>,
+    control: RunControl,
+    supervisor: Option<RunSupervisor>,
     budget: BudgetTracker,
     start_time: Instant,
 }
@@ -42,6 +44,7 @@ impl LinkPipeline {
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
         let budget = BudgetTracker::new(config.max_budget_usd);
+        let (control, supervisor) = RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
 
         let pipeline = Self {
             run_id,
@@ -49,7 +52,8 @@ impl LinkPipeline {
             config,
             repo,
             events,
-            cmd_rx,
+            control,
+            supervisor: Some(supervisor),
             budget,
             start_time: Instant::now(),
         };
@@ -67,6 +71,11 @@ impl LinkPipeline {
             .await
             .map_err(|e| format!("Storage: {e}"))?;
 
+        let supervisor = self.supervisor.take().ok_or_else(|| "Pipeline already started".to_string())?;
+        supervisor.run(self.run_inner()).await
+    }
+
+    async fn run_inner(self) -> Result<PipelineState, String> {
         self.set_status("running").await;
         self.log("INFO", "link_pipeline", "Starting link search...").await;
 
@@ -99,11 +108,6 @@ impl LinkPipeline {
             }
         };
         self.log("INFO", "search_executor", &format!("Searching with {} query variations", queries.len())).await;
-
-        if self.is_cancelled() {
-            self.set_status("cancelled").await;
-            return Ok(PipelineState::Cancelled);
-        }
 
         // Execute web searches (deduplicated by URL)
         let planned: Vec<PlannedSearch> = queries
@@ -138,11 +142,6 @@ impl LinkPipeline {
             return Ok(PipelineState::Completed);
         }
 
-        if self.is_cancelled() {
-            self.set_status("cancelled").await;
-            return Ok(PipelineState::Cancelled);
-        }
-
         // Fetch & parse each page
         let total_pages = collected.results.len();
         self.log("INFO", "fetcher", &format!("Fetching {} pages (max {} parallel)...", total_pages, self.config.max_parallel_fetches)).await;
@@ -158,7 +157,7 @@ impl LinkPipeline {
         };
 
         let (fetch_tx, mut fetch_rx) =
-            fetch_pool::spawn_fetch_pool(fetcher, self.config.max_parallel_fetches, max_pdf_chars);
+            fetch_pool::spawn_fetch_pool(fetcher, self.config.max_parallel_fetches, max_pdf_chars, self.control.pause_signal());
 
         // Map search_result index -> (url, title, snippet) for joining fetched docs
         let mut meta: std::collections::HashMap<String, (String, String, String)> =
@@ -182,7 +181,7 @@ impl LinkPipeline {
             })
             .collect();
 
-        tokio::spawn(async move {
+        fetch_rx.spawn(self.control.pause_signal(), async move {
             for job in jobs {
                 if fetch_tx.send(job).await.is_err() {
                     break;
@@ -196,10 +195,6 @@ impl LinkPipeline {
         let mut pages_failed: u64 = 0;
 
         while let Some(result) = fetch_rx.recv().await {
-            if self.is_cancelled() {
-                self.set_status("cancelled").await;
-                return Ok(PipelineState::Cancelled);
-            }
             match result {
                 FetchResult::Success(doc) => {
                     pages_fetched += 1;
@@ -241,11 +236,6 @@ impl LinkPipeline {
             self.log("WARN", "link_pipeline", "No pages could be fetched").await;
             self.set_status("completed").await;
             return Ok(PipelineState::Completed);
-        }
-
-        if self.is_cancelled() {
-            self.set_status("cancelled").await;
-            return Ok(PipelineState::Cancelled);
         }
 
         // Score relevance from page content + generate descriptions
@@ -410,14 +400,6 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
         queries
     }
 
-    fn is_cancelled(&mut self) -> bool {
-        if let Ok(cmd) = self.cmd_rx.try_recv() {
-            matches!(cmd, PipelineCommand::Cancel)
-        } else {
-            false
-        }
-    }
-
     fn check_stop_conditions(&self, link_count: usize) -> Option<String> {
         let stats = PipelineStats {
             row_count: link_count,
@@ -430,12 +412,7 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
     }
 
     async fn set_status(&self, status: &str) {
-        if let Err(e) = self.repo.update_run_status(&self.run_id, status).await {
-            error!(error = %e, "Failed to update run status");
-        }
-        if let Some(ref events) = self.events {
-            events.emit_status_changed(status);
-        }
+        self.control.set_status(status).await;
     }
 
     async fn log(&self, level: &str, role: &str, message: &str) {

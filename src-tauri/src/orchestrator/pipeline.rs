@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
-use tracing::{debug, info, warn, error};
+use tracing::{info, warn, error};
 
 use crate::providers::llm::manager::{LlmManager, LlmConfig};
 use crate::providers::search::manager::{SearchManager, SearchConfig};
@@ -21,6 +21,7 @@ use crate::roles::validator::Validator;
 use crate::roles::deduplicator::Deduplicator;
 use crate::roles::stopping_controller::{StoppingController, StopConfig, PipelineStats};
 
+use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
 use super::events::{EventPublisher, ProgressStats};
 use super::fetch_pool::{self, FetchJob, FetchResult};
@@ -130,7 +131,8 @@ pub struct Pipeline {
     config: PipelineConfig,
     repo: Arc<Repository>,
     events: Option<EventPublisher>,
-    cmd_rx: mpsc::Receiver<PipelineCommand>,
+    control: RunControl,
+    supervisor: Option<RunSupervisor>,
     state: PipelineState,
     budget: BudgetTracker,
     start_time: Instant,
@@ -153,6 +155,7 @@ impl Pipeline {
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
         let budget = BudgetTracker::new(config.max_budget_usd);
+        let (control, supervisor) = RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
 
         let pipeline = Self {
             run_id,
@@ -160,7 +163,8 @@ impl Pipeline {
             config,
             repo,
             events,
-            cmd_rx,
+            control,
+            supervisor: Some(supervisor),
             state: PipelineState::Pending,
             budget,
             start_time: Instant::now(),
@@ -197,6 +201,11 @@ impl Pipeline {
         self.repo.create_run(&self.run_id, &self.query, &config_json.to_string()).await
             .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
+        let supervisor = self.supervisor.take().ok_or_else(|| PipelineError::Internal("Pipeline already started".to_string()))?;
+        supervisor.run(self.run_inner()).await
+    }
+
+    async fn run_inner(mut self) -> Result<PipelineState, PipelineError> {
         // Initialize providers (use overrides if set, otherwise create from config)
         let llm = if let Some(llm) = self.llm_override.take() {
             llm
@@ -284,6 +293,7 @@ impl Pipeline {
         } else {
             intent.languages.clone()
         };
+        self.log("INFO", "query_expander", &format!("Expanding {} search queries across {} languages with LLM...", search_plan.queries.len(), languages.len())).await;
         let expanded = QueryExpander::expand(&search_plan.queries, &languages, &llm).await
             .map_err(|e| PipelineError::Llm(format!("QueryExpander: {e}")))?;
         self.budget.record_llm_call(300, 400);
@@ -368,18 +378,20 @@ impl Pipeline {
             fetcher,
             self.config.max_parallel_fetches,
             max_pdf_chars,
+            self.control.pause_signal(),
         );
         let (extract_tx, mut extract_rx) = extract_pool::spawn_extract_pool(
             llm.clone(),
             confirmed_columns.clone(),
             self.config.max_parallel_extractions,
             max_extraction_chars,
+            self.control.pause_signal(),
         );
 
         // Submit fetch jobs in a background task to avoid deadlock:
         // If we submit all jobs synchronously before reading results, the result
         // channel can fill up, blocking workers, which blocks job submission.
-        tokio::spawn(async move {
+        fetch_rx.spawn(self.control.pause_signal(), async move {
             for sr in pending_results {
                 let job = FetchJob {
                     search_result_id: sr.id.clone(),
@@ -405,38 +417,6 @@ impl Pipeline {
         let mut last_batch_total_rows: usize = 0;
 
         loop {
-            // Check for commands (non-blocking)
-            if let Ok(cmd) = self.cmd_rx.try_recv() {
-                match cmd {
-                    PipelineCommand::Cancel => {
-                        self.set_state(PipelineState::Cancelled).await;
-                        return Ok(PipelineState::Cancelled);
-                    }
-                    PipelineCommand::Pause => {
-                        self.set_state(PipelineState::Paused).await;
-                        // Wait for resume or cancel
-                        loop {
-                            if let Some(cmd) = self.cmd_rx.recv().await {
-                                match cmd {
-                                    PipelineCommand::Resume => {
-                                        self.set_state(PipelineState::Running).await;
-                                        break;
-                                    }
-                                    PipelineCommand::Cancel => {
-                                        self.set_state(PipelineState::Cancelled).await;
-                                        return Ok(PipelineState::Cancelled);
-                                    }
-                                    _ => {}
-                                }
-                            } else {
-                                return Ok(PipelineState::Cancelled);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
             // Check stop conditions
             let stats = PipelineStats {
                 row_count: all_valid_rows.len(),
@@ -649,50 +629,21 @@ impl Pipeline {
             return Ok(proposed);
         }
 
-        // Wait for confirmation command with a timeout
-        loop {
-            tokio::select! {
-                cmd = self.cmd_rx.recv() => {
-                    match cmd {
-                        Some(PipelineCommand::ConfirmSchema(columns)) => {
-                            self.log("INFO", "pipeline", "Schema confirmed by user").await;
-                            return Ok(columns);
-                        }
-                        Some(PipelineCommand::Cancel) => {
-                            self.set_state(PipelineState::Cancelled).await;
-                            return Err(PipelineError::Cancelled);
-                        }
-                        Some(_) => continue,
-                        None => {
-                            // Channel closed, auto-confirm
-                            return Ok(proposed);
-                        }
-                    }
-                }
-                _ = tokio::time::sleep(std::time::Duration::from_secs(300)) => {
-                    // Auto-confirm after 5 minutes
-                    self.log("INFO", "pipeline", "Schema auto-confirmed (timeout)").await;
-                    return Ok(proposed);
-                }
+        tokio::select! {
+            confirmed = self.control.confirmed_schema() => {
+                self.log("INFO", "pipeline", "Schema confirmed by user").await;
+                Ok(confirmed.unwrap_or(proposed))
+            }
+            _ = self.control.schema_idle_timeout(std::time::Duration::from_secs(300)) => {
+                self.log("INFO", "pipeline", "Schema auto-confirmed (timeout)").await;
+                Ok(proposed)
             }
         }
     }
 
     async fn set_state(&mut self, state: PipelineState) {
-        let status_str = state.as_status_str().to_string();
+        self.control.set_status(state.as_status_str()).await;
         self.state = state;
-
-        // Update DB
-        if let Err(e) = self.repo.update_run_status(&self.run_id, &status_str).await {
-            error!(error = %e, "Failed to update run status in DB");
-        }
-
-        // Emit event
-        if let Some(ref events) = self.events {
-            events.emit_status_changed(&status_str);
-        }
-
-        debug!(run_id = %self.run_id, status = %status_str, "Pipeline state changed");
     }
 
     async fn log(&self, level: &str, role: &str, message: &str) {

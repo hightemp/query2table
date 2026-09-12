@@ -36,6 +36,8 @@ export interface RunRow {
 	confidence: number;
 }
 
+export type RunControl = 'pause' | 'resume' | 'cancel' | 'confirm_schema';
+
 export interface RunState {
 	runId: string | null;
 	query: string;
@@ -49,6 +51,9 @@ export interface RunState {
 	researchAnswer: string | null;
 	progress: ProgressStats | null;
 	error: string | null;
+	controlPending: RunControl | null;
+	controlError: string | null;
+	pausedFrom: string | null;
 }
 
 const initialState: RunState = {
@@ -64,24 +69,53 @@ const initialState: RunState = {
 	researchAnswer: null,
 	progress: null,
 	error: null,
+	controlPending: null,
+	controlError: null,
+	pausedFrom: null,
 };
 
 export const runState = writable<RunState>({ ...initialState });
 
 // Track event unsubscribers
 let unlisteners: (() => void)[] = [];
+let generation = 0;
+let pendingStart: Promise<void> | null = null;
+let controlRequest = 0;
 
-async function subscribeEvents() {
-	unsubscribeEvents();
+async function subscribeEvents(currentGeneration: number, earlyEvents: (() => void)[]) {
+	// The spawned backend can publish before start_run returns its run ID.
+	// Buffer these events and replay after binding the returned ID.
+	function subscribe<T extends { run_id: string }>(
+		listen: (callback: (event: T) => void) => Promise<() => void>,
+		callback: (event: T) => void,
+	) {
+		return listen((event) => {
+			if (currentGeneration !== generation) return;
+			const deliver = () => {
+				if (currentGeneration === generation && get(runState).runId === event.run_id) callback(event);
+			};
+			if (get(runState).runId === null) earlyEvents.push(deliver);
+			else deliver();
+		});
+	}
 
-	const unsubs = await Promise.all([
-		onStatusChanged((e) => {
+	const subscriptions = await Promise.allSettled([
+		subscribe(onStatusChanged, (e) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
-				return { ...s, status: e.status };
+				const acknowledged = ['completed', 'failed', 'cancelled'].includes(e.status)
+					|| (s.controlPending === 'pause' && e.status === 'paused')
+					|| (s.controlPending === 'resume' && e.status !== 'paused')
+					|| (s.controlPending === 'confirm_schema' && e.status === 'running');
+				return {
+					...s,
+					status: e.status,
+					pausedFrom: e.status === 'paused' ? (s.pausedFrom ?? s.status) : null,
+					controlPending: acknowledged ? null : s.controlPending,
+				};
 			});
 		}),
-		onRowAdded((e: RowAddedEvent) => {
+		subscribe(onRowAdded, (e: RowAddedEvent) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
 				const row: RunRow = {
@@ -92,25 +126,25 @@ async function subscribeEvents() {
 				return { ...s, rows: [...s.rows, row] };
 			});
 		}),
-		onProgressUpdate((e) => {
+		subscribe(onProgressUpdate, (e) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
 				return { ...s, progress: e.stats };
 			});
 		}),
-		onSchemaProposed((e) => {
+		subscribe(onSchemaProposed, (e) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
 				return { ...s, schema: e.columns, status: 'schema_review' };
 			});
 		}),
-		onRunError((e) => {
+		subscribe(onRunError, (e) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
-				return { ...s, error: e.error, status: 'failed' };
+				return { ...s, error: e.error, status: 'failed', controlPending: null };
 			});
 		}),
-		onRunLogEntry((e) => {
+		subscribe(onRunLogEntry, (e) => {
 			const current = get(runState);
 			if (current.runId !== e.run_id) return;
 			addLog({
@@ -119,7 +153,7 @@ async function subscribeEvents() {
 				message: `[${e.role}] ${e.message}`,
 			});
 		}),
-		onImageAdded((e: ImageAddedEvent) => {
+		subscribe(onImageAdded, (e: ImageAddedEvent) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
 				const img: ImageResult = {
@@ -135,7 +169,7 @@ async function subscribeEvents() {
 				return { ...s, imageResults: [...s.imageResults, img] };
 			});
 		}),
-		onLinkAdded((e: LinkAddedEvent) => {
+		subscribe(onLinkAdded, (e: LinkAddedEvent) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
 				const link: LinkResult = {
@@ -148,7 +182,7 @@ async function subscribeEvents() {
 				return { ...s, linkResults: [...s.linkResults, link] };
 			});
 		}),
-		onResearchStep((e: ResearchStepEvent) => {
+		subscribe(onResearchStep, (e: ResearchStepEvent) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
 				const step: ResearchStep = {
@@ -161,7 +195,7 @@ async function subscribeEvents() {
 				return { ...s, researchSteps: [...s.researchSteps, step] };
 			});
 		}),
-		onResearchAnswer((e: ResearchAnswerEvent) => {
+		subscribe(onResearchAnswer, (e: ResearchAnswerEvent) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
 				return { ...s, researchAnswer: e.markdown };
@@ -169,6 +203,13 @@ async function subscribeEvents() {
 		}),
 	]);
 
+	const unsubs = subscriptions.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+	const failed = subscriptions.find((result) => result.status === 'rejected');
+	if (currentGeneration !== generation || failed) {
+		for (const unsubscribe of unsubs) unsubscribe();
+		if (failed?.status === 'rejected') throw failed.reason;
+		return;
+	}
 	unlisteners = unsubs;
 }
 
@@ -178,6 +219,8 @@ function unsubscribeEvents() {
 }
 
 export async function startNewRun(query: string, runType: string = 'table', stopConditions?: import('$lib/api/tauri').StopConditions) {
+	const currentGeneration = ++generation;
+	unsubscribeEvents();
 	runState.set({
 		...initialState,
 		query,
@@ -185,37 +228,75 @@ export async function startNewRun(query: string, runType: string = 'table', stop
 		status: 'pending',
 	});
 
-	await subscribeEvents();
-
-	const resp = await apiStartRun(query, runType, stopConditions);
-	runState.update((s) => ({ ...s, runId: resp.run_id }));
+	const earlyEvents: (() => void)[] = [];
+	const start = (async () => {
+		try {
+			await subscribeEvents(currentGeneration, earlyEvents);
+			if (currentGeneration !== generation) return;
+			const resp = await apiStartRun(query, runType, stopConditions);
+			if (currentGeneration !== generation) return;
+			runState.update((s) => ({ ...s, runId: resp.run_id }));
+			for (const deliver of earlyEvents) deliver();
+		} catch (error) {
+			if (currentGeneration === generation) {
+				unsubscribeEvents();
+				runState.update((s) => ({ ...s, status: 'failed', error: String(error), controlPending: null }));
+				addLog({ timestamp: new Date().toISOString(), level: 'ERROR', message: `[run] Start failed: ${String(error)}` });
+			}
+			throw error;
+		}
+	})();
+	pendingStart = start;
+	try {
+		await start;
+	} finally {
+		if (pendingStart === start) pendingStart = null;
+	}
 }
 
-export async function cancelCurrentRun() {
-	const { runId } = get(runState);
-	if (!runId) return;
-	await apiCancelRun(runId);
+async function requestControl(action: RunControl, send: (runId: string) => Promise<void>) {
+	const state = get(runState);
+	if (['idle', 'completed', 'failed', 'cancelled'].includes(state.status)) return;
+	if (state.controlPending && (action !== 'cancel' || state.controlPending === 'cancel')) return;
+	const currentGeneration = generation;
+	const request = ++controlRequest;
+	runState.update((s) => ({ ...s, controlPending: action, controlError: null }));
+	try {
+		// A click during startup must not silently disappear while the ID is pending.
+		if (pendingStart) await pendingStart;
+		if (currentGeneration !== generation || request !== controlRequest) return;
+		const { runId, status } = get(runState);
+		if (!runId || ['completed', 'failed', 'cancelled'].includes(status)) return;
+		addLog({ timestamp: new Date().toISOString(), level: 'INFO', message: `[run] Requesting ${action}` });
+		await send(runId);
+		// Keep the pending indicator until the backend publishes the new status.
+	} catch (error) {
+		if (currentGeneration !== generation || request !== controlRequest || get(runState).status === 'failed') return;
+		const message = `Could not ${action.replace('_', ' ')}: ${String(error)}`;
+		runState.update((s) => ({ ...s, controlPending: null, controlError: message }));
+		addLog({ timestamp: new Date().toISOString(), level: 'ERROR', message: `[run] ${message}` });
+	}
 }
 
-export async function pauseCurrentRun() {
-	const { runId } = get(runState);
-	if (!runId) return;
-	await apiPauseRun(runId);
+export function cancelCurrentRun() {
+	return requestControl('cancel', apiCancelRun);
 }
 
-export async function resumeCurrentRun() {
-	const { runId } = get(runState);
-	if (!runId) return;
-	await apiResumeRun(runId);
+export function pauseCurrentRun() {
+	return requestControl('pause', apiPauseRun);
 }
 
-export async function confirmCurrentSchema(columns: SchemaColumn[]) {
-	const { runId } = get(runState);
-	if (!runId) return;
-	await apiConfirmSchema(runId, columns);
+export function resumeCurrentRun() {
+	return requestControl('resume', apiResumeRun);
+}
+
+export function confirmCurrentSchema(columns: SchemaColumn[]) {
+	return requestControl('confirm_schema', (runId) => apiConfirmSchema(runId, columns));
 }
 
 export function resetRun() {
+	generation++;
+	pendingStart = null;
 	unsubscribeEvents();
 	runState.set({ ...initialState });
 }

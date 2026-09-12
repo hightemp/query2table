@@ -30,6 +30,7 @@
 
 	let isIdle = $derived($runState.status === 'idle');
 	let isSchemaReview = $derived($runState.status === 'schema_review');
+	let isSchemaPaused = $derived($runState.status === 'paused' && $runState.pausedFrom === 'schema_review');
 	let isActive = $derived(
 		$runState.status === 'running' || $runState.status === 'paused' || $runState.status === 'pending'
 	);
@@ -154,6 +155,7 @@
 			</div>
 			<RunControls
 				status={$runState.status}
+				pending={$runState.controlPending}
 				onpause={pauseCurrentRun}
 				onresume={resumeCurrentRun}
 				oncancel={cancelCurrentRun}
@@ -164,9 +166,12 @@
 		</div>
 
 		{#if $runState.error}
-			<div class="error-banner">
+			<div class="error-banner" role="alert">
 				<strong>Error:</strong> {$runState.error}
 			</div>
+		{/if}
+		{#if $runState.controlError}
+			<div class="error-banner" role="alert">{$runState.controlError}</div>
 		{/if}
 
 		{#if isActive || isFinished}
@@ -176,12 +181,14 @@
 			{/if}
 		{/if}
 
-		{#if isSchemaReview}
-			<SchemaEditor
-				columns={$runState.schema}
-				onconfirm={handleSchemaConfirm}
-				oncancel={handleSchemaCancel}
-			/>
+		{#if isSchemaReview || isSchemaPaused}
+			<div hidden={!isSchemaReview}>
+				<SchemaEditor
+					columns={$runState.schema}
+					onconfirm={handleSchemaConfirm}
+					oncancel={handleSchemaCancel}
+				/>
+			</div>
 		{/if}
 
 		{#if isImageRun}

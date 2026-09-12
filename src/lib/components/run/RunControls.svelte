@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { PauseIcon, PlayIcon, XCircleIcon, RotateCcwIcon, DownloadIcon } from '@lucide/svelte';
+	import type { RunControl } from '$lib/stores/run';
 
 	interface Props {
 		status: string;
+		pending?: RunControl | null;
 		onpause: () => void;
 		onresume: () => void;
 		oncancel: () => void;
@@ -11,7 +13,7 @@
 		showExport?: boolean;
 	}
 
-	let { status, onpause, onresume, oncancel, onreset, onexport, showExport = false }: Props = $props();
+	let { status, pending = null, onpause, onresume, oncancel, onreset, onexport, showExport = false }: Props = $props();
 
 	let isActive = $derived(
 		status === 'running' || status === 'paused' || status === 'pending' || status === 'schema_review'
@@ -27,20 +29,20 @@
 	</span>
 
 	{#if isActive}
-		{#if status === 'running'}
-			<button class="ctrl-btn" onclick={onpause} aria-label="Pause">
+		{#if status === 'running' || status === 'pending' || status === 'schema_review'}
+			<button class="ctrl-btn" onclick={onpause} aria-label="Pause" disabled={!!pending}>
 				<PauseIcon size={16} />
-				Pause
+				{pending === 'pause' ? 'Pausing…' : 'Pause'}
 			</button>
 		{:else if status === 'paused'}
-			<button class="ctrl-btn" onclick={onresume} aria-label="Resume">
+			<button class="ctrl-btn" onclick={onresume} aria-label="Resume" disabled={!!pending}>
 				<PlayIcon size={16} />
-				Resume
+				{pending === 'resume' ? 'Resuming…' : 'Resume'}
 			</button>
 		{/if}
-		<button class="ctrl-btn ctrl-cancel" onclick={oncancel} aria-label="Cancel">
+		<button class="ctrl-btn ctrl-cancel" onclick={oncancel} aria-label="Cancel" disabled={pending === 'cancel'}>
 			<XCircleIcon size={16} />
-			Cancel
+			{pending === 'cancel' ? 'Cancelling…' : 'Cancel'}
 		</button>
 	{/if}
 
@@ -115,6 +117,11 @@
 
 	.ctrl-btn:hover {
 		background: var(--color-surface-200-800);
+	}
+
+	.ctrl-btn:disabled {
+		opacity: 0.6;
+		cursor: wait;
 	}
 
 	.ctrl-cancel {

@@ -434,3 +434,58 @@ async fn openrouter_catalog_propagates_errors_and_accepts_empty_lists() {
         }
     }
 }
+
+#[tokio::test]
+async fn ollama_json_requests_preserve_answer_budget_without_disabling_plain_chat_thinking() {
+    for (model, json_mode, expected_think) in [
+        ("deepseek-v4.1-flash", true, Some(json!(false))),
+        ("gpt-oss:120b", true, Some(json!("low"))),
+        ("deepseek-v4.1-flash", false, None),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "message": {"content": "{\"queries\":[]}"}, "done_reason": "stop"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = OllamaProvider::cloud(server.uri(), "test-key".into()).unwrap();
+        provider
+            .chat_completion(CompletionRequest {
+                model: model.into(),
+                json_mode,
+                ..request()
+            })
+            .await
+            .unwrap();
+        let requests = server.received_requests().await.unwrap();
+        let body = requests[0].body_json::<Value>().unwrap();
+        assert_eq!(body.get("think"), expected_think.as_ref());
+    }
+}
+
+#[tokio::test]
+async fn ollama_reports_truncated_and_empty_answers_before_role_json_parsing() {
+    for (content, thinking, reason, expected) in [
+        ("", "private reasoning", "length", "token limit"),
+        ("{\"queries\":[", "", "length", "token limit"),
+        (" ", "private reasoning", "stop", "empty answer"),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "message": {"content": content, "thinking": thinking},
+                "done_reason": reason, "eval_count": 4096
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = OllamaProvider::cloud(server.uri(), "test-key".into()).unwrap();
+        let error = provider.chat_completion(request()).await.unwrap_err();
+        assert!(matches!(error, LlmError::ParseError(_)));
+        assert!(error.to_string().contains(expected));
+        assert!(!error.to_string().contains("private reasoning"));
+    }
+}
