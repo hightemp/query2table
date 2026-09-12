@@ -5,9 +5,11 @@
 ### Release 0.5.0
 
 - [x] Synchronize VERSION, frontend/backend manifests and lockfiles; prepare release notes and verify the release source.
-- [ ] Publish v0.5.0 and verify successful Linux, Windows, and macOS builds plus downloadable release assets.
+- [x] Publish v0.5.0 and verify successful Linux, Windows, and macOS builds plus downloadable release assets.
 
 Release-source checks: version metadata consistently reports 0.5.0; 246 Rust tests and 69 frontend tests passed; `npm run check` reports no errors (4 existing warnings); `git diff --check` and the release credential scan passed. `make bump-version` now updates both lockfiles, and `make release` publishes the branch and new tag atomically. Changes are summarized in CHANGELOG.md.
+
+Published [v0.5.0](https://github.com/hightemp/query2table/releases/tag/v0.5.0) from commit `a2bd68cd6843577ef040d3dbffe0df47fe1ac47e`. [GitHub Actions run 34695358465](https://github.com/hightemp/query2table/actions/runs/34695358465) completed successfully for Linux x86_64, Windows x64, and macOS Apple Silicon. All 7 published assets were downloaded and matched their reported GitHub SHA-256 digests; the DEB, macOS app Info.plist, and Windows EXE version resource report 0.5.0. The release is public, stable, and marked latest.
 
 Query2Table is a local-first desktop application that converts natural-language research queries into structured tables of entities. The system uses a controlled orchestrator with fixed roles — not free-form autonomous agents — to search the internet, fetch pages, extract structured data via LLMs, deduplicate results, and stream them into a live table with row-level evidence.
 
