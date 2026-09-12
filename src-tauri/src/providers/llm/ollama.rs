@@ -52,9 +52,56 @@ impl OllamaProvider {
             request.bearer_auth(&self.api_key)
         }
     }
+
+    /// Fetch model IDs from the server's native catalog.
+    pub async fn list_models(&self) -> Result<Vec<String>, LlmError> {
+        debug!(
+            provider = self.provider_name(),
+            "Loading Ollama model catalog"
+        );
+        let response = self
+            .authenticate(self.client.get(format!("{}/api/tags", self.base_url)))
+            .timeout(std::time::Duration::from_secs(20))
+            .send()
+            .await
+            .map_err(|e| LlmError::ConnectionError(e.to_string()))?;
+        if let Some(error) = status_error(&response) {
+            return Err(error);
+        }
+        if !response.status().is_success() {
+            return Err(LlmError::RequestFailed(format!(
+                "Ollama model list returned HTTP {}",
+                response.status()
+            )));
+        }
+        let catalog: OllamaModelList = response
+            .json()
+            .await
+            .map_err(|e| LlmError::ParseError(e.to_string()))?;
+        let mut models: Vec<String> = catalog
+            .models
+            .into_iter()
+            .map(|model| model.name)
+            .filter(|name| !name.trim().is_empty())
+            .collect();
+        models.sort_unstable();
+        models.dedup();
+        debug!(count = models.len(), "Ollama model catalog loaded");
+        Ok(models)
+    }
 }
 
 // --- Ollama API types ---
+
+#[derive(Deserialize)]
+struct OllamaModelList {
+    models: Vec<OllamaModel>,
+}
+
+#[derive(Deserialize)]
+struct OllamaModel {
+    name: String,
+}
 
 #[derive(Serialize)]
 struct OllamaChatRequest {

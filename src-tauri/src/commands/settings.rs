@@ -1,6 +1,22 @@
+use crate::providers::llm::ollama::OllamaProvider;
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use tauri::State;
+
+#[tauri::command]
+pub async fn list_ollama_cloud_models(
+    base_url: String,
+    api_key: String,
+) -> Result<Vec<String>, String> {
+    // The public cloud catalog works without a key. Use current form credentials when provided.
+    let provider = if api_key.trim().is_empty() {
+        OllamaProvider::new(base_url)
+    } else {
+        OllamaProvider::cloud(base_url, api_key)
+    }
+    .map_err(|e| e.to_string())?;
+    provider.list_models().await.map_err(|e| e.to_string())
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Setting {
@@ -23,7 +39,10 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<Vec<Setting>, St
 }
 
 #[tauri::command]
-pub async fn get_setting(state: State<'_, AppState>, key: String) -> Result<Option<String>, String> {
+pub async fn get_setting(
+    state: State<'_, AppState>,
+    key: String,
+) -> Result<Option<String>, String> {
     state.db.get_setting(&key).await.map_err(|e| e.to_string())
 }
 

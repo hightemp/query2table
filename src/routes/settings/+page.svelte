@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { settings } from '$lib/stores/settings';
 	import { onDestroy } from 'svelte';
+	import OllamaCloudModelPicker from '$lib/components/settings/OllamaCloudModelPicker.svelte';
 	import type { SettingGroup, SettingDef } from '$lib/types';
 	import { EyeIcon, EyeOffIcon, SaveIcon, TrashIcon, PlusIcon } from '@lucide/svelte';
 
@@ -37,7 +38,7 @@
 				{ key: 'ollama_model', provider: 'ollama', label: 'Ollama Model', description: 'Local model name', type: 'text', placeholder: 'llama3' },
 				{ key: 'ollama_cloud_url', provider: 'ollama_cloud', label: 'Ollama Cloud URL', description: 'Cloud host URL', type: 'text', placeholder: 'https://ollama.com' },
 				{ key: 'ollama_cloud_api_key', provider: 'ollama_cloud', label: 'Ollama Cloud API Key', description: 'Required; create a key at ollama.com/settings/keys', type: 'password' },
-				{ key: 'ollama_cloud_model', provider: 'ollama_cloud', label: 'Ollama Cloud Model', description: 'Cloud model name, e.g. gpt-oss:120b', type: 'text', placeholder: 'gpt-oss:120b' },
+				{ key: 'ollama_cloud_model', provider: 'ollama_cloud', label: 'Ollama Cloud Model', description: 'Search and select a model from the server', type: 'text' },
 				{ key: 'openai_base_url', provider: 'openai_compatible', label: 'API Base URL', description: 'API base including /v1; e.g. http://localhost:8080/v1 for llama.cpp', type: 'text', placeholder: 'http://localhost:8080/v1' },
 				{ key: 'openai_api_key', provider: 'openai_compatible', label: 'API Key (optional)', description: 'Leave empty if your server does not require authentication', type: 'password' },
 				{ key: 'openai_model', provider: 'openai_compatible', label: 'Model', description: 'Required model ID from your server; use the loaded model name or alias in llama.cpp', type: 'text', placeholder: 'Your loaded model ID' },
@@ -215,7 +216,15 @@
 							<span class="setting-description">{setting.description}</span>
 						</label>
 
-						{#if setting.type === 'select'}
+						{#if setting.key === 'ollama_cloud_model'}
+							<OllamaCloudModelPicker
+								id={setting.key}
+								value={getValue(setting.key)}
+								baseUrl={settingsMap.get('ollama_cloud_url') ?? 'https://ollama.com'}
+								apiKey={getValue('ollama_cloud_api_key')}
+								onchange={(model) => handleChange(setting.key, model)}
+							/>
+						{:else if setting.type === 'select'}
 							<select
 								id={setting.key}
 								value={getValue(setting.key)}

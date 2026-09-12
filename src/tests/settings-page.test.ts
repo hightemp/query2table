@@ -25,6 +25,7 @@ describe('LLM provider settings', () => {
 		expect(cloudKey).toHaveAttribute('type', 'password');
 		await fireEvent.input(cloudKey, { target: { value: 'test-cloud-key' } });
 		await fireEvent.input(screen.getByLabelText(/^Ollama Cloud Model /), { target: { value: 'cloud-model' } });
+		await fireEvent.click(await screen.findByRole('option', { name: 'cloud-model' }));
 
 		await fireEvent.change(provider, { target: { value: 'openai_compatible' } });
 		await fireEvent.input(screen.getByLabelText(/^API Base URL /), { target: { value: 'http://localhost:8080/v1' } });

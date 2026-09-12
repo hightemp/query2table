@@ -15,6 +15,13 @@ The MVP delivers a fully functional agent search pipeline: query understanding �
 
 Verification: `cargo test --locked` — 207 passed, 1 live test ignored; `npm test` — 13 passed; `npm run check` — 0 errors (4 existing warnings); `npm run build` — passed; formatting for changed LLM Rust files and `git diff --check` — passed. Provider HTTP contracts were tested with local mock servers; live cloud/model inference was not run. Updated Vitest to 3.2.7 for compatibility with the existing Vite 6/Svelte plugin, enabled Svelte component tests, and corrected an outdated theme assertion. Strict Clippy remains blocked by existing warnings in unrelated modules (18 diagnostics); no diagnostics point to the changed LLM modules.
 
+### Ollama Cloud model picker
+
+- [x] Load available models from the configured Ollama Cloud server and replace the model text field with a searchable combobox; support keyboard selection, reload, loading/error/empty states, and preserve the saved model while filtering.
+- [x] Verify the live model-list endpoint, HTTP response handling, filtering/selection/persistence, and stale-request handling; run backend and frontend checks.
+
+Verification: `cargo test --locked` — 209 passed, 2 live tests ignored by default; the new `cloud_catalog_live_endpoint` test was explicitly run with `--ignored --nocapture` and returned 20 model IDs from `https://ollama.com/api/tags`. `npm test` — 17 passed, including catalog filtering, mouse/keyboard selection, saved-value preservation, retry/empty/error states, and stale-response handling. `npm run check` — 0 errors (4 existing warnings); `npm run build`, formatting checks for changed Rust files, and `git diff --check` — passed.
+
 ### Application branding (2026-09-12)
 
 - [x] Create a new Query2Table logo and save the canonical asset in `images/query2table-logo.png`.

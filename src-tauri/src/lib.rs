@@ -110,6 +110,7 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_setting,
             commands::settings::get_setting,
+            commands::settings::list_ollama_cloud_models,
             commands::run::start_run,
             commands::run::cancel_run,
             commands::run::pause_run,

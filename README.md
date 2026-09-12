@@ -110,7 +110,7 @@ You need at least one search API key and a configured LLM provider. Local Ollama
 Select the provider in **Settings → LLM Provider**, fill in its fields, and click **Save**. Each provider keeps its own model and credentials when you switch.
 
 - **Ollama (Local):** URL `http://localhost:11434` and the name of an installed model.
-- **Ollama Cloud:** URL `https://ollama.com`, an Ollama API key, and a cloud model ID such as `gpt-oss:120b`. Direct cloud access uses the [native Ollama API](https://docs.ollama.com/cloud). Cloud currently lacks [structured output support](https://docs.ollama.com/capabilities/structured-outputs), so JSON is requested through prompts and parsed by the existing pipeline.
+- **Ollama Cloud:** URL `https://ollama.com`, an Ollama API key, and a model selected from the searchable server catalog. Click the model field and type to filter, then choose with the mouse or arrow keys and Enter; **Refresh** reloads the catalog. Filtering does not change the selected model until you choose a result. Direct cloud access uses the [native Ollama API](https://docs.ollama.com/cloud). Cloud currently lacks [structured output support](https://docs.ollama.com/capabilities/structured-outputs), so JSON is requested through prompts and parsed by the existing pipeline.
 - **OpenAI-compatible:** enter the API base URL including `/v1` and the server's model ID. For [llama.cpp](https://github.com/ggml-org/llama.cpp/tree/master/tools/server), the default URL is `http://localhost:8080/v1`; use the loaded model name or configured alias. Leave the API key empty unless your server requires one. Disable **JSON Mode** if the server rejects `response_format`.
 
 ## Architecture

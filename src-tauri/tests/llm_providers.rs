@@ -1,3 +1,4 @@
+use query2table_lib::commands::settings::list_ollama_cloud_models;
 use std::collections::HashMap;
 
 use query2table_lib::providers::llm::{
@@ -309,4 +310,68 @@ async fn migration_adds_provider_defaults_and_preserves_saved_settings() {
     assert_eq!(config.ollama_cloud_api_key, "saved-key");
     assert_eq!(config.openai_base_url, "http://localhost:8080/v1");
     assert!(config.openai_json_mode);
+}
+
+#[tokio::test]
+async fn cloud_catalog_command_returns_sorted_unique_ids_with_optional_auth() {
+    for key in ["", "test-cloud-key"] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/tags"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"models": [
+                {"name": "qwen:cloud", "size": 123}, {"name": "gpt-oss:120b"},
+                {"name": "qwen:cloud"}, {"name": ""}
+            ]})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let models = list_ollama_cloud_models(format!("{}/api/", server.uri()), key.into())
+            .await
+            .unwrap();
+        assert_eq!(models, ["gpt-oss:120b", "qwen:cloud"]);
+        let requests = server.received_requests().await.unwrap();
+        if key.is_empty() {
+            assert!(!requests[0].headers.contains_key("authorization"));
+        } else {
+            assert_eq!(
+                requests[0].headers["authorization"],
+                "Bearer test-cloud-key"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn cloud_catalog_reports_http_and_parse_errors_and_accepts_empty_lists() {
+    for (status, body, succeeds) in [
+        (401, json!({}), false),
+        (429, json!({}), false),
+        (503, json!({}), false),
+        (200, json!({}), false),
+        (200, json!({"models": [{"wrong": "field"}]}), false),
+        (200, json!({"models": []}), true),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(body))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let result = list_ollama_cloud_models(server.uri(), String::new()).await;
+        assert_eq!(
+            result.is_ok(),
+            succeeds,
+            "Unexpected result for HTTP {status}: {result:?}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "Queries the live public Ollama Cloud model catalog"]
+async fn cloud_catalog_live_endpoint() {
+    let models = list_ollama_cloud_models("https://ollama.com".into(), String::new())
+        .await
+        .unwrap();
+    assert!(!models.is_empty());
+    println!("Ollama Cloud returned {} model IDs", models.len());
 }

@@ -37,6 +37,10 @@ export async function updateSetting(key: string, value: string): Promise<void> {
 	return invoke('update_setting', { key, value });
 }
 
+export async function listOllamaCloudModels(baseUrl: string, apiKey: string): Promise<string[]> {
+	return invoke('list_ollama_cloud_models', { baseUrl, apiKey });
+}
+
 export interface LogEntry {
 	timestamp: string;
 	level: string;

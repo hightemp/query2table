@@ -10,6 +10,8 @@ const mockInvoke = async (cmd: string, _args?: Record<string, unknown>) => {
 			];
 		case 'get_setting':
 			return null;
+		case 'list_ollama_cloud_models':
+			return ['cloud-model', 'gpt-oss:120b', 'qwen3.5:397b'];
 		case 'update_setting':
 			return undefined;
 		default:
