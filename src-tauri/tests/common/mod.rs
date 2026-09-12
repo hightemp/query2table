@@ -284,6 +284,7 @@ pub fn test_pipeline_config() -> PipelineConfig {
             ollama_model: "llama3".to_string(),
             temperature: 0.2,
             max_tokens: 4096,
+            ..LlmConfig::default()
         },
         search: SearchConfig {
             primary: SearchBackend::Brave,

@@ -2,9 +2,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
 
-use super::types::*;
-use super::openrouter::OpenRouterProvider;
 use super::ollama::OllamaProvider;
+use super::openai_compatible::OpenAiCompatibleProvider;
+use super::openrouter::OpenRouterProvider;
+use super::types::*;
 use crate::utils::retry::{retry_with_backoff, RetryAction, RetryConfig};
 
 /// Which LLM provider backend to use.
@@ -12,6 +13,8 @@ use crate::utils::retry::{retry_with_backoff, RetryAction, RetryConfig};
 pub enum LlmBackend {
     OpenRouter,
     Ollama,
+    OllamaCloud,
+    OpenAiCompatible,
 }
 
 /// Configuration for the LLM manager.
@@ -22,6 +25,13 @@ pub struct LlmConfig {
     pub openrouter_model: String,
     pub ollama_url: String,
     pub ollama_model: String,
+    pub ollama_cloud_url: String,
+    pub ollama_cloud_api_key: String,
+    pub ollama_cloud_model: String,
+    pub openai_base_url: String,
+    pub openai_api_key: String,
+    pub openai_model: String,
+    pub openai_json_mode: bool,
     pub temperature: f32,
     pub max_tokens: u32,
 }
@@ -34,6 +44,13 @@ impl Default for LlmConfig {
             openrouter_model: "openai/gpt-4.1-mini".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             ollama_model: "llama3".to_string(),
+            ollama_cloud_url: "https://ollama.com".to_string(),
+            ollama_cloud_api_key: String::new(),
+            ollama_cloud_model: "gpt-oss:120b".to_string(),
+            openai_base_url: "http://localhost:8080/v1".to_string(),
+            openai_api_key: String::new(),
+            openai_model: String::new(),
+            openai_json_mode: true,
             temperature: 0.2,
             max_tokens: 4096,
         }
@@ -51,18 +68,32 @@ impl LlmManager {
     pub fn from_config(config: LlmConfig) -> Result<Self, LlmError> {
         let provider: Arc<dyn LlmProvider> = match config.backend {
             LlmBackend::OpenRouter => {
-                if config.openrouter_api_key.is_empty() {
-                    return Err(LlmError::NotConfigured(
-                        "OpenRouter API key is required".to_string()
-                    ));
-                }
-                Arc::new(OpenRouterProvider::new(config.openrouter_api_key.clone()))
+                Arc::new(OpenRouterProvider::new(config.openrouter_api_key.clone())?)
             }
-            LlmBackend::Ollama => {
-                Arc::new(OllamaProvider::new(config.ollama_url.clone()))
-            }
+            LlmBackend::Ollama => Arc::new(OllamaProvider::new(config.ollama_url.clone())?),
+            LlmBackend::OllamaCloud => Arc::new(OllamaProvider::cloud(
+                config.ollama_cloud_url.clone(),
+                config.ollama_cloud_api_key.clone(),
+            )?),
+            LlmBackend::OpenAiCompatible => Arc::new(OpenAiCompatibleProvider::new(
+                config.openai_base_url.clone(),
+                config.openai_api_key.clone(),
+                config.openai_json_mode,
+            )?),
         };
 
+        let model = match config.backend {
+            LlmBackend::OpenRouter => &config.openrouter_model,
+            LlmBackend::Ollama => &config.ollama_model,
+            LlmBackend::OllamaCloud => &config.ollama_cloud_model,
+            LlmBackend::OpenAiCompatible => &config.openai_model,
+        };
+        if model.trim().is_empty() {
+            return Err(LlmError::NotConfigured(format!(
+                "{} model is required",
+                provider.provider_name()
+            )));
+        }
         info!(backend = ?config.backend, "LLM manager initialized");
 
         Ok(Self { provider, config })
@@ -77,11 +108,13 @@ impl LlmManager {
         let model = match self.config.backend {
             LlmBackend::OpenRouter => &self.config.openrouter_model,
             LlmBackend::Ollama => &self.config.ollama_model,
+            LlmBackend::OllamaCloud => &self.config.ollama_cloud_model,
+            LlmBackend::OpenAiCompatible => &self.config.openai_model,
         };
 
         let request = CompletionRequest {
             messages,
-            model: model.clone(),
+            model: model.trim().to_string(),
             temperature: self.config.temperature,
             max_tokens: self.config.max_tokens,
             json_mode,
@@ -136,18 +169,25 @@ impl LlmManager {
                     Ok(resp) => (Ok(resp), RetryAction::Success, None),
                     Err(LlmError::RateLimited { retry_after_ms }) => {
                         let hint = Duration::from_millis(retry_after_ms);
-                        (Err(LlmError::RateLimited { retry_after_ms }), RetryAction::Retry, Some(hint))
+                        (
+                            Err(LlmError::RateLimited { retry_after_ms }),
+                            RetryAction::Retry,
+                            Some(hint),
+                        )
                     }
-                    Err(LlmError::ConnectionError(msg)) => {
-                        (Err(LlmError::ConnectionError(msg)), RetryAction::Retry, None)
-                    }
+                    Err(LlmError::ConnectionError(msg)) => (
+                        Err(LlmError::ConnectionError(msg)),
+                        RetryAction::Retry,
+                        None,
+                    ),
                     Err(LlmError::RequestFailed(msg)) => {
                         (Err(LlmError::RequestFailed(msg)), RetryAction::Retry, None)
                     }
                     Err(e) => (Err(e), RetryAction::Fail, None),
                 }
             }
-        }).await
+        })
+        .await
     }
 
     /// Check if the configured provider is healthy.
@@ -174,25 +214,58 @@ impl LlmManager {
     pub fn config_from_settings(settings: &std::collections::HashMap<String, String>) -> LlmConfig {
         let backend = match settings.get("llm_provider").map(|s| s.as_str()) {
             Some("ollama") => LlmBackend::Ollama,
+            Some("ollama_cloud") => LlmBackend::OllamaCloud,
+            Some("openai_compatible") => LlmBackend::OpenAiCompatible,
             _ => LlmBackend::OpenRouter,
         };
 
+        let defaults = LlmConfig::default();
         LlmConfig {
             backend,
-            openrouter_api_key: settings.get("openrouter_api_key").cloned().unwrap_or_default(),
-            openrouter_model: settings.get("openrouter_model")
+            openrouter_api_key: settings
+                .get("openrouter_api_key")
+                .cloned()
+                .unwrap_or_default(),
+            openrouter_model: settings
+                .get("openrouter_model")
                 .cloned()
                 .unwrap_or_else(|| "openai/gpt-4.1-mini".to_string()),
-            ollama_url: settings.get("ollama_url")
+            ollama_url: settings
+                .get("ollama_url")
                 .cloned()
                 .unwrap_or_else(|| "http://localhost:11434".to_string()),
-            ollama_model: settings.get("ollama_model")
+            ollama_model: settings
+                .get("ollama_model")
                 .cloned()
                 .unwrap_or_else(|| "llama3".to_string()),
-            temperature: settings.get("llm_temperature")
+            ollama_cloud_url: settings
+                .get("ollama_cloud_url")
+                .cloned()
+                .unwrap_or(defaults.ollama_cloud_url),
+            ollama_cloud_api_key: settings
+                .get("ollama_cloud_api_key")
+                .cloned()
+                .unwrap_or_default(),
+            ollama_cloud_model: settings
+                .get("ollama_cloud_model")
+                .cloned()
+                .unwrap_or(defaults.ollama_cloud_model),
+            openai_base_url: settings
+                .get("openai_base_url")
+                .cloned()
+                .unwrap_or(defaults.openai_base_url),
+            openai_api_key: settings.get("openai_api_key").cloned().unwrap_or_default(),
+            openai_model: settings.get("openai_model").cloned().unwrap_or_default(),
+            openai_json_mode: settings
+                .get("openai_json_mode")
+                .map(|v| v != "false")
+                .unwrap_or(true),
+            temperature: settings
+                .get("llm_temperature")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0.2),
-            max_tokens: settings.get("llm_max_tokens")
+            max_tokens: settings
+                .get("llm_max_tokens")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(4096),
         }
@@ -217,7 +290,10 @@ mod tests {
         let mut settings = HashMap::new();
         settings.insert("llm_provider".to_string(), "openrouter".to_string());
         settings.insert("openrouter_api_key".to_string(), "sk-test".to_string());
-        settings.insert("openrouter_model".to_string(), "anthropic/claude-3.5-sonnet".to_string());
+        settings.insert(
+            "openrouter_model".to_string(),
+            "anthropic/claude-3.5-sonnet".to_string(),
+        );
         settings.insert("llm_temperature".to_string(), "0.5".to_string());
 
         let config = LlmManager::config_from_settings(&settings);

@@ -4,9 +4,16 @@
 
 Query2Table is a local-first desktop application that converts natural-language research queries into structured tables of entities. The system uses a controlled orchestrator with fixed roles — not free-form autonomous agents — to search the internet, fetch pages, extract structured data via LLMs, deduplicate results, and stream them into a live table with row-level evidence.
 
-The stack is Tauri v2 (desktop shell) + Rust (backend orchestration) + Svelte/SvelteKit (frontend) + SQLite (local persistence). LLM access is via OpenRouter and/or Ollama. Search is via Brave Search API and Serper with user-configurable primary/fallback.
+The stack is Tauri v2 (desktop shell) + Rust (backend orchestration) + Svelte/SvelteKit (frontend) + SQLite (local persistence). LLM access is via OpenRouter, local Ollama, Ollama Cloud, or a configurable OpenAI-compatible API. Search is via Brave Search API and Serper with user-configurable primary/fallback.
 
 The MVP delivers a fully functional agent search pipeline: query understanding → schema proposal → user confirmation → search planning → execution → extraction → validation → deduplication → streaming table with sources. Resume, export, history, multilingual expansion, and full settings are MVP. JS-rendered pages, PDF parsing, and templates are Phase 2.
+
+### Additional LLM providers (2026-09-12)
+
+- [x] Support OpenRouter, local Ollama, Ollama Cloud, and a configurable OpenAI-compatible API (including llama.cpp) with separate provider settings, optional keys for local servers, and provider-specific JSON handling.
+- [x] Verify provider routing, HTTP requests, authentication/errors, settings persistence, and the settings UI; run backend and frontend checks.
+
+Verification: `cargo test --locked` — 207 passed, 1 live test ignored; `npm test` — 13 passed; `npm run check` — 0 errors (4 existing warnings); `npm run build` — passed; formatting for changed LLM Rust files and `git diff --check` — passed. Provider HTTP contracts were tested with local mock servers; live cloud/model inference was not run. Updated Vitest to 3.2.7 for compatibility with the existing Vite 6/Svelte plugin, enabled Svelte component tests, and corrected an outdated theme assertion. Strict Clippy remains blocked by existing warnings in unrelated modules (18 diagnostics); no diagnostics point to the changed LLM modules.
 
 ---
 
@@ -15,7 +22,7 @@ The MVP delivers a fully functional agent search pipeline: query understanding �
 | # | Assumption | Rationale |
 |---|-----------|-----------|
 | A1 | User has at least one search API key (Brave or Serper) | App cannot search without one |
-| A2 | User has OpenRouter API key OR local Ollama instance | LLM is required for schema planning and extraction |
+| A2 | User has a configured LLM provider (OpenRouter, Ollama, Ollama Cloud, or OpenAI-compatible API) | LLM is required for schema planning and extraction |
 | A3 | Average web page yields 2-4KB of cleaned text | Informs token budget calculations |
 | A4 | LLM structured JSON output is reliable at >90% with gpt-5.4-mini | Basis for extraction pipeline; fallback handles failures |
 | A5 | 80% of target pages are plain HTML (no JS rendering needed for MVP) | Justifies deferring headless browser to Phase 2 |
@@ -887,13 +894,21 @@ fn should_stop(&self, state: &RunState) -> StopReason {
 | `brave_api_key` | string (secret) | Brave Search API key |
 | `serper_api_key` | string (secret) | Serper API key |
 | `openrouter_api_key` | string (secret) | OpenRouter API key |
-| `ollama_base_url` | string | Ollama server URL (default: http://localhost:11434) |
+| `ollama_url` | string | Local Ollama server URL (default: http://localhost:11434) |
+| `ollama_cloud_url` | string | Ollama Cloud host (default: https://ollama.com) |
+| `ollama_cloud_api_key` | string (secret) | Required for direct Ollama Cloud access |
+| `openai_base_url` | string | OpenAI-compatible API base (default: http://localhost:8080/v1) |
+| `openai_api_key` | string (secret) | Optional, depending on server authentication |
 
 **LLM Configuration:**
 | Key | Type | Description |
 |-----|------|-------------|
-| `llm_provider` | enum | `openrouter` \| `ollama` |
-| `default_model` | string | Default model for all stages (default: openai/gpt-5.4-mini) |
+| `llm_provider` | enum | `openrouter` \| `ollama` \| `ollama_cloud` \| `openai_compatible` |
+| `openrouter_model` | string | OpenRouter model (default: openai/gpt-4.1-mini) |
+| `ollama_model` | string | Local Ollama model (default: llama3) |
+| `ollama_cloud_model` | string | Ollama Cloud model (default: gpt-oss:120b) |
+| `openai_model` | string | Required model ID or alias served by the OpenAI-compatible endpoint |
+| `openai_json_mode` | bool | Send response_format for JSON requests (default: true); disable for servers without support |
 | `model_query_interpreter` | string? | Override model for QueryInterpreter |
 | `model_schema_planner` | string? | Override model for SchemaPlanner |
 | `model_search_planner` | string? | Override model for SearchPlanner |
@@ -1444,7 +1459,7 @@ cd src-tauri && cargo test --features e2e -- --ignored
 | OQ4 | Should Validator LLM call be optional/skippable for speed? | It is optional (controlled by setting) | Users may get lower quality without it |
 | OQ5 | What to do when primary and fallback search providers both fail? | Stop run with error | Run fails completely even if partial results exist |
 | OQ6 | Optimal parallel extraction count vs cost? | 3 workers | Too few = slow; too many = cost spike |
-| OQ7 | Should we support OpenAI API directly (not via OpenRouter)? | No — OpenRouter covers all models | Some users may prefer direct API |
+| OQ7 | Should we support OpenAI API directly (not via OpenRouter)? | Yes — configurable OpenAI-compatible API, including llama.cpp | Requires a base URL and model ID; API key depends on server |
 | OQ8 | How to handle sites that return soft 200 with "access denied" body? | Best-effort detection via content analysis | May waste LLM tokens on useless pages |
 | OQ9 | Skeleton UI vs alternative Svelte component library? | Skeleton UI | May need to evaluate alternatives if bundle size is concern |
 | OQ10 | Tauri v2 plugin ecosystem maturity for auto-updater? | Mature enough for production | May need workarounds |

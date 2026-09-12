@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { settings } from '$lib/stores/settings';
+	import { onDestroy } from 'svelte';
 	import type { SettingGroup, SettingDef } from '$lib/types';
 	import { EyeIcon, EyeOffIcon, SaveIcon, TrashIcon, PlusIcon } from '@lucide/svelte';
 
@@ -8,7 +9,7 @@
 	let saving = $state(false);
 	let showPasswords = $state(new Set<string>());
 
-	settings.subscribe((v) => {
+	const unsubscribe = settings.subscribe((v) => {
 		// Don't overwrite local edits while saving
 		if (saving) return;
 		const newMap = new Map(v);
@@ -22,16 +23,25 @@
 		settingsMap = newMap;
 	});
 
+	onDestroy(unsubscribe);
+
 	const groups: SettingGroup[] = [
 		{
 			label: 'LLM Provider',
 			description: 'Configure your LLM API connection',
 			settings: [
-				{ key: 'llm_provider', label: 'Provider', description: 'Which LLM service to use', type: 'select', options: [{ label: 'OpenRouter', value: 'openrouter' }, { label: 'Ollama (Local)', value: 'ollama' }] },
-				{ key: 'openrouter_api_key', label: 'OpenRouter API Key', description: 'Your OpenRouter API key', type: 'password', placeholder: 'sk-or-...' },
-				{ key: 'openrouter_model', label: 'Model', description: 'Model identifier', type: 'text', placeholder: 'openai/gpt-4.1-mini' },
-				{ key: 'ollama_url', label: 'Ollama URL', description: 'Local Ollama server URL', type: 'text', placeholder: 'http://localhost:11434' },
-				{ key: 'ollama_model', label: 'Ollama Model', description: 'Local model name', type: 'text', placeholder: 'llama3' },
+				{ key: 'llm_provider', label: 'Provider', description: 'Which LLM service to use', type: 'select', options: [{ label: 'OpenRouter', value: 'openrouter' }, { label: 'Ollama (Local)', value: 'ollama' }, { label: 'Ollama Cloud', value: 'ollama_cloud' }, { label: 'OpenAI-compatible (llama.cpp, etc.)', value: 'openai_compatible' }] },
+				{ key: 'openrouter_api_key', provider: 'openrouter', label: 'OpenRouter API Key', description: 'Your OpenRouter API key', type: 'password', placeholder: 'sk-or-...' },
+				{ key: 'openrouter_model', provider: 'openrouter', label: 'Model', description: 'Model identifier', type: 'text', placeholder: 'openai/gpt-4.1-mini' },
+				{ key: 'ollama_url', provider: 'ollama', label: 'Ollama URL', description: 'Local Ollama server URL', type: 'text', placeholder: 'http://localhost:11434' },
+				{ key: 'ollama_model', provider: 'ollama', label: 'Ollama Model', description: 'Local model name', type: 'text', placeholder: 'llama3' },
+				{ key: 'ollama_cloud_url', provider: 'ollama_cloud', label: 'Ollama Cloud URL', description: 'Cloud host URL', type: 'text', placeholder: 'https://ollama.com' },
+				{ key: 'ollama_cloud_api_key', provider: 'ollama_cloud', label: 'Ollama Cloud API Key', description: 'Required; create a key at ollama.com/settings/keys', type: 'password' },
+				{ key: 'ollama_cloud_model', provider: 'ollama_cloud', label: 'Ollama Cloud Model', description: 'Cloud model name, e.g. gpt-oss:120b', type: 'text', placeholder: 'gpt-oss:120b' },
+				{ key: 'openai_base_url', provider: 'openai_compatible', label: 'API Base URL', description: 'API base including /v1; e.g. http://localhost:8080/v1 for llama.cpp', type: 'text', placeholder: 'http://localhost:8080/v1' },
+				{ key: 'openai_api_key', provider: 'openai_compatible', label: 'API Key (optional)', description: 'Leave empty if your server does not require authentication', type: 'password' },
+				{ key: 'openai_model', provider: 'openai_compatible', label: 'Model', description: 'Required model ID from your server; use the loaded model name or alias in llama.cpp', type: 'text', placeholder: 'Your loaded model ID' },
+				{ key: 'openai_json_mode', provider: 'openai_compatible', label: 'JSON Mode', description: 'Disable if your server does not support response_format; prompts still request JSON', type: 'select', options: [{ label: 'Enabled', value: 'true' }, { label: 'Disabled', value: 'false' }] },
 				{ key: 'llm_temperature', label: 'Temperature', description: 'LLM temperature (0.0 - 1.0)', type: 'number' },
 				{ key: 'llm_max_tokens', label: 'Max Tokens', description: 'Maximum tokens per LLM request', type: 'number' },
 			]
@@ -79,6 +89,11 @@
 
 	function getValue(key: string): string {
 		return settingsMap.get(key) ?? '';
+	}
+
+	function visibleSettings(group: SettingGroup): SettingDef[] {
+		const provider = settingsMap.get('llm_provider') || 'openrouter';
+		return group.settings.filter((setting) => !setting.provider || setting.provider === provider);
 	}
 
 	function handleChange(key: string, value: string) {
@@ -193,7 +208,7 @@
 			<p class="section-description">{group.description}</p>
 
 			<div class="settings-grid">
-				{#each group.settings as setting}
+				{#each visibleSettings(group) as setting (setting.key)}
 					<div class="setting-item">
 						<label for={setting.key}>
 							<span class="setting-label">{setting.label}</span>

@@ -47,7 +47,7 @@ Ask something like *"Find all YC-backed AI startups from 2024 with their funding
 | Frontend | Svelte 5 (SvelteKit SPA) |
 | UI framework | Skeleton UI + Tailwind CSS v4 |
 | Database | SQLite (sqlx, WAL mode) |
-| LLM | OpenRouter (OpenAI-compatible) / Ollama (local) |
+| LLM | OpenRouter / Ollama (local) / Ollama Cloud / OpenAI-compatible API (e.g. llama.cpp) |
 | Search | Brave Search API / Serper API |
 | Icons | Lucide |
 
@@ -80,7 +80,7 @@ On first launch the app creates a local SQLite database with default settings. O
 
 | Group | Settings |
 |-------|----------|
-| **LLM Provider** | Provider (OpenRouter / Ollama), model, API key, temperature, max tokens |
+| **LLM Provider** | Provider (OpenRouter / Ollama / Ollama Cloud / OpenAI-compatible), URL, model, API key, JSON mode, temperature, max tokens |
 | **Search Provider** | Provider (Brave / Serper), API key, fallback toggle, results per query |
 | **Execution** | Parallel fetches (default 8), parallel extractions (default 3), fetch timeout, rate limiting, robots.txt |
 | **Quality** | Precision/recall balance, evidence strictness, confidence threshold, dedup similarity |
@@ -89,7 +89,7 @@ Stop conditions (target rows, max cost, max duration) are set per-query on the Q
 
 ### API Keys
 
-You need at least one search API key and one LLM API key:
+You need at least one search API key and a configured LLM provider. Local Ollama and unauthenticated OpenAI-compatible servers do not require an LLM API key:
 
 | Service | Get a key at |
 |---------|-------------|
@@ -97,6 +97,14 @@ You need at least one search API key and one LLM API key:
 | Serper | https://serper.dev/ |
 | OpenRouter | https://openrouter.ai/ |
 | Ollama (local) | https://ollama.com/ — no key needed |
+| Ollama Cloud | https://ollama.com/settings/keys |
+| OpenAI-compatible | Optional key, depending on your server |
+
+Select the provider in **Settings → LLM Provider**, fill in its fields, and click **Save**. Each provider keeps its own model and credentials when you switch.
+
+- **Ollama (Local):** URL `http://localhost:11434` and the name of an installed model.
+- **Ollama Cloud:** URL `https://ollama.com`, an Ollama API key, and a cloud model ID such as `gpt-oss:120b`. Direct cloud access uses the [native Ollama API](https://docs.ollama.com/cloud). Cloud currently lacks [structured output support](https://docs.ollama.com/capabilities/structured-outputs), so JSON is requested through prompts and parsed by the existing pipeline.
+- **OpenAI-compatible:** enter the API base URL including `/v1` and the server's model ID. For [llama.cpp](https://github.com/ggml-org/llama.cpp/tree/master/tools/server), the default URL is `http://localhost:8080/v1`; use the loaded model name or configured alias. Leave the API key empty unless your server requires one. Disable **JSON Mode** if the server rejects `response_format`.
 
 ## Architecture
 

@@ -7,8 +7,8 @@ describe('ui store', () => {
 		expect(get(sidebarCollapsed)).toBe(false);
 	});
 
-	it('theme defaults to cerberus', () => {
-		expect(get(currentTheme)).toBe('cerberus');
+	it('theme defaults to dark', () => {
+		expect(get(currentTheme)).toBe('dark');
 	});
 
 	it('can toggle sidebar', () => {

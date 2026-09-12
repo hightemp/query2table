@@ -286,6 +286,11 @@ impl Database {
             ("llm_max_tokens", "4096"),
             ("ollama_url", "http://localhost:11434"),
             ("ollama_model", "llama3"),
+            ("ollama_cloud_url", "https://ollama.com"),
+            ("ollama_cloud_model", "gpt-oss:120b"),
+            ("openai_base_url", "http://localhost:8080/v1"),
+            ("openai_model", ""),
+            ("openai_json_mode", "true"),
             // Search
             ("search_provider", "brave"),
             ("search_fallback_enabled", "true"),
