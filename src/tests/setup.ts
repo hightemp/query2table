@@ -12,6 +12,8 @@ const mockInvoke = async (cmd: string, _args?: Record<string, unknown>) => {
 			return null;
 		case 'list_ollama_cloud_models':
 			return ['cloud-model', 'gpt-oss:120b', 'qwen3.5:397b'];
+		case 'list_openrouter_models':
+			return ['anthropic/claude-test', 'openai/gpt-4.1-mini', 'openai/gpt-test'];
 		case 'update_setting':
 			return undefined;
 		default:

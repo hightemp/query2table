@@ -1,24 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import OllamaCloudModelPicker from '$lib/components/settings/OllamaCloudModelPicker.svelte';
-import { listOllamaCloudModels } from '$lib/api/tauri';
+import LlmModelPicker from '$lib/components/settings/LlmModelPicker.svelte';
+import { listOllamaCloudModels, listOpenRouterModels } from '$lib/api/tauri';
 
-vi.mock('$lib/api/tauri', () => ({ listOllamaCloudModels: vi.fn() }));
+vi.mock('$lib/api/tauri', () => ({ listOllamaCloudModels: vi.fn(), listOpenRouterModels: vi.fn() }));
 const listModels = vi.mocked(listOllamaCloudModels);
+const listRouterModels = vi.mocked(listOpenRouterModels);
 const props = {
+	provider: 'ollama_cloud' as const,
 	id: 'cloud-model', value: 'saved-model', baseUrl: 'https://ollama.com', apiKey: '',
 	onchange: vi.fn()
 };
 
-describe('Ollama Cloud model picker', () => {
+describe('LLM model picker', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		listModels.mockReset().mockResolvedValue(['deepseek-v4', 'gpt-oss:120b', 'gpt-oss:20b']);
+		listRouterModels.mockReset().mockResolvedValue(['anthropic/claude-test', 'openai/gpt-test']);
 	});
 	afterEach(cleanup);
 
 	it('loads the server catalog and filters without committing the search text', async () => {
-		render(OllamaCloudModelPicker, props);
+		render(LlmModelPicker, props);
 		expect(screen.getByRole('status')).toHaveTextContent('Loading models');
 		const input = screen.getByRole('combobox');
 		expect(input).toHaveValue('saved-model');
@@ -37,7 +40,7 @@ describe('Ollama Cloud model picker', () => {
 	});
 
 	it('supports mouse selection and restores the saved value on Escape or blur', async () => {
-		render(OllamaCloudModelPicker, props);
+		render(LlmModelPicker, props);
 		const input = screen.getByRole('combobox');
 		await fireEvent.focus(input);
 		await screen.findByRole('option', { name: 'deepseek-v4' });
@@ -58,7 +61,7 @@ describe('Ollama Cloud model picker', () => {
 
 	it('shows failures and empty catalogs and lets the user retry', async () => {
 		listModels.mockRejectedValueOnce('HTTP 503').mockResolvedValueOnce([]);
-		render(OllamaCloudModelPicker, props);
+		render(LlmModelPicker, props);
 		await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('HTTP 503'));
 		expect(screen.getByRole('combobox')).toHaveValue('saved-model');
 		await fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
@@ -71,7 +74,7 @@ describe('Ollama Cloud model picker', () => {
 	it('uses edited URL and key and ignores an older response', async () => {
 		let finishOld!: (models: string[]) => void;
 		listModels.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }));
-		const page = render(OllamaCloudModelPicker, props);
+		const page = render(LlmModelPicker, props);
 		await waitFor(() => expect(listModels).toHaveBeenCalledTimes(1));
 		await page.rerender({ baseUrl: 'https://new-server.example/api/', apiKey: 'new-key' });
 		await waitFor(() => expect(listModels).toHaveBeenCalledWith('https://new-server.example/api/', 'new-key'));
@@ -80,5 +83,24 @@ describe('Ollama Cloud model picker', () => {
 		await fireEvent.focus(screen.getByRole('combobox'));
 		expect(screen.queryByRole('option', { name: 'outdated-model' })).not.toBeInTheDocument();
 		expect(screen.getAllByRole('option')).toHaveLength(3);
+	});
+
+	it('loads and filters OpenRouter IDs with the current key, and supports refresh', async () => {
+		render(LlmModelPicker, { ...props, provider: 'openrouter', apiKey: 'router-key' });
+		const input = screen.getByRole('combobox');
+		await fireEvent.focus(input);
+		await screen.findByRole('option', { name: 'anthropic/claude-test' });
+		expect(screen.getByRole('listbox', { name: 'OpenRouter models' })).toBeInTheDocument();
+		expect(listRouterModels).toHaveBeenCalledExactlyOnceWith('router-key');
+		expect(listModels).not.toHaveBeenCalled();
+		await fireEvent.input(input, { target: { value: 'GPT-TEST' } });
+		expect(screen.getAllByRole('option')).toHaveLength(1);
+		expect(props.onchange).not.toHaveBeenCalled();
+		await fireEvent.keyDown(input, { key: 'ArrowDown' });
+		await fireEvent.keyDown(input, { key: 'Enter' });
+		expect(props.onchange).toHaveBeenCalledExactlyOnceWith('openai/gpt-test');
+		listRouterModels.mockRejectedValueOnce('HTTP 503');
+		await fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+		await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('HTTP 503'));
 	});
 });

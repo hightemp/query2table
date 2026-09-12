@@ -1,7 +1,15 @@
 use crate::providers::llm::ollama::OllamaProvider;
+use crate::providers::llm::openrouter::OpenRouterProvider;
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use tauri::State;
+
+#[tauri::command]
+pub async fn list_openrouter_models(api_key: String) -> Result<Vec<String>, String> {
+    OpenRouterProvider::list_models(api_key)
+        .await
+        .map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 pub async fn list_ollama_cloud_models(

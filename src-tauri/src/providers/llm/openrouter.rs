@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use super::openai_compatible::OpenAiCompatibleProvider;
 use super::types::*;
 
+const BASE_URL: &str = "https://openrouter.ai/api/v1";
+
 /// OpenRouter configuration of the shared OpenAI-compatible client.
 pub struct OpenRouterProvider {
     inner: OpenAiCompatibleProvider,
@@ -16,18 +18,21 @@ impl OpenRouterProvider {
             ));
         }
         Ok(Self {
-            inner: OpenAiCompatibleProvider::new(
-                "https://openrouter.ai/api/v1".into(),
-                api_key,
-                true,
-            )?
-            .for_openrouter(),
+            inner: OpenAiCompatibleProvider::new(BASE_URL.into(), api_key, true)?.for_openrouter(),
         })
     }
 
     pub fn with_base_url(mut self, url: String) -> Self {
         self.inner = self.inner.with_base_url(url);
         self
+    }
+
+    /// Load the public catalog, including before the user has entered an API key.
+    pub async fn list_models(api_key: String) -> Result<Vec<String>, LlmError> {
+        OpenAiCompatibleProvider::new(BASE_URL.into(), api_key, true)?
+            .for_openrouter()
+            .list_models()
+            .await
     }
 }
 

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { settings } from '$lib/stores/settings';
 	import { onDestroy } from 'svelte';
-	import OllamaCloudModelPicker from '$lib/components/settings/OllamaCloudModelPicker.svelte';
+	import LlmModelPicker from '$lib/components/settings/LlmModelPicker.svelte';
 	import type { SettingGroup, SettingDef } from '$lib/types';
 	import { EyeIcon, EyeOffIcon, SaveIcon, TrashIcon, PlusIcon } from '@lucide/svelte';
 
@@ -33,7 +33,7 @@
 			settings: [
 				{ key: 'llm_provider', label: 'Provider', description: 'Which LLM service to use', type: 'select', options: [{ label: 'OpenRouter', value: 'openrouter' }, { label: 'Ollama (Local)', value: 'ollama' }, { label: 'Ollama Cloud', value: 'ollama_cloud' }, { label: 'OpenAI-compatible (llama.cpp, etc.)', value: 'openai_compatible' }] },
 				{ key: 'openrouter_api_key', provider: 'openrouter', label: 'OpenRouter API Key', description: 'Your OpenRouter API key', type: 'password', placeholder: 'sk-or-...' },
-				{ key: 'openrouter_model', provider: 'openrouter', label: 'Model', description: 'Model identifier', type: 'text', placeholder: 'openai/gpt-4.1-mini' },
+				{ key: 'openrouter_model', provider: 'openrouter', label: 'OpenRouter Model', description: 'Search and select a model from the server', type: 'text' },
 				{ key: 'ollama_url', provider: 'ollama', label: 'Ollama URL', description: 'Local Ollama server URL', type: 'text', placeholder: 'http://localhost:11434' },
 				{ key: 'ollama_model', provider: 'ollama', label: 'Ollama Model', description: 'Local model name', type: 'text', placeholder: 'llama3' },
 				{ key: 'ollama_cloud_url', provider: 'ollama_cloud', label: 'Ollama Cloud URL', description: 'Cloud host URL', type: 'text', placeholder: 'https://ollama.com' },
@@ -216,9 +216,18 @@
 							<span class="setting-description">{setting.description}</span>
 						</label>
 
-						{#if setting.key === 'ollama_cloud_model'}
-							<OllamaCloudModelPicker
+						{#if setting.key === 'openrouter_model'}
+							<LlmModelPicker
 								id={setting.key}
+								provider="openrouter"
+								value={getValue(setting.key)}
+								apiKey={getValue('openrouter_api_key')}
+								onchange={(model) => handleChange(setting.key, model)}
+							/>
+						{:else if setting.key === 'ollama_cloud_model'}
+							<LlmModelPicker
+								id={setting.key}
+								provider="ollama_cloud"
 								value={getValue(setting.key)}
 								baseUrl={settingsMap.get('ollama_cloud_url') ?? 'https://ollama.com'}
 								apiKey={getValue('ollama_cloud_api_key')}

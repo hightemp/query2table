@@ -22,6 +22,13 @@ Verification: `cargo test --locked` — 207 passed, 1 live test ignored; `npm te
 
 Verification: `cargo test --locked` — 209 passed, 2 live tests ignored by default; the new `cloud_catalog_live_endpoint` test was explicitly run with `--ignored --nocapture` and returned 20 model IDs from `https://ollama.com/api/tags`. `npm test` — 17 passed, including catalog filtering, mouse/keyboard selection, saved-value preservation, retry/empty/error states, and stale-response handling. `npm run check` — 0 errors (4 existing warnings); `npm run build`, formatting checks for changed Rust files, and `git diff --check` — passed.
 
+### OpenRouter model picker
+
+- [x] Load OpenRouter model IDs from its server and reuse the searchable model combobox with keyboard/mouse selection, refresh, and loading/error states.
+- [x] Verify HTTP catalog parsing/authentication, OpenRouter selection and persistence, Ollama Cloud regression behavior, and the live OpenRouter catalog; run frontend and backend checks.
+
+Verification: `cargo test --locked` — 211 passed, 3 live tests ignored by default; `npm test` — 19 passed; `npm run check` — 0 errors (4 existing warnings); `npm run build`, formatting checks for changed Rust files, and `git diff --check` — passed. The shared combobox preserves filtering/keyboard/mouse/error behavior for Ollama Cloud and stores the selected OpenRouter model ID. `cargo test --locked --test live_openrouter_catalog -- --ignored --nocapture` returned 445 model IDs from the live OpenRouter server using the application's existing environment proxy setup. Direct requests returned HTTP 403, while the configured proxy route returned HTTP 200; proxy initialization is isolated in a separate live-test executable so mock tests remain local.
+
 ### Application branding (2026-09-12)
 
 - [x] Create a new Query2Table logo and save the canonical asset in `images/query2table-logo.png`.

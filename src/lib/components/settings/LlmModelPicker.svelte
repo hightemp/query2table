@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { listOllamaCloudModels } from '$lib/api/tauri';
+	import { listOllamaCloudModels, listOpenRouterModels } from '$lib/api/tauri';
 
-	let { id, value, baseUrl, apiKey, onchange }: {
+	let { id, value, provider, baseUrl = '', apiKey, onchange }: {
 		id: string;
 		value: string;
-		baseUrl: string;
+		provider: 'ollama_cloud' | 'openrouter';
+		baseUrl?: string;
 		apiKey: string;
 		onchange: (model: string) => void;
 	} = $props();
@@ -18,11 +19,13 @@
 	let filtering = $state(false);
 	let activeIndex = $state(-1);
 	const listId = $derived(`${id}-options`);
+	const providerLabel = $derived(provider === 'openrouter' ? 'OpenRouter' : 'Ollama Cloud');
 	const filtered = $derived(models.filter((model) =>
 		!filtering || model.toLowerCase().includes(filter.trim().toLowerCase())
 	));
 
 	$effect(() => {
+		const backend = provider;
 		const url = baseUrl.trim();
 		const key = apiKey.trim();
 		void reload;
@@ -34,7 +37,9 @@
 		// Debounce edits and discard responses for an old URL/key or an unmounted picker.
 		const timer = setTimeout(async () => {
 			try {
-				const result = await listOllamaCloudModels(url, key);
+				const result = backend === 'openrouter'
+					? await listOpenRouterModels(key)
+					: await listOllamaCloudModels(url, key);
 				if (current) models = result;
 			} catch (e) {
 				if (current) error = `Could not load models: ${String(e)}`;
@@ -110,7 +115,7 @@
 			/>
 			{#if open}
 				<div class="dropdown">
-					<div id={listId} role="listbox" aria-label="Ollama Cloud models" aria-busy={loading}>
+					<div id={listId} role="listbox" aria-label={`${providerLabel} models`} aria-busy={loading}>
 						{#each filtered as model, index (model)}
 							<button
 								id={`${listId}-${index}`}

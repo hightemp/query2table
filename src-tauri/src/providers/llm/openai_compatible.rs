@@ -48,9 +48,62 @@ impl OpenAiCompatibleProvider {
         self.base_url = url.trim_end_matches('/').to_string();
         self
     }
+
+    /// Fetch model IDs from an OpenAI-compatible catalog.
+    pub async fn list_models(&self) -> Result<Vec<String>, LlmError> {
+        debug!(provider = self.name, "Loading model catalog");
+        let mut request = self
+            .client
+            .get(format!("{}/models", self.base_url))
+            .timeout(std::time::Duration::from_secs(20));
+        if !self.api_key.is_empty() {
+            request = request.bearer_auth(&self.api_key);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|e| LlmError::ConnectionError(e.to_string()))?;
+        if let Some(error) = status_error(&response) {
+            return Err(error);
+        }
+        if !response.status().is_success() {
+            return Err(LlmError::RequestFailed(format!(
+                "Model list returned HTTP {}",
+                response.status()
+            )));
+        }
+        let catalog: ModelList = response
+            .json()
+            .await
+            .map_err(|e| LlmError::ParseError(e.to_string()))?;
+        let mut models: Vec<String> = catalog
+            .data
+            .into_iter()
+            .map(|model| model.id)
+            .filter(|id| !id.trim().is_empty())
+            .collect();
+        models.sort_unstable();
+        models.dedup();
+        debug!(
+            provider = self.name,
+            count = models.len(),
+            "Model catalog loaded"
+        );
+        Ok(models)
+    }
 }
 
 // --- OpenAI-compatible request/response types ---
+
+#[derive(Deserialize)]
+struct ModelList {
+    data: Vec<CatalogModel>,
+}
+
+#[derive(Deserialize)]
+struct CatalogModel {
+    id: String,
+}
 
 #[derive(Serialize)]
 struct ChatRequest {

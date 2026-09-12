@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import SettingsPage from '../routes/settings/+page.svelte';
 import { settings } from '$lib/stores/settings';
@@ -9,6 +9,23 @@ describe('LLM provider settings', () => {
 		await settings.load();
 	});
 	afterEach(cleanup);
+
+	it('selects an OpenRouter model from the filtered catalog and saves its ID', async () => {
+		const page = render(SettingsPage);
+		const input = screen.getByRole('combobox', { name: /^OpenRouter Model / });
+		await fireEvent.focus(input);
+		await screen.findByRole('option', { name: 'anthropic/claude-test' });
+		await fireEvent.input(input, { target: { value: 'GPT-TEST' } });
+		expect(within(screen.getByRole('listbox', { name: 'OpenRouter models' })).getAllByRole('option')).toHaveLength(1);
+		expect(get(settings).get('openrouter_model')).toBe('openai/gpt-4.1-mini');
+		await fireEvent.click(screen.getByRole('option', { name: 'openai/gpt-test' }));
+		await fireEvent.click(screen.getByRole('button', { name: /^Save \(/ }));
+		await waitFor(() => expect(screen.queryByRole('button', { name: /^Sav/ })).not.toBeInTheDocument());
+		expect(get(settings).get('openrouter_model')).toBe('openai/gpt-test');
+		page.unmount();
+		render(SettingsPage);
+		expect(screen.getByRole('combobox', { name: /^OpenRouter Model / })).toHaveValue('openai/gpt-test');
+	});
 
 	it('switches provider fields and preserves edits when saving and reopening', async () => {
 		const page = render(SettingsPage);

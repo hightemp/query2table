@@ -375,3 +375,62 @@ async fn cloud_catalog_live_endpoint() {
     assert!(!models.is_empty());
     println!("Ollama Cloud returned {} model IDs", models.len());
 }
+
+#[tokio::test]
+async fn openrouter_catalog_uses_model_ids_and_optional_auth() {
+    for key in ["", "router-key"] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
+                {"id": "openai/gpt-test", "name": "OpenAI: GPT Test"},
+                {"id": "anthropic/claude-test", "name": "Anthropic: Claude Test"},
+                {"id": "openai/gpt-test"}, {"id": ""}
+            ]})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider =
+            OpenAiCompatibleProvider::new(format!("{}/api/v1/", server.uri()), key.into(), true)
+                .unwrap();
+        assert_eq!(
+            provider.list_models().await.unwrap(),
+            ["anthropic/claude-test", "openai/gpt-test"]
+        );
+        let requests = server.received_requests().await.unwrap();
+        if key.is_empty() {
+            assert!(!requests[0].headers.contains_key("authorization"));
+        } else {
+            assert_eq!(requests[0].headers["authorization"], "Bearer router-key");
+        }
+    }
+}
+
+#[tokio::test]
+async fn openrouter_catalog_propagates_errors_and_accepts_empty_lists() {
+    for (status, body) in [
+        (401, json!({})),
+        (403, json!({})),
+        (429, json!({})),
+        (503, json!({})),
+        (200, json!({})),
+        (200, json!({"data": [{"name": "missing-id"}]})),
+        (200, json!({"data": []})),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(body.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = OpenAiCompatibleProvider::new(server.uri(), String::new(), true).unwrap();
+        let result = provider.list_models().await;
+        match status {
+            401 | 403 => assert!(matches!(result, Err(LlmError::AuthError))),
+            429 => assert!(matches!(result, Err(LlmError::RateLimited { .. }))),
+            503 => assert!(matches!(result, Err(LlmError::RequestFailed(_)))),
+            _ if body == json!({"data": []}) => assert!(result.unwrap().is_empty()),
+            _ => assert!(matches!(result, Err(LlmError::ParseError(_)))),
+        }
+    }
+}

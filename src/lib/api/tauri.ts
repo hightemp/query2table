@@ -41,6 +41,10 @@ export async function listOllamaCloudModels(baseUrl: string, apiKey: string): Pr
 	return invoke('list_ollama_cloud_models', { baseUrl, apiKey });
 }
 
+export async function listOpenRouterModels(apiKey: string): Promise<string[]> {
+	return invoke('list_openrouter_models', { apiKey });
+}
+
 export interface LogEntry {
 	timestamp: string;
 	level: string;
