@@ -15,6 +15,14 @@ The MVP delivers a fully functional agent search pipeline: query understanding �
 
 Verification: `cargo test --locked` — 207 passed, 1 live test ignored; `npm test` — 13 passed; `npm run check` — 0 errors (4 existing warnings); `npm run build` — passed; formatting for changed LLM Rust files and `git diff --check` — passed. Provider HTTP contracts were tested with local mock servers; live cloud/model inference was not run. Updated Vitest to 3.2.7 for compatibility with the existing Vite 6/Svelte plugin, enabled Svelte component tests, and corrected an outdated theme assertion. Strict Clippy remains blocked by existing warnings in unrelated modules (18 diagnostics); no diagnostics point to the changed LLM modules.
 
+### Application branding (2026-09-12)
+
+- [x] Create a new Query2Table logo and save the canonical asset in `images/query2table-logo.png`.
+- [x] Regenerate the Windows, macOS, and PNG application icons plus the web favicon from the new logo.
+- [x] Center the logo, product name, badges, and statistics counter at the top of `README.md`.
+
+Verification: Tauri icon generation completed successfully; the 32 px and 128 px icons and a local rendered README preview were inspected visually; `npm run check` — 0 errors (4 existing warnings); `npm run build` — passed; local README asset targets and `git diff --check` — passed.
+
 ---
 
 ## 2. Assumptions

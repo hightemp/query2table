@@ -70,6 +70,7 @@ query2table/
 ## Documentation
 | Document | Path | Description |
 |----------|------|-------------|
+| README | README.md | Project landing page and branding |
 | TASKS.md | TASKS.md | Full technical implementation plan with 55 subtasks |
 | AGENTS.md | AGENTS.md | This file — project structure map |
 

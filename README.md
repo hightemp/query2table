@@ -1,12 +1,19 @@
-# Query2Table
+<p align="center">
+  <img src="images/query2table-logo.png" alt="Query2Table logo" width="160">
+</p>
 
-[![GitHub release](https://img.shields.io/github/v/release/hightemp/query2table?style=flat-square)](https://github.com/hightemp/query2table/releases/latest)
-[![GitHub downloads](https://img.shields.io/github/downloads/hightemp/query2table/total?style=flat-square)](https://github.com/hightemp/query2table/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%20v2-24C8D8?style=flat-square&logo=tauri)](https://v2.tauri.app/)
-[![Rust](https://img.shields.io/badge/backend-Rust-orange?style=flat-square&logo=rust)](https://www.rust-lang.org/)
-[![Svelte](https://img.shields.io/badge/frontend-Svelte%205-FF3E00?style=flat-square&logo=svelte)](https://svelte.dev/)
-![](https://asdertasd.site/counter/query2table)
+<h1 align="center">Query2Table</h1>
+
+<p align="center">
+  <a href="https://github.com/hightemp/query2table/releases/latest"><img src="https://img.shields.io/github/v/release/hightemp/query2table?style=flat-square" alt="GitHub release"></a>
+  <a href="https://github.com/hightemp/query2table/releases"><img src="https://img.shields.io/github/downloads/hightemp/query2table/total?style=flat-square" alt="GitHub downloads"></a>
+  <a href="#license"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"></a>
+  <a href="https://v2.tauri.app/"><img src="https://img.shields.io/badge/built%20with-Tauri%20v2-24C8D8?style=flat-square&amp;logo=tauri" alt="Built with Tauri v2"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/backend-Rust-orange?style=flat-square&amp;logo=rust" alt="Rust backend"></a>
+  <a href="https://svelte.dev/"><img src="https://img.shields.io/badge/frontend-Svelte%205-FF3E00?style=flat-square&amp;logo=svelte" alt="Svelte 5 frontend"></a>
+  <br>
+  <img src="https://asdertasd.site/counter/query2table" alt="Query2Table views">
+</p>
 
 **Query2Table** — local-first desktop research tool. You describe what data you need; the app autonomously searches the internet across multiple sources and languages, fetches pages, extracts structured entities with LLMs, deduplicates them, and presents the result as a live-updating table with row-level source links — all running on your machine without a cloud backend.
 
@@ -216,5 +223,3 @@ npm run lint
 ## License
 
 MIT
-
-
