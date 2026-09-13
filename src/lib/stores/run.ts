@@ -11,6 +11,7 @@ import type {
 	ResearchStepEvent,
 	ResearchAnswerEvent,
 	LlmIssueEvent,
+	LogEntryEvent,
 } from '$lib/types';
 import {
 	startRun as apiStartRun,
@@ -57,6 +58,7 @@ export interface RunState {
 	controlError: string | null;
 	pausedFrom: string | null;
 	llmIssues: LlmIssueEvent[];
+	activity: LogEntryEvent[];
 }
 
 const initialState: RunState = {
@@ -76,6 +78,7 @@ const initialState: RunState = {
 	controlError: null,
 	pausedFrom: null,
 	llmIssues: [],
+	activity: [],
 };
 
 export const runState = writable<RunState>({ ...initialState });
@@ -91,12 +94,13 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 	// Buffer these events and replay after binding the returned ID.
 	function subscribe<T extends { run_id: string }>(
 		listen: (callback: (event: T) => void) => Promise<() => void>,
-		callback: (event: T) => void,
+		callback: (event: T) => void
 	) {
 		return listen((event) => {
 			if (currentGeneration !== generation) return;
 			const deliver = () => {
-				if (currentGeneration === generation && get(runState).runId === event.run_id) callback(event);
+				if (currentGeneration === generation && get(runState).runId === event.run_id)
+					callback(event);
 			};
 			if (get(runState).runId === null) earlyEvents.push(deliver);
 			else deliver();
@@ -107,10 +111,11 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 		subscribe(onStatusChanged, (e) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
-				const acknowledged = ['completed', 'failed', 'cancelled'].includes(e.status)
-					|| (s.controlPending === 'pause' && e.status === 'paused')
-					|| (s.controlPending === 'resume' && e.status !== 'paused')
-					|| (s.controlPending === 'confirm_schema' && e.status === 'running');
+				const acknowledged =
+					['completed', 'failed', 'cancelled'].includes(e.status) ||
+					(s.controlPending === 'pause' && e.status === 'paused') ||
+					(s.controlPending === 'resume' && e.status !== 'paused') ||
+					(s.controlPending === 'confirm_schema' && e.status === 'running');
 				return {
 					...s,
 					status: e.status,
@@ -152,13 +157,8 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 			runState.update((s) => ({ ...s, llmIssues: [...s.llmIssues, issue].slice(-100) }));
 		}),
 		subscribe(onRunLogEntry, (e) => {
-			const current = get(runState);
-			if (current.runId !== e.run_id) return;
-			addLog({
-				timestamp: new Date().toISOString(),
-				level: e.level as 'DEBUG' | 'INFO' | 'WARN' | 'ERROR',
-				message: `[${e.role}] ${e.message}`,
-			});
+			// The shell owns the diagnostic log. Run activity survives clearing that log.
+			runState.update((s) => ({ ...s, activity: [...s.activity, e].slice(-100) }));
 		}),
 		subscribe(onImageAdded, (e: ImageAddedEvent) => {
 			runState.update((s) => {
@@ -210,7 +210,9 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 		}),
 	]);
 
-	const unsubs = subscriptions.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+	const unsubs = subscriptions.flatMap((result) =>
+		result.status === 'fulfilled' ? [result.value] : []
+	);
 	const failed = subscriptions.find((result) => result.status === 'rejected');
 	if (currentGeneration !== generation || failed) {
 		for (const unsubscribe of unsubs) unsubscribe();
@@ -225,7 +227,11 @@ function unsubscribeEvents() {
 	unlisteners = [];
 }
 
-export async function startNewRun(query: string, runType: string = 'table', stopConditions?: import('$lib/api/tauri').StopConditions) {
+export async function startNewRun(
+	query: string,
+	runType: string = 'table',
+	stopConditions?: import('$lib/api/tauri').StopConditions
+) {
 	const currentGeneration = ++generation;
 	unsubscribeEvents();
 	runState.set({
@@ -247,8 +253,17 @@ export async function startNewRun(query: string, runType: string = 'table', stop
 		} catch (error) {
 			if (currentGeneration === generation) {
 				unsubscribeEvents();
-				runState.update((s) => ({ ...s, status: 'failed', error: String(error), controlPending: null }));
-				addLog({ timestamp: new Date().toISOString(), level: 'ERROR', message: `[run] Start failed: ${String(error)}` });
+				runState.update((s) => ({
+					...s,
+					status: 'failed',
+					error: String(error),
+					controlPending: null,
+				}));
+				addLog({
+					timestamp: new Date().toISOString(),
+					level: 'ERROR',
+					message: `[run] Start failed: ${String(error)}`,
+				});
 			}
 			throw error;
 		}
@@ -274,11 +289,20 @@ async function requestControl(action: RunControl, send: (runId: string) => Promi
 		if (currentGeneration !== generation || request !== controlRequest) return;
 		const { runId, status } = get(runState);
 		if (!runId || ['completed', 'failed', 'cancelled'].includes(status)) return;
-		addLog({ timestamp: new Date().toISOString(), level: 'INFO', message: `[run] Requesting ${action}` });
+		addLog({
+			timestamp: new Date().toISOString(),
+			level: 'INFO',
+			message: `[run] Requesting ${action}`,
+		});
 		await send(runId);
 		// Keep the pending indicator until the backend publishes the new status.
 	} catch (error) {
-		if (currentGeneration !== generation || request !== controlRequest || get(runState).status === 'failed') return;
+		if (
+			currentGeneration !== generation ||
+			request !== controlRequest ||
+			get(runState).status === 'failed'
+		)
+			return;
 		const message = `Could not ${action.replace('_', ' ')}: ${String(error)}`;
 		runState.update((s) => ({ ...s, controlPending: null, controlError: message }));
 		addLog({ timestamp: new Date().toISOString(), level: 'ERROR', message: `[run] ${message}` });

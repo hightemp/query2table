@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import { getSetting, updateSetting } from '$lib/api/tauri';
 
 export const sidebarCollapsed = writable(false);
@@ -12,9 +12,13 @@ export async function loadTheme() {
 }
 
 export async function toggleTheme() {
-	currentTheme.update((current) => {
-		const next = current === 'dark' ? 'light' : 'dark';
-		updateSetting('theme', next);
-		return next;
-	});
+	const previous = get(currentTheme);
+	const next = previous === 'dark' ? 'light' : 'dark';
+	currentTheme.set(next);
+	try {
+		await updateSetting('theme', next);
+	} catch (error) {
+		if (get(currentTheme) === next) currentTheme.set(previous);
+		throw error;
+	}
 }

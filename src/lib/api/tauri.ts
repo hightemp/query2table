@@ -19,6 +19,7 @@ import type {
 	ResearchResult,
 	ResearchStepEvent,
 	ResearchAnswerEvent,
+	RowSource,
 } from '$lib/types';
 
 export interface Setting {
@@ -40,6 +41,14 @@ export function getAppPaths(): Promise<AppPaths> {
 
 export function copyAppPath(location: AppLocation): Promise<void> {
 	return invoke('copy_app_path', { location });
+}
+
+export function copyText(text: string): Promise<void> {
+	return invoke('copy_text', { text });
+}
+
+export function getRowSources(rowId: string): Promise<RowSource[]> {
+	return invoke('get_row_sources', { rowId });
 }
 
 export function openAppFolder(location: AppLocation): Promise<void> {
@@ -87,8 +96,16 @@ export interface StopConditions {
 	max_duration_seconds?: number;
 }
 
-export async function startRun(query: string, runType?: string, stopConditions?: StopConditions): Promise<StartRunResponse> {
-	return invoke('start_run', { query, runType: runType ?? null, stopConditions: stopConditions ?? null });
+export async function startRun(
+	query: string,
+	runType?: string,
+	stopConditions?: StopConditions
+): Promise<StartRunResponse> {
+	return invoke('start_run', {
+		query,
+		runType: runType ?? null,
+		stopConditions: stopConditions ?? null,
+	});
 }
 
 export async function cancelRun(runId: string): Promise<void> {

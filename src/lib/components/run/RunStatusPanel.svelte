@@ -1,202 +1,111 @@
 <script lang="ts">
-	import { logs } from '$lib/stores/logs';
-	import { LoaderCircleIcon, CheckCircle2Icon, AlertCircleIcon } from '@lucide/svelte';
-
-	interface Props {
-		status: string;
-		runType?: string;
-	}
-
-	let { status, runType = 'table' }: Props = $props();
-
-	// Pipeline phases for table mode
-	const tablePhases = [
-		{ key: 'interpreter', label: 'Analyzing query' },
-		{ key: 'planner', label: 'Planning schema' },
-		{ key: 'schema_review', label: 'Waiting for schema confirmation' },
-		{ key: 'search_planner', label: 'Planning search queries' },
-		{ key: 'query_expander', label: 'Expanding search queries' },
-		{ key: 'search_executor', label: 'Searching the web' },
-		{ key: 'fetcher', label: 'Fetching pages' },
-		{ key: 'extractor', label: 'Extracting data' },
-		{ key: 'deduplicator', label: 'Deduplicating results' },
-	];
-
-	// Pipeline phases for image mode
-	const imagePhases = [
-		{ key: 'image_pipeline', label: 'Initializing' },
-		{ key: 'image_searcher', label: 'Searching images' },
-		{ key: 'image_ranker', label: 'Ranking images' },
-		{ key: 'image_storage', label: 'Storing results' },
-	];
-
-	let phases = $derived(runType === 'images' ? imagePhases : tablePhases);
-
-	// Derive the active phase from the latest logs
-	let activePhaseKey = $derived.by(() => {
-		const items = $logs;
-		// Walk logs backwards to find the last role that matches a known phase
-		for (let i = items.length - 1; i >= 0; i--) {
-			const msg = items[i].message;
-			for (const phase of phases) {
-				if (msg.includes(`[${phase.key}]`)) {
-					return phase.key;
-				}
-			}
-		}
-		if (status === 'schema_review') return 'schema_review';
-		if (status === 'pending') return null;
-		return null;
-	});
-
-	// Determine phase status: completed, active, or pending
-	function phaseStatus(key: string): 'completed' | 'active' | 'pending' {
-		if (!activePhaseKey) return key === phases[0].key && status === 'pending' ? 'active' : 'pending';
-		const activeIdx = phases.findIndex((p) => p.key === activePhaseKey);
-		const thisIdx = phases.findIndex((p) => p.key === key);
-		if (thisIdx < activeIdx) return 'completed';
-		if (thisIdx === activeIdx) {
-			if (status === 'completed' || status === 'failed' || status === 'cancelled') return 'completed';
-			return 'active';
-		}
-		return 'pending';
-	}
-
-	// Get recent log messages for the active phase
-	let recentActivity = $derived.by(() => {
-		const items = $logs;
-		const recent: string[] = [];
-		for (let i = items.length - 1; i >= 0 && recent.length < 3; i--) {
-			if (items[i].level === 'INFO' || items[i].level === 'WARN') {
-				recent.unshift(items[i].message);
-			}
-		}
-		return recent;
-	});
-
-	let isTerminal = $derived(status === 'completed' || status === 'failed' || status === 'cancelled');
+	import type { LogEntryEvent } from '$lib/types';
+	let {
+		status,
+		runType = 'table',
+		activity = [],
+	}: { status: string; runType?: string; activity?: LogEntryEvent[] } = $props();
+	const common: Record<string, string> = {
+		search_executor: 'Searching the web',
+		fetcher: 'Fetching pages',
+		stopping_controller: 'Finishing the run',
+	};
+	const operations: Record<string, Record<string, string>> = {
+		table: {
+			...common,
+			interpreter: 'Analyzing query',
+			planner: 'Planning schema',
+			schema_planner: 'Planning schema',
+			search_planner: 'Planning searches',
+			query_expander: 'Expanding searches',
+			extractor: 'Extracting data',
+			deduplicator: 'Deduplicating results',
+			validator: 'Validating results',
+		},
+		images: {
+			image_pipeline: 'Preparing image search',
+			image_searcher: 'Searching images',
+			image_search_planner: 'Planning image searches',
+			image_ranker: 'Ranking images',
+			image_storage: 'Storing images',
+			stopping_controller: 'Finishing the run',
+		},
+		links: {
+			...common,
+			link_pipeline: 'Preparing link search',
+			link_search_planner: 'Planning link searches',
+			link_ranker: 'Ranking links',
+			link_storage: 'Storing links',
+		},
+		research: { research: 'Researching sources', ...common },
+	};
+	let latest = $derived([...activity].reverse().find((entry) => operations[runType]?.[entry.role]));
+	let label = $derived(
+		status === 'schema_review'
+			? 'Waiting for schema confirmation'
+			: status === 'paused'
+				? 'Paused — resume when ready'
+				: status === 'pending'
+					? 'Preparing your run'
+					: latest
+						? operations[runType][latest.role]
+						: 'Waiting for activity'
+	);
+	let running = $derived(status === 'running' || status === 'pending');
 </script>
 
-<div class="status-panel">
-	<div class="phase-list">
-		{#each phases as phase}
-			{@const ps = phaseStatus(phase.key)}
-			<div class="phase-item" class:completed={ps === 'completed'} class:active={ps === 'active'} class:pending={ps === 'pending'}>
-				<div class="phase-icon">
-					{#if ps === 'completed'}
-						<CheckCircle2Icon size={18} />
-					{:else if ps === 'active'}
-						<div class="spinner">
-							<LoaderCircleIcon size={18} />
-						</div>
-					{:else}
-						<div class="dot"></div>
-					{/if}
-				</div>
-				<span class="phase-label">{phase.label}</span>
+<div class="current-operation" role="status">
+	<span class="activity-dot" class:running></span><span>{label}</span>
+	{#if activity.length}<details>
+			<summary>Activity</summary>
+			<div class="activity-popover">
+				{#each activity.slice(-5) as entry}<p>{entry.message}</p>{/each}
 			</div>
-		{/each}
-	</div>
-
-	{#if recentActivity.length > 0 && !isTerminal}
-		<div class="activity-feed">
-			{#each recentActivity as msg, i}
-				<div class="activity-line" class:latest={i === recentActivity.length - 1}>
-					{msg}
-				</div>
-			{/each}
-		</div>
-	{/if}
+		</details>{/if}
 </div>
 
 <style>
-	.status-panel {
+	.current-operation {
 		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		padding: 16px;
-		border: 1px solid var(--color-surface-300-700);
-		border-radius: 10px;
-		background: var(--color-surface-50-950);
-		margin-bottom: 12px;
-	}
-
-	.phase-list {
-		display: flex;
+		gap: 8px;
+		align-items: center;
+		color: var(--app-muted);
+		font-size: 13px;
+		min-width: 0;
 		flex-wrap: wrap;
-		gap: 6px 16px;
 	}
-
-	.phase-item {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 0.85rem;
-		color: var(--color-surface-400-600);
-		transition: color 0.3s;
-	}
-
-	.phase-item.completed {
-		color: var(--color-success-500, #22c55e);
-	}
-
-	.phase-item.active {
-		color: var(--color-primary-500);
-		font-weight: 600;
-	}
-
-	.phase-icon {
-		display: flex;
-		align-items: center;
+	.activity-dot {
+		width: 7px;
+		height: 7px;
+		background: var(--app-muted);
+		border-radius: 50%;
 		flex-shrink: 0;
 	}
-
-	.dot {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: var(--color-surface-300-700);
-		margin: 5px;
+	.running {
+		background: var(--app-accent);
+		animation: pulse 1.6s ease-in-out infinite;
 	}
-
-	.spinner {
-		animation: spin 1.2s linear infinite;
-		display: flex;
+	details {
+		width: 100%;
 	}
-
-	@keyframes spin {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
+	summary {
+		cursor: pointer;
+		font-size: 12px;
 	}
-
-	.activity-feed {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		font-size: 0.8rem;
-		font-family: monospace;
-		color: var(--color-surface-600-400);
-		max-height: 72px;
-		overflow: hidden;
-		border-top: 1px solid var(--color-surface-200-800);
-		padding-top: 8px;
+	.activity-popover {
+		max-height: 100px;
+		overflow: auto;
+		border-left: 2px solid var(--app-border);
+		padding-left: 12px;
+		margin: 8px 0;
+		overflow-wrap: anywhere;
 	}
-
-	.activity-line {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		opacity: 0.5;
+	p {
+		margin: 4px 0;
 	}
-
-	.activity-line.latest {
-		opacity: 1;
-		color: var(--color-surface-900-100);
-		animation: fadeIn 0.3s ease;
-	}
-
-	@keyframes fadeIn {
-		from { opacity: 0; transform: translateY(4px); }
-		to { opacity: 1; transform: translateY(0); }
+	@keyframes pulse {
+		50% {
+			opacity: 0.35;
+		}
 	}
 </style>

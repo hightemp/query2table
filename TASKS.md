@@ -2,6 +2,23 @@
 
 ## 1. Executive Summary
 
+### UI/UX redesign (2026-09-13)
+
+Approved direction: calm desktop workspace, English UI, light/dark themes, continuous tables, one Settings page with section navigation; Application files stays last. No search/extraction changes or release.
+
+- [x] Shared design tokens, accessible dialogs, navigation, bounded scroll areas and log dock.
+- [x] Settings navigation, persistent Save/Discard, safe concurrent saves, unsaved navigation guard and viewport-aware model picker.
+- [x] Query/run workspace, accurate mode-specific activity/counters, schema validation and compact diagnostics.
+- [x] Virtualized searchable tables, structured values, row sources and copy/open actions.
+- [x] Image/link/research presentation, preview races, Markdown, shared export dialogs and history deletion.
+- [x] Regression tests, Chromium/WebKit geometry and keyboard checks, native WebView inspection, builds and backend checks.
+
+Implementation order follows the list above. Checkboxes are completed only after the corresponding implementation and checks pass.
+
+Verification: 76 frontend tests, 247 Rust tests (5 live tests ignored), and 34 Playwright checks across Chromium/WebKit passed. Svelte reports 0 errors and 0 warnings; frontend and Rust builds and `git diff --check` passed. Browser tests cover both themes and 900×600 / 1200×800 / 1440×900 with sidebar/log states, save races/navigation, 1000-row streaming/filtering/sorting, dialog focus/dismissal, image response races, Markdown, schema pause/resume, and history errors. They run against an isolated production preview to avoid dev-server HMR invalidating browser state.
+
+The real Linux Tauri/GTK WebView was also inspected at 1200×800 and 900×600 in Xvfb with a temporary SQLite database: Settings scroll stays separate from the log dock, Save/Discard remain reachable, the native modal retains keyboard focus, and the row drawer loads structured values and saved sources through the real Rust command. `get_row_sources` reuses existing storage; no settings/schema migration or version/release change was needed.
+
 ### Release 0.5.0
 
 - [x] Synchronize VERSION, frontend/backend manifests and lockfiles; prepare release notes and verify the release source.

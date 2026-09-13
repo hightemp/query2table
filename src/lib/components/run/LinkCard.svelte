@@ -1,107 +1,56 @@
 <script lang="ts">
 	import type { LinkResult } from '$lib/types';
-	import { ExternalLinkIcon } from '@lucide/svelte';
-
+	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
+	import CopyButton from '$lib/components/common/CopyButton.svelte';
+	import { urlLabel } from '$lib/utils/values';
 	let { link }: { link: LinkResult } = $props();
-
-	let scorePercent = $derived(
-		link.relevance_score != null ? Math.round(link.relevance_score * 100) : null
-	);
-
-	let hostname = $derived.by(() => {
-		try {
-			return new URL(link.url).hostname.replace(/^www\./, '');
-		} catch {
-			return link.url;
-		}
-	});
 </script>
 
-<div class="link-card">
-	<div class="link-head">
-		<a class="link-title" href={link.url} target="_blank" rel="noopener noreferrer">
-			{link.title || link.url}
-			<ExternalLinkIcon size={14} />
-		</a>
-		{#if scorePercent != null}
-			<span class="score" class:high={scorePercent >= 80} class:mid={scorePercent >= 50 && scorePercent < 80}>
-				{scorePercent}%
-			</span>
-		{/if}
+<article class="link-card">
+	<header>
+		<h3><ExternalLink href={link.url} label={link.title || link.url} /></h3>
+		<CopyButton text={link.url} label="Copy link URL" />
+	</header>
+	<div class="metadata">
+		<span title={link.url}>{urlLabel(link.url)}</span>{#if link.relevance_score !== null}<span
+				>Relevance {Math.round(link.relevance_score * 100)}%</span
+			>{/if}
 	</div>
-	<a class="link-url" href={link.url} target="_blank" rel="noopener noreferrer">{hostname}</a>
-	{#if link.description}
-		<p class="link-desc">{link.description}</p>
-	{/if}
-</div>
+	{#if link.description}<p>{link.description}</p>{/if}
+</article>
 
 <style>
 	.link-card {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 14px 16px;
-		border: 1px solid var(--color-surface-300-700);
-		border-radius: 8px;
-		background: var(--color-surface-100-900);
+		padding: 16px;
+		border: 1px solid var(--app-border);
+		border-radius: 10px;
+		background: var(--app-panel);
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
-
-	.link-head {
+	header {
 		display: flex;
-		align-items: flex-start;
 		justify-content: space-between;
 		gap: 12px;
+		align-items: flex-start;
 	}
-
-	.link-title {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 1rem;
+	h3 {
+		min-width: 0;
+		font-size: 15px;
 		font-weight: 600;
-		color: var(--color-primary-500);
-		text-decoration: none;
-		line-height: 1.3;
-	}
-
-	.link-title:hover {
-		text-decoration: underline;
-	}
-
-	.score {
-		flex-shrink: 0;
-		font-size: 0.78rem;
-		font-weight: 700;
-		padding: 2px 8px;
-		border-radius: 999px;
-		background: var(--color-surface-200-800);
-		color: var(--color-surface-600-400);
-	}
-
-	.score.mid {
-		background: rgba(234, 179, 8, 0.15);
-		color: rgb(202, 138, 4);
-	}
-
-	.score.high {
-		background: rgba(34, 197, 94, 0.15);
-		color: rgb(22, 163, 74);
-	}
-
-	.link-url {
-		font-size: 0.8rem;
-		color: var(--color-surface-500);
-		text-decoration: none;
-	}
-
-	.link-url:hover {
-		text-decoration: underline;
-	}
-
-	.link-desc {
 		margin: 0;
-		font-size: 0.9rem;
-		line-height: 1.45;
-		color: var(--color-surface-700-300);
+	}
+	.metadata {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 16px;
+		color: var(--app-muted);
+		font-size: 12px;
+		margin: 4px 0 8px;
+	}
+	p {
+		margin: 0;
+		white-space: pre-wrap;
+		line-height: 1.6;
 	}
 </style>

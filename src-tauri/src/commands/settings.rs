@@ -63,6 +63,14 @@ pub fn copy_app_path(app: tauri::AppHandle, location: AppLocation) -> Result<(),
         .map_err(|e| format!("Could not copy the application path: {e}"))
 }
 
+/// Copy a user-selected result value without exposing clipboard read access.
+#[tauri::command]
+pub fn copy_text(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    app.clipboard()
+        .write_text(text)
+        .map_err(|e| format!("Could not copy the selected text: {e}"))
+}
+
 #[tauri::command]
 pub async fn open_app_folder(app: tauri::AppHandle, location: AppLocation) -> Result<(), String> {
     let folder = location.folder()?;

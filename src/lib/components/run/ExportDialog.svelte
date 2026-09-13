@@ -1,237 +1,123 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { save } from '@tauri-apps/plugin-dialog';
-	import { DownloadIcon, XIcon } from '@lucide/svelte';
+	import { DownloadIcon } from '@lucide/svelte';
 	import { exportRun } from '$lib/api/tauri';
+	import Dialog from '$lib/components/common/Dialog.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { errorText } from '$lib/utils/errors';
-
-	interface Props {
-		runId: string;
-		runType?: string;
-		onclose: () => void;
-	}
-
-	let { runId, runType = 'table', onclose }: Props = $props();
-
-	const isResearch = runType === 'research';
-
-	let format = $state<'csv' | 'json' | 'xlsx' | 'md'>(isResearch ? 'md' : 'csv');
+	import { debugUi } from '$lib/utils/diagnostics';
+	let {
+		runId,
+		runType = 'table',
+		onclose,
+	}: { runId: string; runType?: string; onclose: () => void } = $props();
+	let format = $state<'csv' | 'json' | 'xlsx' | 'md'>(
+		untrack(() => (runType === 'research' ? 'md' : 'csv'))
+	);
 	let exporting = $state(false);
 	let error = $state('');
-
-	const formatOptions = isResearch
-		? [{ value: 'md' as const, label: 'Markdown', ext: 'md', description: 'Markdown answer document' }]
-		: [
-			{ value: 'csv' as const, label: 'CSV', ext: 'csv', description: 'Comma-separated values' },
-			{ value: 'json' as const, label: 'JSON', ext: 'json', description: 'Structured JSON array' },
-			{ value: 'xlsx' as const, label: 'XLSX', ext: 'xlsx', description: 'Excel spreadsheet' },
-		];
-
+	let savedPath = $state('');
+	let options = $derived(
+		runType === 'research'
+			? [{ value: 'md' as const, label: 'Markdown', description: 'Answer document with sources' }]
+			: [
+					{ value: 'csv' as const, label: 'CSV', description: 'For spreadsheets and data tools' },
+					{
+						value: 'json' as const,
+						label: 'JSON',
+						description: 'Structured data with original values',
+					},
+					{ value: 'xlsx' as const, label: 'Excel', description: 'An Excel workbook' },
+				]
+	);
 	async function handleExport() {
+		if (exporting) return;
 		error = '';
 		exporting = true;
+		debugUi('export_started');
 		try {
-			const opt = formatOptions.find((o) => o.value === format)!;
-			const filePath = await save({
-				defaultPath: `query2table-export.${opt.ext}`,
-				filters: [{ name: opt.label, extensions: [opt.ext] }],
+			const option = options.find((item) => item.value === format)!;
+			const path = await save({
+				defaultPath: `query2table-export.${format}`,
+				filters: [{ name: option.label, extensions: [format] }],
 			});
-			if (!filePath) return;
-			await exportRun(runId, format, filePath);
-			onclose();
-		} catch (e) {
-			error = errorText(e);
+			if (!path) return;
+			await exportRun(runId, format, path);
+			savedPath = path;
+			debugUi('export_finished');
+		} catch (reason) {
+			error = errorText(reason);
+			debugUi('export_failed');
 		} finally {
 			exporting = false;
 		}
 	}
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="overlay" onclick={onclose} onkeydown={(e) => e.key === 'Escape' && onclose()}>
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="dialog" onclick={(e) => e.stopPropagation()}>
-		<div class="dialog-header">
-			<h3>Export Results</h3>
-			<button class="close-btn" onclick={onclose} aria-label="Close">
-				<XIcon size={18} />
-			</button>
+<Dialog title={savedPath ? 'Export complete' : 'Export Results'} busy={exporting} {onclose}>
+	{#if savedPath}<div role="status">
+			<p>Your results were saved.</p>
+			<p class="saved-path">{savedPath}</p>
 		</div>
-
-		<div class="dialog-body">
-			<label class="field-label">Format</label>
-			<div class="format-options">
-				{#each formatOptions as opt}
-					<label class="format-option" class:selected={format === opt.value}>
-						<input type="radio" name="format" value={opt.value} bind:group={format} />
-						<div class="format-info">
-							<span class="format-name">{opt.label}</span>
-							<span class="format-desc">{opt.description}</span>
-						</div>
-					</label>
-				{/each}
-			</div>
-
-			{#if error}
-				<ErrorNotice {error} context="export" />
-			{/if}
-		</div>
-
-		<div class="dialog-footer">
-			<button class="btn-secondary" onclick={onclose} disabled={exporting}>Cancel</button>
-			<button class="btn-primary" onclick={handleExport} disabled={exporting}>
-				<DownloadIcon size={16} />
-				{exporting ? 'Exporting…' : 'Export'}
-			</button>
-		</div>
-	</div>
-</div>
+	{:else}<fieldset disabled={exporting}>
+			<legend>Format</legend>{#each options as option}<label
+					class:selected={format === option.value}
+					><input type="radio" name="format" value={option.value} bind:group={format} /><span
+						><strong>{option.label}</strong><small>{option.description}</small></span
+					></label
+				>{/each}
+		</fieldset>{/if}
+	{#if error}<ErrorNotice {error} context="export" />{/if}
+	{#snippet footer()}
+		{#if savedPath}<button class="button primary" onclick={onclose}>Done</button>{:else}<button
+				class="button"
+				onclick={onclose}
+				disabled={exporting}>Cancel</button
+			><button class="button primary" onclick={handleExport} disabled={exporting}
+				><DownloadIcon size={16} />{exporting ? 'Exporting…' : 'Export'}</button
+			>{/if}
+	{/snippet}
+</Dialog>
 
 <style>
-	.overlay {
-		position: fixed;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.5);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 100;
-	}
-
-	.dialog {
-		background: var(--color-surface-50-950);
-		border-radius: 12px;
-		width: 420px;
-		max-width: 90vw;
-		max-height: 90vh;
-		overflow-y: auto;
-		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-	}
-
-	.dialog-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 16px 20px;
-		border-bottom: 1px solid var(--color-surface-200-800);
-	}
-
-	.dialog-header h3 {
+	fieldset {
 		margin: 0;
-		font-size: 1.1rem;
+		padding: 0;
+		border: 0;
 	}
-
-	.close-btn {
-		background: none;
-		border: none;
-		cursor: pointer;
-		color: var(--color-surface-600-400);
-		padding: 4px;
-		border-radius: 4px;
-	}
-
-	.close-btn:hover {
-		background: var(--color-surface-200-800);
-	}
-
-	.dialog-body {
-		padding: 20px;
-	}
-
-	.field-label {
-		display: block;
+	legend {
 		font-weight: 600;
-		font-size: 0.85rem;
+		font-size: 13px;
 		margin-bottom: 8px;
-		color: var(--color-surface-600-400);
 	}
-
-	.format-options {
+	label {
 		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.format-option {
-		display: flex;
-		align-items: center;
 		gap: 12px;
+		align-items: center;
+		border: 1px solid var(--app-border);
 		padding: 12px;
-		border: 2px solid var(--color-surface-200-800);
+		margin-bottom: 8px;
 		border-radius: 8px;
 		cursor: pointer;
-		transition: border-color 0.15s;
 	}
-
-	.format-option:hover {
-		border-color: var(--color-surface-400-600);
+	label.selected {
+		border-color: var(--app-accent);
+		background: color-mix(in srgb, var(--app-accent) 8%, var(--app-panel));
 	}
-
-	.format-option.selected {
-		border-color: var(--color-primary-500);
-		background: var(--color-primary-100, rgba(59, 130, 246, 0.08));
+	strong,
+	small {
+		display: block;
 	}
-
-	.format-option input[type='radio'] {
-		accent-color: var(--color-primary-500);
+	small {
+		color: var(--app-muted);
+		margin-top: 3px;
 	}
-
-	.format-info {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.format-name {
-		font-weight: 600;
-		font-size: 0.95rem;
-	}
-
-	.format-desc {
-		font-size: 0.8rem;
-		color: var(--color-surface-600-400);
-	}
-
-	.dialog-footer {
-		display: flex;
-		justify-content: flex-end;
-		gap: 8px;
-		padding: 16px 20px;
-		border-top: 1px solid var(--color-surface-200-800);
-	}
-
-	.btn-primary,
-	.btn-secondary {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 16px;
-		border-radius: 6px;
-		font-size: 0.9rem;
-		font-weight: 500;
-		cursor: pointer;
-		border: none;
-	}
-
-	.btn-primary {
-		background: var(--color-primary-500);
-		color: white;
-	}
-
-	.btn-primary:hover:not(:disabled) {
-		background: var(--color-primary-600, #2563eb);
-	}
-
-	.btn-primary:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.btn-secondary {
-		background: var(--color-surface-200-800);
-		color: inherit;
-	}
-
-	.btn-secondary:hover:not(:disabled) {
-		background: var(--color-surface-300-700);
+	.saved-path {
+		background: var(--app-subtle);
+		padding: 12px;
+		border-radius: 8px;
+		margin-top: 12px;
+		overflow-wrap: anywhere;
 	}
 </style>

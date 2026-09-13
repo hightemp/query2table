@@ -1,240 +1,198 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { SchemaColumn } from '$lib/types';
-	import { PlusIcon, TrashIcon, CheckIcon, XIcon } from '@lucide/svelte';
-
-	interface Props {
+	import { PlusIcon, TrashIcon, CheckIcon } from '@lucide/svelte';
+	let {
+		columns: initialColumns,
+		onconfirm,
+		oncancel,
+		pending = false,
+	}: {
 		columns: SchemaColumn[];
 		onconfirm: (columns: SchemaColumn[]) => void;
 		oncancel: () => void;
-	}
-
-	let { columns: initialColumns, onconfirm, oncancel }: Props = $props();
-
-	let columns = $state<SchemaColumn[]>(initialColumns.map((c) => ({ ...c })));
-
-	// Keep local state in sync when prop changes (e.g. late-arriving event)
+		pending?: boolean;
+	} = $props();
+	let columns = $state<SchemaColumn[]>(
+		untrack(() => initialColumns.map((column) => ({ ...column })))
+	);
+	let previousColumns = untrack(() => initialColumns);
 	$effect(() => {
-		if (initialColumns.length > 0 && columns.length === 0) {
-			columns = initialColumns.map((c) => ({ ...c }));
+		if (initialColumns !== previousColumns) {
+			previousColumns = initialColumns;
+			columns = initialColumns.map((column) => ({ ...column }));
 		}
 	});
-
-	function addColumn() {
-		columns = [
-			...columns,
-			{ name: '', type: 'text', description: '', required: false },
-		];
-	}
-
-	function removeColumn(index: number) {
-		columns = columns.filter((_, i) => i !== index);
-	}
-
-	function handleConfirm() {
-		const valid = columns.filter((c) => c.name.trim());
-		if (valid.length === 0) return;
-		onconfirm(valid);
+	let validation = $derived.by(() => {
+		if (!columns.length) return 'Add at least one column.';
+		const names = columns.map((column) => column.name.trim().toLowerCase());
+		if (names.some((name) => !name)) return 'Give every column a name.';
+		if (new Set(names).size !== names.length) return 'Column names must be unique.';
+		return '';
+	});
+	function confirm() {
+		if (!validation && !pending)
+			onconfirm(columns.map((column) => ({ ...column, name: column.name.trim() })));
 	}
 </script>
 
 <div class="schema-editor">
-	<h2>Proposed Schema</h2>
-	<p class="hint">Review and adjust the columns for your results table, then confirm to proceed.</p>
-
+	<header>
+		<h2>Proposed Schema</h2>
+		<p>Review the columns before searching. You can change names, types and descriptions.</p>
+	</header>
 	<div class="columns-list">
-		{#each columns as col, i}
+		{#each columns as column, i}
 			<div class="column-row">
-				<input
-					class="col-input col-name"
-					bind:value={col.name}
-					placeholder="Column name"
-				/>
-				<select class="col-input col-type" bind:value={col.type}>
-					<option value="text">Text</option>
-					<option value="number">Number</option>
-					<option value="url">URL</option>
-					<option value="date">Date</option>
-					<option value="boolean">Boolean</option>
-				</select>
-				<input
-					class="col-input col-desc"
-					bind:value={col.description}
-					placeholder="Description"
-				/>
-				<label class="col-required">
-					<input type="checkbox" bind:checked={col.required} />
-					Req
-				</label>
-				<button class="btn-icon-sm" onclick={() => removeColumn(i)} aria-label="Remove column">
-					<TrashIcon size={14} />
-				</button>
+				<label
+					>Name<input
+						bind:value={column.name}
+						placeholder="Column name"
+						aria-label={`Column ${i + 1} name`}
+						disabled={pending}
+					/></label
+				>
+				<label
+					>Type<select
+						bind:value={column.type}
+						aria-label={`Column ${i + 1} type`}
+						disabled={pending}
+						>{#each ['text', 'number', 'url', 'date', 'boolean'] as type}<option value={type}
+								>{type}</option
+							>{/each}</select
+					></label
+				>
+				<label class="description"
+					>Description<input
+						bind:value={column.description}
+						placeholder="Description"
+						aria-label={`Column ${i + 1} description`}
+						disabled={pending}
+					/></label
+				>
+				<label class="required"
+					><input
+						type="checkbox"
+						bind:checked={column.required}
+						disabled={pending}
+					/>Required</label
+				>
+				<button
+					class="icon-button"
+					onclick={() => {
+						columns = columns.filter((_, index) => index !== i);
+					}}
+					disabled={pending}
+					aria-label={`Remove column ${i + 1}`}><TrashIcon size={16} /></button
+				>
 			</div>
 		{/each}
+		{#if validation}<p class="validation" role="status">{validation}</p>{/if}
 	</div>
-
-	<div class="schema-actions">
-		<button class="btn-secondary" onclick={addColumn}>
-			<PlusIcon size={16} />
-			Add Column
-		</button>
-		<div class="schema-actions-right">
-			<button class="btn-ghost" onclick={oncancel}>
-				<XIcon size={16} />
-				Cancel Run
-			</button>
-			<button class="btn-primary" onclick={handleConfirm} disabled={columns.filter(c => c.name.trim()).length === 0}>
-				<CheckIcon size={16} />
-				Confirm Schema
-			</button>
+	<footer>
+		<button
+			class="button"
+			disabled={pending}
+			onclick={() => {
+				columns = [...columns, { name: '', type: 'text', description: '', required: false }];
+			}}><PlusIcon size={16} />Add Column</button
+		>
+		<div>
+			<button class="button danger" onclick={oncancel}>Cancel Run</button><button
+				class="button primary"
+				disabled={!!validation || pending}
+				onclick={confirm}
+				><CheckIcon size={16} />{pending ? 'Confirming…' : 'Confirm Schema'}</button
+			>
 		</div>
-	</div>
+	</footer>
 </div>
 
 <style>
 	.schema-editor {
-		border: 2px solid var(--color-primary-500);
-		border-radius: 12px;
-		padding: 20px;
-		background: var(--color-surface-100-900);
-	}
-
-	h2 {
-		font-size: 1.2rem;
-		font-weight: 700;
-		margin-bottom: 4px;
-	}
-
-	.hint {
-		color: var(--color-surface-600-400);
-		font-size: 0.9rem;
-		margin-bottom: 16px;
-	}
-
-	.columns-list {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		margin-bottom: 16px;
+		height: 100%;
+		min-height: 0;
+		background: var(--app-panel);
+		border: 1px solid var(--app-border);
+		border-radius: 12px;
+		overflow: hidden;
 	}
-
+	header {
+		padding: 16px 20px;
+		flex-shrink: 0;
+		border-bottom: 1px solid var(--app-border);
+	}
+	h2 {
+		font-size: 17px;
+		font-weight: 650;
+	}
+	p {
+		color: var(--app-muted);
+		margin-top: 4px;
+		font-size: 13px;
+	}
+	.columns-list {
+		min-height: 0;
+		flex: 1;
+		overflow: auto;
+		padding: 16px;
+		scrollbar-gutter: stable;
+		container-type: inline-size;
+	}
 	.column-row {
 		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
 		gap: 8px;
-		align-items: center;
+		margin-bottom: 12px;
+		padding-bottom: 12px;
+		border-bottom: 1px solid var(--app-border);
 	}
-
-	.col-input {
-		padding: 6px 10px;
-		border: 1px solid var(--color-surface-300-700);
-		border-radius: 6px;
-		background: var(--color-surface-200-800);
-		color: inherit;
-		font-size: 0.9rem;
-	}
-
-	.col-name {
-		flex: 2;
-	}
-
-	.col-type {
-		flex: 1;
-		min-width: 90px;
-	}
-
-	.col-desc {
-		flex: 3;
-	}
-
-	.col-required {
+	label {
 		display: flex;
-		align-items: center;
+		flex-direction: column;
+		flex: 1 1 110px;
+		min-width: 0;
+		font-size: 12px;
 		gap: 4px;
-		font-size: 0.8rem;
-		white-space: nowrap;
-		cursor: pointer;
+		color: var(--app-muted);
 	}
-
-	.btn-icon-sm {
-		display: flex;
+	.description {
+		flex: 2 1 160px;
+	}
+	.required {
+		flex: 0 0 auto;
+		flex-direction: row;
 		align-items: center;
-		justify-content: center;
-		padding: 4px;
-		border: none;
-		background: transparent;
-		border-radius: 4px;
-		cursor: pointer;
-		color: var(--color-error-500);
+		height: 36px;
 	}
-
-	.btn-icon-sm:hover {
-		background: var(--color-surface-200-800);
+	input:not([type='checkbox']),
+	select {
+		width: 100%;
+		height: 36px;
+		padding: 7px 10px;
+		border: 1px solid var(--app-border);
+		border-radius: 8px;
+		background: var(--app-bg);
+		color: var(--app-text);
 	}
-
-	.schema-actions {
+	footer {
+		padding: 12px 16px;
 		display: flex;
 		justify-content: space-between;
-		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+		flex-shrink: 0;
+		border-top: 1px solid var(--app-border);
 	}
-
-	.schema-actions-right {
+	footer div {
 		display: flex;
 		gap: 8px;
+		flex-wrap: wrap;
 	}
-
-	.btn-secondary {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 16px;
-		background: var(--color-surface-200-800);
-		border: 1px solid var(--color-surface-300-700);
-		border-radius: 8px;
-		cursor: pointer;
-		font-size: 0.9rem;
-		color: inherit;
-	}
-
-	.btn-secondary:hover {
-		background: var(--color-surface-300-700);
-	}
-
-	.btn-primary {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 16px;
-		background: var(--color-primary-500);
-		color: white;
-		border: none;
-		border-radius: 8px;
-		font-size: 0.9rem;
-		font-weight: 600;
-		cursor: pointer;
-	}
-
-	.btn-primary:hover:not(:disabled) {
-		background: var(--color-primary-600);
-	}
-
-	.btn-primary:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.btn-ghost {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 16px;
-		background: transparent;
-		border: 1px solid var(--color-surface-300-700);
-		border-radius: 8px;
-		cursor: pointer;
-		font-size: 0.9rem;
-		color: var(--color-error-500);
-	}
-
-	.btn-ghost:hover {
-		background: var(--color-error-50, rgba(255, 0, 0, 0.05));
+	.validation {
+		color: var(--color-warning-500);
 	}
 </style>

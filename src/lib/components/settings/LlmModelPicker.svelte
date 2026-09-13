@@ -3,7 +3,14 @@
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { errorText } from '$lib/utils/errors';
 
-	let { id, value, provider, baseUrl = '', apiKey, onchange }: {
+	let {
+		id,
+		value,
+		provider,
+		baseUrl = '',
+		apiKey,
+		onchange,
+	}: {
 		id: string;
 		value: string;
 		provider: 'ollama_cloud' | 'openrouter';
@@ -20,11 +27,40 @@
 	let filter = $state('');
 	let filtering = $state(false);
 	let activeIndex = $state(-1);
+	let input: HTMLInputElement;
+	let popupStyle = $state('');
+	$effect(() => {
+		if (!open || !input) return;
+		function position() {
+			const rect = input.getBoundingClientRect();
+			const boundary = input.closest('.settings-scroll')?.getBoundingClientRect();
+			if (boundary && (rect.bottom < boundary.top || rect.top > boundary.bottom)) {
+				open = false;
+				return;
+			}
+			const below = window.innerHeight - rect.bottom - 12;
+			const above = rect.top - 12;
+			const upwards = below < 200 && above > below;
+			const height = Math.max(40, Math.min(240, upwards ? above : below));
+			const width = Math.min(rect.width, window.innerWidth - 24);
+			const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+			popupStyle = `left:${left}px;width:${width}px;max-height:${height}px;${upwards ? `bottom:${window.innerHeight - rect.top + 4}px;top:auto` : `top:${rect.bottom + 4}px;bottom:auto`}`;
+		}
+		position();
+		window.addEventListener('resize', position);
+		window.addEventListener('scroll', position, true);
+		return () => {
+			window.removeEventListener('resize', position);
+			window.removeEventListener('scroll', position, true);
+		};
+	});
 	const listId = $derived(`${id}-options`);
 	const providerLabel = $derived(provider === 'openrouter' ? 'OpenRouter' : 'Ollama Cloud');
-	const filtered = $derived(models.filter((model) =>
-		!filtering || model.toLowerCase().includes(filter.trim().toLowerCase())
-	));
+	const filtered = $derived(
+		models.filter(
+			(model) => !filtering || model.toLowerCase().includes(filter.trim().toLowerCase())
+		)
+	);
 
 	$effect(() => {
 		const backend = provider;
@@ -39,9 +75,10 @@
 		// Debounce edits and discard responses for an old URL/key or an unmounted picker.
 		const timer = setTimeout(async () => {
 			try {
-				const result = backend === 'openrouter'
-					? await listOpenRouterModels(key)
-					: await listOllamaCloudModels(url, key);
+				const result =
+					backend === 'openrouter'
+						? await listOpenRouterModels(key)
+						: await listOllamaCloudModels(url, key);
 				if (current) models = result;
 			} catch (e) {
 				if (current) error = errorText(e);
@@ -74,9 +111,12 @@
 			openList();
 			if (!filtered.length) return;
 			const direction = event.key === 'ArrowDown' ? 1 : -1;
-			activeIndex = activeIndex < 0
-				? (direction > 0 ? 0 : filtered.length - 1)
-				: (activeIndex + direction + filtered.length) % filtered.length;
+			activeIndex =
+				activeIndex < 0
+					? direction > 0
+						? 0
+						: filtered.length - 1
+					: (activeIndex + direction + filtered.length) % filtered.length;
 			document.getElementById(`${listId}-${activeIndex}`)?.scrollIntoView?.({ block: 'nearest' });
 		} else if (event.key === 'Enter' && open) {
 			event.preventDefault();
@@ -93,6 +133,7 @@
 	<div class="controls">
 		<div class="combobox">
 			<input
+				bind:this={input}
 				{id}
 				role="combobox"
 				type="text"
@@ -100,13 +141,17 @@
 				aria-autocomplete="list"
 				aria-expanded={open}
 				aria-controls={listId}
-				aria-activedescendant={open && filtered[activeIndex] ? `${listId}-${activeIndex}` : undefined}
+				aria-activedescendant={open && filtered[activeIndex]
+					? `${listId}-${activeIndex}`
+					: undefined}
 				aria-describedby={`${id}-status`}
 				value={open ? filter : value}
 				placeholder="Type to filter models…"
 				onfocus={openList}
 				onclick={openList}
-				onblur={() => { open = false; }}
+				onblur={() => {
+					open = false;
+				}}
 				oninput={(event) => {
 					filter = event.currentTarget.value;
 					filtering = true;
@@ -116,8 +161,16 @@
 				onkeydown={handleKeydown}
 			/>
 			{#if open}
-				<div class="dropdown">
-					<div id={listId} role="listbox" aria-label={`${providerLabel} models`} aria-busy={loading}>
+				<div class="dropdown" style={popupStyle}>
+					{#if loading}<p>Loading models…</p>{:else if error}<p>
+							Could not load models. Close this list and use Refresh to retry.
+						</p>{:else if models.length === 0}<p>No models available.</p>{/if}
+					<div
+						id={listId}
+						role="listbox"
+						aria-label={`${providerLabel} models`}
+						aria-busy={loading}
+					>
 						{#each filtered as model, index (model)}
 							<button
 								id={`${listId}-${index}`}
@@ -127,8 +180,8 @@
 								aria-selected={model === value}
 								class:active={activeIndex === index}
 								onmousedown={(event) => event.preventDefault()}
-								onclick={() => select(model)}
-							>{model}</button>
+								onclick={() => select(model)}>{model}</button
+							>
 						{/each}
 					</div>
 					{#if !loading && !error && models.length > 0 && filtered.length === 0}
@@ -137,7 +190,14 @@
 				</div>
 			{/if}
 		</div>
-		<button class="reload" type="button" onclick={() => { reload += 1; }} disabled={loading}>
+		<button
+			class="reload"
+			type="button"
+			onclick={() => {
+				reload += 1;
+			}}
+			disabled={loading}
+		>
 			Refresh
 		</button>
 	</div>
@@ -152,32 +212,50 @@
 </div>
 
 <style>
-	.model-picker, .combobox { min-width: 0; }
-	.controls { display: flex; gap: 8px; }
-	.combobox { position: relative; flex: 1; }
-	input, .reload {
+	.model-picker,
+	.combobox {
+		min-width: 0;
+	}
+	.controls {
+		display: flex;
+		gap: 8px;
+	}
+	.combobox {
+		position: relative;
+		flex: 1;
+	}
+	input,
+	.reload {
 		padding: 8px 12px;
-		border: 1px solid var(--color-surface-300-700);
+		border: 1px solid var(--app-border);
 		border-radius: 6px;
-		background: var(--color-surface-200-800);
+		background: var(--app-subtle);
 		color: inherit;
 		font-size: 0.95rem;
 	}
-	input { width: 100%; box-sizing: border-box; }
-	input:focus { outline: none; border-color: var(--color-primary-500); }
-	.reload { cursor: pointer; }
-	.reload:disabled { opacity: 0.5; cursor: wait; }
+	input {
+		width: 100%;
+		box-sizing: border-box;
+	}
+	input:focus {
+		outline: none;
+		border-color: var(--color-primary-500);
+	}
+	.reload {
+		cursor: pointer;
+	}
+	.reload:disabled {
+		opacity: 0.5;
+		cursor: wait;
+	}
 	.dropdown {
-		position: absolute;
-		top: calc(100% + 4px);
-		left: 0;
-		right: 0;
-		z-index: 20;
+		position: fixed;
+		z-index: 50;
 		max-height: 240px;
 		overflow-y: auto;
-		border: 1px solid var(--color-surface-300-700);
+		border: 1px solid var(--app-border);
 		border-radius: 6px;
-		background: var(--color-surface-100-900);
+		background: var(--app-panel);
 		box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 	}
 	[role='option'] {
@@ -191,8 +269,22 @@
 		overflow-wrap: anywhere;
 		cursor: pointer;
 	}
-	[role='option']:hover, [role='option'].active { background: var(--color-surface-200-800); }
-	[aria-selected='true'] { font-weight: 600; color: var(--color-primary-500); }
-	p { margin: 6px 0 0; font-size: 0.82rem; color: var(--color-surface-600-400); overflow-wrap: anywhere; }
-	.dropdown p { padding: 8px 12px; margin: 0; }
+	[role='option']:hover,
+	[role='option'].active {
+		background: var(--app-subtle);
+	}
+	[aria-selected='true'] {
+		font-weight: 600;
+		color: var(--color-primary-500);
+	}
+	p {
+		margin: 6px 0 0;
+		font-size: 0.82rem;
+		color: var(--app-muted);
+		overflow-wrap: anywhere;
+	}
+	.dropdown p {
+		padding: 8px 12px;
+		margin: 0;
+	}
 </style>

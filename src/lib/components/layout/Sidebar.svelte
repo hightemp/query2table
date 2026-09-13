@@ -1,7 +1,29 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { SearchIcon, HistoryIcon, SettingsIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SunIcon, MoonIcon } from '@lucide/svelte';
+	import {
+		SearchIcon,
+		HistoryIcon,
+		SettingsIcon,
+		PanelLeftCloseIcon,
+		PanelLeftOpenIcon,
+		SunIcon,
+		MoonIcon,
+	} from '@lucide/svelte';
 	import { sidebarCollapsed, currentTheme, toggleTheme } from '$lib/stores/ui';
+	let themeError = $state(false);
+	let savingTheme = $state(false);
+	async function changeTheme() {
+		if (savingTheme) return;
+		savingTheme = true;
+		themeError = false;
+		try {
+			await toggleTheme();
+		} catch {
+			themeError = true;
+		} finally {
+			savingTheme = false;
+		}
+	}
 
 	function toggleSidebar() {
 		sidebarCollapsed.update((v) => !v);
@@ -23,22 +45,43 @@
 	</div>
 
 	<nav class="sidebar-nav">
-		<a href="/" class="nav-item" class:active={$page.url.pathname === '/'}>
+		<a
+			href="/"
+			aria-label="Query"
+			title="Query"
+			aria-current={$page.url.pathname === '/' ? 'page' : undefined}
+			class="nav-item"
+			class:active={$page.url.pathname === '/'}
+		>
 			<SearchIcon size={20} />
 			{#if !$sidebarCollapsed}<span>Query</span>{/if}
 		</a>
-		<a href="/history" class="nav-item" class:active={$page.url.pathname === '/history'}>
+		<a
+			href="/history"
+			aria-label="History"
+			title="History"
+			aria-current={$page.url.pathname === '/history' ? 'page' : undefined}
+			class="nav-item"
+			class:active={$page.url.pathname === '/history'}
+		>
 			<HistoryIcon size={20} />
 			{#if !$sidebarCollapsed}<span>History</span>{/if}
 		</a>
-		<a href="/settings" class="nav-item" class:active={$page.url.pathname === '/settings'}>
+		<a
+			href="/settings"
+			aria-label="Settings"
+			title="Settings"
+			aria-current={$page.url.pathname === '/settings' ? 'page' : undefined}
+			class="nav-item"
+			class:active={$page.url.pathname === '/settings'}
+		>
 			<SettingsIcon size={20} />
 			{#if !$sidebarCollapsed}<span>Settings</span>{/if}
 		</a>
 	</nav>
 
 	<div class="sidebar-footer">
-		<button class="btn-icon" onclick={toggleTheme} aria-label="Toggle theme">
+		<button class="btn-icon" onclick={changeTheme} disabled={savingTheme} aria-label="Toggle theme">
 			{#if $currentTheme === 'dark'}
 				<SunIcon size={20} />
 			{:else}
@@ -49,16 +92,27 @@
 			<span class="theme-label">{$currentTheme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
 		{/if}
 	</div>
+	{#if themeError}<p class="theme-error" role="alert">
+			Could not save the theme. Try the theme button again.
+		</p>{/if}
 </aside>
 
 <style>
+	.theme-error {
+		margin: 0;
+		padding: 8px;
+		color: var(--color-error-500);
+		overflow-wrap: anywhere;
+		font-size: 12px;
+	}
 	.sidebar {
 		display: flex;
 		flex-direction: column;
 		width: 220px;
-		min-height: 100vh;
-		background: var(--color-surface-100-900);
-		border-right: 1px solid var(--color-surface-300-700);
+		height: 100%;
+		min-height: 0;
+		background: var(--app-panel);
+		border-right: 1px solid var(--app-border);
 		transition: width 0.2s ease;
 		flex-shrink: 0;
 	}
@@ -95,7 +149,7 @@
 	}
 
 	.btn-icon:hover {
-		background: var(--color-surface-200-800);
+		background: var(--app-subtle);
 	}
 
 	.sidebar-nav {
@@ -112,18 +166,19 @@
 		padding: 10px 12px;
 		border-radius: 8px;
 		text-decoration: none;
-		color: var(--color-surface-900-100);
+		color: var(--app-text);
 		font-size: 0.95rem;
 		transition: background 0.15s;
 	}
 
 	.nav-item:hover {
-		background: var(--color-surface-200-800);
+		background: var(--app-subtle);
 	}
 
 	.nav-item.active {
-		background: var(--color-primary-500);
-		color: white;
+		background: color-mix(in srgb, var(--app-accent) 14%, transparent);
+		color: var(--app-accent);
+		font-weight: 650;
 	}
 
 	.collapsed .sidebar-header {

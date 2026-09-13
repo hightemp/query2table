@@ -29,6 +29,8 @@ A fully local desktop application that accepts natural-language research queries
 - **LLM Access:** OpenRouter (OpenAI-compatible API), Ollama (local models)
 - **Default LLM Model:** openai/gpt-5.4-mini (configurable per stage)
 - **Table Component:** TanStack Table (Svelte adapter)
+- **Result virtualization:** TanStack Svelte Virtual, continuous scrolling with stable row identities
+- **UI regression checks:** Vitest component tests and Playwright Chromium/WebKit with isolated Tauri fixtures
 
 ## Architecture Notes
 - Orchestrator + fixed roles pattern (not free-form agents)

@@ -94,6 +94,12 @@ On first launch the app creates a local SQLite database with default settings. O
 
 Stop conditions (target rows, max cost, max duration) are set per-query on the Query page.
 
+Settings keep **Save** and **Discard** visible while scrolling. Section links jump directly to the relevant controls, and leaving with unsaved changes offers Save / Discard / Stay. Edits made during a save remain available for the next save.
+
+Results use a continuous, virtualized table with local search and keyboard sorting. Open a row's **Details** to read or copy complete values and inspect its saved sources. Research puts the answer before expandable activity. Images support grid/list views and keyboard previews; export and deletion show explicit progress and outcomes. Clearing the diagnostic **Logs** panel does not reset run activity.
+
+Browser regression checks use synthetic data and mocked Tauri commands: install the test browsers with `npx playwright install chromium webkit`, then run `npm run test:ui`. Existing frontend tests run with `npm test`.
+
 ### API Keys
 
 You need at least one search API key and a configured LLM provider. Local Ollama and unauthenticated OpenAI-compatible servers do not require an LLM API key:

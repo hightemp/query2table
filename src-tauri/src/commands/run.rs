@@ -353,6 +353,43 @@ pub struct EntityRowInfo {
     pub status: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct RowSourceInfo {
+    pub id: String,
+    pub row_id: String,
+    pub url: String,
+    pub title: Option<String>,
+    pub snippet: Option<String>,
+}
+
+async fn load_row_sources(repo: &Repository, row_id: &str) -> Result<Vec<RowSourceInfo>, String> {
+    tracing::debug!(row_id, "Loading row sources");
+    let sources = repo.get_row_sources(row_id).await.map_err(|error| {
+        tracing::warn!(row_id, %error, "Could not load row sources");
+        error.to_string()
+    })?;
+    tracing::debug!(count = sources.len(), "Loaded row sources");
+    Ok(sources
+        .into_iter()
+        .map(|source| RowSourceInfo {
+            id: source.id,
+            row_id: source.entity_row_id,
+            url: source.url,
+            title: source.title,
+            snippet: source.snippet,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn get_row_sources(
+    state: State<'_, AppState>,
+    row_id: String,
+) -> Result<Vec<RowSourceInfo>, String> {
+    let repo = Repository::new(state.db.pool().clone());
+    load_row_sources(&repo, &row_id).await
+}
+
 #[tauri::command]
 pub async fn get_run_rows(
     state: State<'_, AppState>,
@@ -510,6 +547,27 @@ pub async fn proxy_image(url: String) -> Result<String, String> {
 mod control_tests {
     use super::*;
     use std::time::Duration;
+
+    #[tokio::test]
+    async fn row_sources_preserve_nullable_fields_and_stay_scoped_to_the_row() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1).connect("sqlite::memory:").await.unwrap();
+        let db = crate::storage::db::Database::with_pool(pool.clone()).await;
+        db.migrate().await.unwrap();
+        let repo = Repository::new(pool);
+        repo.create_run("source-test", "Test sources", "{}").await.unwrap();
+        let first = repo.create_entity_row("source-test", "{}", 0.8, "final").await.unwrap();
+        let other = repo.create_entity_row("source-test", "{}", 0.9, "final").await.unwrap();
+        repo.create_row_source(&first, "https://example.com/first", None, None, None).await.unwrap();
+        repo.create_row_source(&other, "https://example.com/other", Some("Other"), Some("Evidence"), None).await.unwrap();
+        let sources = load_row_sources(&repo, &first).await.unwrap();
+        assert_eq!(sources.len(), 1);
+        let json = serde_json::to_value(&sources[0]).unwrap();
+        assert_eq!(json["row_id"], first);
+        assert_eq!(json["url"], "https://example.com/first");
+        assert!(json["title"].is_null() && json["snippet"].is_null());
+        assert!(load_row_sources(&repo, "missing").await.unwrap().is_empty());
+    }
 
     #[tokio::test]
     async fn queued_command_does_not_hold_active_runs_mutex() {

@@ -1,179 +1,146 @@
 <script lang="ts">
 	import type { RunRow } from '$lib/stores/run';
-	import { openUrl } from '@tauri-apps/plugin-opener';
-
-	interface Props {
-		row: RunRow;
-		columns: string[];
-		onclose: () => void;
-	}
-
-	let { row, columns, onclose }: Props = $props();
-
-	function isUrl(value: string): boolean {
-		try {
-			const u = new URL(value);
-			return u.protocol === 'http:' || u.protocol === 'https:';
-		} catch {
-			return false;
-		}
-	}
-
-	function handleLinkClick(e: MouseEvent, url: string) {
-		e.preventDefault();
-		e.stopPropagation();
-		openUrl(url);
-	}
+	import type { RowSource } from '$lib/types';
+	import { getRowSources } from '$lib/api/tauri';
+	import { formatValue, webUrl } from '$lib/utils/values';
+	import { errorText } from '$lib/utils/errors';
+	import Dialog from '$lib/components/common/Dialog.svelte';
+	import CopyButton from '$lib/components/common/CopyButton.svelte';
+	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
+	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
+	let { row, columns, onclose }: { row: RunRow; columns: string[]; onclose: () => void } = $props();
+	let sources = $state<RowSource[]>([]);
+	let loading = $state(true);
+	let error = $state('');
+	let retry = $state(0);
+	$effect(() => {
+		const id = row.id;
+		void retry;
+		let current = true;
+		loading = true;
+		sources = [];
+		error = '';
+		getRowSources(id)
+			.then((result) => {
+				if (current) sources = result;
+			})
+			.catch((reason) => {
+				if (current) error = errorText(reason);
+			})
+			.finally(() => {
+				if (current) loading = false;
+			});
+		return () => {
+			current = false;
+		};
+	});
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="detail-overlay" onclick={onclose} onkeydown={(e) => e.key === 'Escape' && onclose()}>
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="detail-panel" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
-		<div class="detail-header">
-			<h3>Row Details</h3>
-			<button class="close-btn" onclick={onclose}>&times;</button>
-		</div>
-
-		<div class="detail-body">
-			<div class="confidence-bar">
-				<span>Confidence</span>
-				<div class="confidence-track">
-					<div class="confidence-fill" style="width: {Math.round(row.confidence * 100)}%"></div>
-				</div>
-				<span class="confidence-val">{Math.round(row.confidence * 100)}%</span>
-			</div>
-
-			<table class="detail-table">
-				<tbody>
-					{#each columns as col}
-						{@const value = row.data[col] != null ? String(row.data[col]) : ''}
-						<tr>
-							<td class="detail-key">{col}</td>
-							<td class="detail-value">
-								{#if value && isUrl(value)}
-									<a href={value} class="detail-link" onclick={(e) => handleLinkClick(e, value)}>{value}</a>
-								{:else}
-									{value || '—'}
-								{/if}
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
+<Dialog title="Row Details" variant="drawer" {onclose}>
+	<div class="confidence">
+		<span>Extraction confidence</span><strong>{Math.round(row.confidence * 100)}%</strong>
 	</div>
-</div>
+	<dl>
+		{#each columns as column}<div class="field">
+				<dt>
+					<span>{column}</span><CopyButton
+						text={formatValue(row.data[column], true)}
+						label={`Copy ${column}`}
+					/>
+				</dt>
+				<dd>
+					{#if webUrl(row.data[column])}<ExternalLink
+							href={String(row.data[column])}
+						/>{:else}<pre>{formatValue(row.data[column], true)}</pre>{/if}
+				</dd>
+			</div>{/each}
+	</dl>
+	<section aria-label="Row sources">
+		<h3>Sources</h3>
+		{#if loading}<p role="status">Loading sources…</p>
+		{:else if error}<ErrorNotice {error} context="history" /><button
+				class="button"
+				onclick={() => {
+					retry++;
+				}}>Retry loading sources</button
+			>
+		{:else if !sources.length}<p class="muted">No sources were saved for this row.</p>
+		{:else}{#each sources as source}<article>
+					<div class="source-heading">
+						<ExternalLink href={source.url} label={source.title || source.url} /><CopyButton
+							text={source.url}
+							label="Copy source URL"
+						/>
+					</div>
+					{#if source.title}<p class="source-url">
+							{source.url}
+						</p>{/if}{#if source.snippet}<blockquote>{source.snippet}</blockquote>{/if}
+				</article>{/each}{/if}
+	</section>
+</Dialog>
 
 <style>
-	.detail-overlay {
-		position: fixed;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.4);
-		display: flex;
-		justify-content: flex-end;
-		z-index: 100;
-	}
-
-	.detail-panel {
-		width: 420px;
-		max-width: 90vw;
-		height: 100%;
-		background: var(--color-surface-50-950);
-		box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2);
-		display: flex;
-		flex-direction: column;
-		overflow-y: auto;
-	}
-
-	.detail-header {
+	.confidence {
 		display: flex;
 		justify-content: space-between;
-		align-items: center;
-		padding: 16px 20px;
-		border-bottom: 1px solid var(--color-surface-300-700);
+		gap: 12px;
+		padding: 12px;
+		border-radius: 8px;
+		background: var(--app-subtle);
+		font-size: 13px;
 	}
-
-	h3 {
-		font-size: 1.1rem;
-		font-weight: 700;
+	dl {
+		margin: 16px 0 24px;
+	}
+	.field {
+		padding: 12px 0;
+		border-bottom: 1px solid var(--app-border);
+	}
+	dt {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+		align-items: center;
+		color: var(--app-muted);
+		font-size: 12px;
+		font-weight: 600;
+	}
+	dd {
+		margin: 4px 0 0;
+	}
+	pre {
+		font: inherit;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
 		margin: 0;
 	}
-
-	.close-btn {
-		background: none;
-		border: none;
-		font-size: 1.5rem;
-		cursor: pointer;
-		color: inherit;
-		padding: 0 4px;
-		line-height: 1;
+	h3 {
+		font-size: 16px;
+		font-weight: 650;
+		margin-bottom: 8px;
 	}
-
-	.detail-body {
-		padding: 20px;
-		flex: 1;
+	article {
+		margin: 12px 0;
+		padding: 12px;
+		border: 1px solid var(--app-border);
+		border-radius: 8px;
 	}
-
-	.confidence-bar {
+	.source-heading {
 		display: flex;
-		align-items: center;
-		gap: 10px;
-		margin-bottom: 20px;
-		font-size: 0.9rem;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 8px;
 	}
-
-	.confidence-track {
-		flex: 1;
-		height: 6px;
-		background: var(--color-surface-200-800);
-		border-radius: 3px;
-		overflow: hidden;
+	.source-url {
+		font-size: 12px;
+		color: var(--app-muted);
+		overflow-wrap: anywhere;
 	}
-
-	.confidence-fill {
-		height: 100%;
-		background: var(--color-primary-500);
-		border-radius: 3px;
-	}
-
-	.confidence-val {
-		font-weight: 600;
-		min-width: 40px;
-		text-align: right;
-	}
-
-	.detail-table {
-		width: 100%;
-		border-collapse: collapse;
-	}
-
-	.detail-table tr {
-		border-bottom: 1px solid var(--color-surface-200-800);
-	}
-
-	.detail-key {
-		font-weight: 600;
-		padding: 10px 12px 10px 0;
-		vertical-align: top;
-		white-space: nowrap;
-		font-size: 0.85rem;
-		color: var(--color-surface-600-400);
-		width: 120px;
-	}
-
-	.detail-value {
-		padding: 10px 0;
-		word-break: break-word;
-		font-size: 0.9rem;
-	}
-
-	.detail-link {
-		color: var(--color-primary-500);
-		text-decoration: none;
-		cursor: pointer;
-	}
-	.detail-link:hover {
-		text-decoration: underline;
+	blockquote {
+		margin: 10px 0 0;
+		padding-left: 10px;
+		border-left: 2px solid var(--app-border);
+		font-size: 13px;
+		white-space: pre-wrap;
 	}
 </style>

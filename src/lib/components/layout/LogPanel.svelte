@@ -5,10 +5,7 @@
 
 	const levels: (LogLevel | 'ALL')[] = ['ALL', 'DEBUG', 'INFO', 'WARN', 'ERROR'];
 
-	$: filteredLogs =
-		$logFilter === 'ALL'
-			? $logs
-			: $logs.filter((l) => l.level === $logFilter);
+	$: filteredLogs = $logFilter === 'ALL' ? $logs : $logs.filter((l) => l.level === $logFilter);
 
 	function togglePanel() {
 		logPanelOpen.update((v) => !v);
@@ -32,7 +29,12 @@
 
 <div class="log-panel" class:open={$logPanelOpen}>
 	<div class="log-header">
-		<button class="log-toggle" onclick={togglePanel}>
+		<button
+			class="log-toggle"
+			onclick={togglePanel}
+			aria-expanded={$logPanelOpen}
+			aria-controls="app-log-body"
+		>
 			{#if $logPanelOpen}
 				<ChevronDownIcon size={16} />
 			{:else}
@@ -43,7 +45,7 @@
 
 		{#if $logPanelOpen}
 			<div class="log-controls">
-				<select bind:value={$logFilter} class="log-filter">
+				<select aria-label="Log level" bind:value={$logFilter} class="log-filter">
 					{#each levels as level}
 						<option value={level}>{level}</option>
 					{/each}
@@ -56,7 +58,7 @@
 	</div>
 
 	{#if $logPanelOpen}
-		<div class="log-body">
+		<div class="log-body" id="app-log-body">
 			{#each filteredLogs as log}
 				<div class="log-entry">
 					<span class="log-time">{log.timestamp.substring(11, 19)}</span>
@@ -72,13 +74,13 @@
 
 <style>
 	.log-panel {
-		border-top: 1px solid var(--color-surface-300-700);
-		background: var(--color-surface-50-950);
+		border-top: 1px solid var(--app-border);
+		background: var(--app-bg);
 		flex-shrink: 0;
 	}
 
 	.log-panel.open {
-		height: 200px;
+		height: clamp(120px, 25vh, 240px);
 		display: flex;
 		flex-direction: column;
 	}
@@ -88,7 +90,7 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 6px 12px;
-		background: var(--color-surface-100-900);
+		background: var(--app-panel);
 	}
 
 	.log-toggle {
@@ -112,9 +114,9 @@
 	.log-filter {
 		font-size: 0.8rem;
 		padding: 2px 6px;
-		border: 1px solid var(--color-surface-300-700);
+		border: 1px solid var(--app-border);
 		border-radius: 4px;
-		background: var(--color-surface-50-950);
+		background: var(--app-bg);
 		color: inherit;
 	}
 
@@ -131,11 +133,13 @@
 	}
 
 	.btn-icon-sm:hover {
-		background: var(--color-surface-200-800);
+		background: var(--app-subtle);
 	}
 
 	.log-body {
 		flex: 1;
+		min-height: 0;
+		scrollbar-gutter: stable;
 		overflow-y: auto;
 		padding: 4px 12px;
 		font-family: monospace;
@@ -146,7 +150,7 @@
 		display: flex;
 		gap: 8px;
 		padding: 2px 0;
-		border-bottom: 1px solid var(--color-surface-200-800);
+		border-bottom: 1px solid var(--app-subtle);
 	}
 
 	.log-time {

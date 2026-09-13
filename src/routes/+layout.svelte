@@ -18,8 +18,11 @@
 
 	async function loadSettings() {
 		settingsError = '';
-		try { await settings.load(); }
-		catch (error) { settingsError = errorText(error); }
+		try {
+			await settings.load();
+		} catch (error) {
+			settingsError = errorText(error);
+		}
 	}
 
 	$effect(() => {
@@ -33,7 +36,9 @@
 
 	onMount(() => {
 		void loadSettings();
-		loadTheme();
+		void loadTheme().catch((error) => {
+			settingsError = errorText(error);
+		});
 
 		const unlisteners: (() => void)[] = [];
 		let disposed = false;
@@ -41,19 +46,27 @@
 			if (disposed) unsubscribe();
 			else unlisteners.push(unsubscribe);
 		}
-		function failed(error: unknown) { if (!disposed) eventError = errorText(error); }
+		function failed(error: unknown) {
+			if (!disposed) eventError = errorText(error);
+		}
 
 		onLogEvent((entry) => {
 			addLog(entry as LogEntry);
-		}).then(registered).catch(failed);
+		})
+			.then(registered)
+			.catch(failed);
 
 		onRunLogEntry((e) => {
 			addLog({
+				run_id: e.run_id,
+				role: e.role,
 				timestamp: new Date().toISOString(),
 				level: e.level as 'DEBUG' | 'INFO' | 'WARN' | 'ERROR',
 				message: `[${e.role}] ${e.message}`,
 			});
-		}).then(registered).catch(failed);
+		})
+			.then(registered)
+			.catch(failed);
 
 		return () => {
 			disposed = true;
@@ -66,11 +79,13 @@
 	<Sidebar />
 	<div class="app-main">
 		<main class="app-content">
-			{#if settingsError}
-				<ErrorNotice error={settingsError} context="settings_load" />
-				<button onclick={loadSettings}>Retry loading settings</button>
-			{/if}
-			{#if eventError}<ErrorNotice error={eventError} />{/if}
+			{#if settingsError || eventError}<div class="app-alerts">
+					{#if settingsError}
+						<ErrorNotice error={settingsError} context="settings_load" />
+						<button class="button" onclick={loadSettings}>Retry loading settings</button>
+					{/if}
+					{#if eventError}<ErrorNotice error={eventError} />{/if}
+				</div>{/if}
 			{@render children()}
 		</main>
 		<LogPanel />
@@ -78,9 +93,17 @@
 </div>
 
 <style>
+	.app-alerts {
+		max-height: 30vh;
+		overflow: auto;
+		flex-shrink: 0;
+		margin-bottom: 12px;
+		scrollbar-gutter: stable;
+		padding-right: 12px;
+	}
 	.app-shell {
 		display: flex;
-		height: 100vh;
+		height: 100dvh;
 		overflow: hidden;
 	}
 
@@ -95,7 +118,7 @@
 	.app-content {
 		flex: 1;
 		overflow: hidden;
-		padding: 24px;
+		padding: 20px;
 		display: flex;
 		flex-direction: column;
 		min-height: 0;

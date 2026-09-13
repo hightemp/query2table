@@ -1,4 +1,5 @@
-export type RunStatus = 'pending' | 'schema_review' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type RunStatus =
+	'pending' | 'schema_review' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
 export interface Run {
 	id: string;
@@ -19,7 +20,7 @@ export interface SchemaColumn {
 export interface EntityRow {
 	id: string;
 	run_id: string;
-	data: Record<string, string>;
+	data: Record<string, unknown>;
 	status: string;
 	confidence: number;
 }
@@ -28,13 +29,15 @@ export interface RowSource {
 	id: string;
 	row_id: string;
 	url: string;
-	title: string;
-	snippet: string;
+	title: string | null;
+	snippet: string | null;
 }
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 export interface LogEntry {
+	run_id?: string;
+	role?: string;
 	timestamp: string;
 	level: LogLevel;
 	message: string;
@@ -127,9 +130,21 @@ export interface RunErrorEvent {
 	error: string;
 }
 
-export type LlmIssueCode = 'output_limit' | 'context_limit' | 'rate_limit' | 'quota' | 'auth'
-	| 'access_denied' | 'timeout' | 'connection' | 'invalid_response' | 'empty_response'
-	| 'not_configured' | 'unsupported_setting' | 'model_not_found' | 'provider_error';
+export type LlmIssueCode =
+	| 'output_limit'
+	| 'context_limit'
+	| 'rate_limit'
+	| 'quota'
+	| 'auth'
+	| 'access_denied'
+	| 'timeout'
+	| 'connection'
+	| 'invalid_response'
+	| 'empty_response'
+	| 'not_configured'
+	| 'unsupported_setting'
+	| 'model_not_found'
+	| 'provider_error';
 
 export interface LlmIssueEvent {
 	run_id: string;

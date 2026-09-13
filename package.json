@@ -11,11 +11,13 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:ui": "playwright test"
   },
   "license": "MIT",
   "dependencies": {
     "@tanstack/svelte-table": "^9.0.0-alpha.10",
+    "@tanstack/svelte-virtual": "^3.13.38",
     "@tanstack/table-core": "^9.0.0-alpha.10",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@lucide/svelte": "^1.7.0",
+    "@playwright/test": "^1.63.0",
     "@skeletonlabs/skeleton": "^4.13.0",
     "@skeletonlabs/skeleton-svelte": "^4.13.0",
     "@sveltejs/adapter-static": "^3.0.6",

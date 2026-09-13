@@ -1,158 +1,48 @@
 <script lang="ts">
 	import type { ProgressStats } from '$lib/types';
-
-	interface Props {
-		stats: ProgressStats | null;
-		status: string;
-		runType?: string;
-	}
-
-	let { stats, status, runType = 'table' }: Props = $props();
-
-	let isResearch = $derived(runType === 'research');
-
-	let progressPercent = $derived(() => {
-		if (!stats) return 0;
-		if (isResearch) {
-			if (stats.queries_total === 0) return 0;
-			return Math.round((stats.queries_executed / stats.queries_total) * 100);
-		}
-		if (stats.pages_total === 0) return 0;
-		return Math.round((stats.pages_fetched / stats.pages_total) * 100);
-	});
-
-	let isRunning = $derived(status === 'running' || status === 'pending');
-
-	function formatElapsed(secs: number): string {
-		const m = Math.floor(secs / 60);
-		const s = secs % 60;
-		return m > 0 ? `${m}m ${s}s` : `${s}s`;
+	let {
+		stats,
+		status,
+		runType = 'table',
+	}: { stats: ProgressStats | null; status: string; runType?: string } = $props();
+	const units: Record<string, string> = {
+		table: 'Rows',
+		images: 'Images',
+		links: 'Links',
+		research: 'Searches',
+	};
+	function elapsed(seconds: number) {
+		const secs = Math.floor(seconds);
+		return secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
 	}
 </script>
 
-<div class="progress-bar-container">
-	<div class="progress-header">
-		<span class="progress-label">
-			{#if status === 'running'}
-				Processing...
-			{:else if status === 'pending'}
-				Starting...
-			{:else if status === 'paused'}
-				Paused
-			{:else if status === 'completed'}
-				Completed
-			{:else if status === 'failed'}
-				Failed
-			{:else if status === 'cancelled'}
-				Cancelled
-			{:else}
-				{status}
-			{/if}
-		</span>
-		{#if stats}
-			<span class="progress-pct">{progressPercent()}%</span>
-		{/if}
-	</div>
-
-	<div class="progress-track">
-		<div
-			class="progress-fill"
-			class:running={isRunning}
-			class:completed={status === 'completed'}
-			class:failed={status === 'failed'}
-			class:paused={status === 'paused'}
-			style="width: {stats ? progressPercent() : (isRunning ? 100 : 0)}%"
-		></div>
-	</div>
-
+<div class="progress-stats" aria-label="Run statistics">
 	{#if stats}
-		<div class="progress-stats">
-			{#if isResearch}
-				<span>Steps: <strong>{stats.queries_executed}</strong>/{stats.queries_total}</span>
-				<span>Searches: <strong>{stats.rows_found}</strong></span>
-				<span>Pages: <strong>{stats.pages_fetched}</strong></span>
-				<span>Time: {formatElapsed(stats.elapsed_secs)}</span>
-				<span>Cost: ${stats.spent_usd.toFixed(4)}</span>
-			{:else}
-				<span>Rows: <strong>{stats.rows_found}</strong></span>
-				<span>Pages: <strong>{stats.pages_fetched}</strong>/{stats.pages_total}</span>
-				<span>Queries: <strong>{stats.queries_executed}</strong>/{stats.queries_total}</span>
-				<span>Time: {formatElapsed(stats.elapsed_secs)}</span>
-				<span>Cost: ${stats.spent_usd.toFixed(4)}</span>
-			{/if}
-		</div>
-	{/if}
+		<span>{units[runType] ?? 'Results'} <strong>{stats.rows_found}</strong></span>
+		<span
+			>Pages <strong>{stats.pages_fetched}</strong>{#if stats.pages_total > 0}
+				/ {stats.pages_total}{/if}</span
+		>
+		<span
+			>{runType === 'research' ? 'Steps' : 'Queries'}
+			<strong>{stats.queries_executed}</strong>{#if stats.queries_total > 0}
+				/ {stats.queries_total}{/if}</span
+		>
+		<span>{elapsed(stats.elapsed_secs)}</span><span>${stats.spent_usd.toFixed(4)}</span>
+	{:else if ['pending', 'running'].includes(status)}<span>Waiting for the first results…</span>{/if}
 </div>
 
 <style>
-	.progress-bar-container {
-		padding: 12px 0;
-	}
-
-	.progress-header {
-		display: flex;
-		justify-content: space-between;
-		margin-bottom: 6px;
-		font-size: 0.9rem;
-	}
-
-	.progress-label {
-		font-weight: 600;
-	}
-
-	.progress-pct {
-		color: var(--color-surface-600-400);
-	}
-
-	.progress-track {
-		height: 8px;
-		background: var(--color-surface-200-800);
-		border-radius: 4px;
-		overflow: hidden;
-		position: relative;
-	}
-
-	.progress-fill {
-		height: 100%;
-		background: var(--color-primary-500);
-		border-radius: 4px;
-		transition: width 0.3s ease;
-	}
-
-	.progress-fill.running {
-		animation: pulse 1.5s ease-in-out infinite;
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.6; }
-	}
-
-	.progress-fill.completed {
-		background: var(--color-success-500, #22c55e);
-		animation: none;
-	}
-
-	.progress-fill.failed {
-		background: var(--color-error-500);
-		animation: none;
-	}
-
-	.progress-fill.paused {
-		background: var(--color-warning-500);
-		animation: none;
-	}
-
 	.progress-stats {
 		display: flex;
-		gap: 16px;
-		margin-top: 8px;
-		font-size: 0.8rem;
-		color: var(--color-surface-600-400);
 		flex-wrap: wrap;
+		gap: 4px 16px;
+		color: var(--app-muted);
+		font-size: 12px;
 	}
-
-	.progress-stats strong {
-		color: var(--color-surface-900-100);
+	strong {
+		color: var(--app-text);
+		font-variant-numeric: tabular-nums;
 	}
 </style>

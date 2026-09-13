@@ -12,9 +12,9 @@ describe('model issue and error display', () => {
 		const section = screen.getByRole('region', { name: 'Model request issues' });
 		expect(section).toHaveTextContent('The run completed');
 		expect(section).toHaveTextContent('deepseek-test · Expanding search queries');
-		expect(section).toHaveTextContent('Requested output cap4,096 tokens per request');
-		expect(section).toHaveTextContent('Reported input600 tokens');
-		expect(section).toHaveTextContent('Reported output4,096 tokens');
+		expect(section).toHaveTextContent(/Requested output cap\s*4,096 tokens per request/);
+		expect(section).toHaveTextContent(/Reported input\s*600 tokens/);
+		expect(section).toHaveTextContent(/Reported output\s*4,096 tokens/);
 		expect(section).not.toHaveTextContent('Reported thinking');
 		expect(within(section).getByRole('link', { name: 'Open Settings' })).toHaveAttribute('href', '/settings#llm_max_tokens');
 		expect(section).toHaveTextContent('Run cost and time limits are separate');

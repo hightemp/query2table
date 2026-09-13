@@ -32,7 +32,7 @@ describe('history and export errors', () => {
 	it('loads persisted model issues for a completed run and clears them when another run is selected', async () => {
 		render(HistoryPage);
 		await fireEvent.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
-		expect(await screen.findByRole('region', { name: 'Model request issues' })).toHaveTextContent('Requested output cap4,096 tokens per request');
+		expect(await screen.findByRole('region', { name: 'Model request issues' })).toHaveTextContent(/Requested output cap\s*4,096 tokens per request/);
 		expect(apiInvoke).toHaveBeenCalledWith('get_run_issues', { runId: 'run-1' });
 		await fireEvent.click(screen.getByRole('button', { name: 'Back to History' }));
 		await fireEvent.click(screen.getAllByRole('button', { name: 'View' })[1]);

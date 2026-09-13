@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { settings } from '$lib/stores/settings';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import Dialog from '$lib/components/common/Dialog.svelte';
+	import { debugUi } from '$lib/utils/diagnostics';
 	import LlmModelPicker from '$lib/components/settings/LlmModelPicker.svelte';
 	import AppFiles from '$lib/components/settings/AppFiles.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
@@ -11,12 +14,27 @@
 	let settingsMap: Map<string, string> = $state(new Map());
 	let dirty = $state(new Set<string>());
 	let saving = $state(false);
+	let savedValues = new Map<string, string>();
+	let savedFeedback = $state(false);
+	let leaveAction = $state<(() => void | Promise<void>) | null>(null);
+	let allowLeave = false;
+	const sectionNames = [
+		'LLM',
+		'Search',
+		'Execution',
+		'Quality',
+		'Content',
+		'Network',
+		'Application files',
+	];
+	const sectionIds = ['llm', 'search', 'execution', 'quality', 'content', 'network', 'files'];
 	let saveError = $state('');
 	let showPasswords = $state(new Set<string>());
 
 	const unsubscribe = settings.subscribe((v) => {
 		// Don't overwrite local edits while saving
 		if (saving) return;
+		savedValues = new Map(v);
 		const newMap = new Map(v);
 		// Preserve any unsaved local changes
 		for (const key of dirty) {
@@ -35,74 +53,289 @@
 			label: 'LLM Provider',
 			description: 'Configure your LLM API connection',
 			settings: [
-				{ key: 'llm_provider', label: 'Provider', description: 'Which LLM service to use', type: 'select', options: [{ label: 'OpenRouter', value: 'openrouter' }, { label: 'Ollama (Local)', value: 'ollama' }, { label: 'Ollama Cloud', value: 'ollama_cloud' }, { label: 'OpenAI-compatible (llama.cpp, etc.)', value: 'openai_compatible' }] },
-				{ key: 'openrouter_api_key', provider: 'openrouter', label: 'OpenRouter API Key', description: 'Your OpenRouter API key', type: 'password', placeholder: 'sk-or-...' },
-				{ key: 'openrouter_model', provider: 'openrouter', label: 'OpenRouter Model', description: 'Search and select a model from the server', type: 'text' },
-				{ key: 'ollama_url', provider: 'ollama', label: 'Ollama URL', description: 'Local Ollama server URL', type: 'text', placeholder: 'http://localhost:11434' },
-				{ key: 'ollama_model', provider: 'ollama', label: 'Ollama Model', description: 'Local model name', type: 'text', placeholder: 'llama3' },
-				{ key: 'ollama_cloud_url', provider: 'ollama_cloud', label: 'Ollama Cloud URL', description: 'Cloud host URL', type: 'text', placeholder: 'https://ollama.com' },
-				{ key: 'ollama_cloud_api_key', provider: 'ollama_cloud', label: 'Ollama Cloud API Key', description: 'Required; create a key at ollama.com/settings/keys', type: 'password' },
-				{ key: 'ollama_cloud_model', provider: 'ollama_cloud', label: 'Ollama Cloud Model', description: 'Search and select a model from the server', type: 'text' },
-				{ key: 'openai_base_url', provider: 'openai_compatible', label: 'API Base URL', description: 'API base including /v1; e.g. http://localhost:8080/v1 for llama.cpp', type: 'text', placeholder: 'http://localhost:8080/v1' },
-				{ key: 'openai_api_key', provider: 'openai_compatible', label: 'API Key (optional)', description: 'Leave empty if your server does not require authentication', type: 'password' },
-				{ key: 'openai_model', provider: 'openai_compatible', label: 'Model', description: 'Required model ID from your server; use the loaded model name or alias in llama.cpp', type: 'text', placeholder: 'Your loaded model ID' },
-				{ key: 'openai_json_mode', provider: 'openai_compatible', label: 'JSON Mode', description: 'Disable if your server does not support response_format; prompts still request JSON', type: 'select', options: [{ label: 'Enabled', value: 'true' }, { label: 'Disabled', value: 'false' }] },
-				{ key: 'llm_temperature', label: 'Temperature', description: 'LLM temperature (0.0 - 1.0)', type: 'number' },
-				{ key: 'llm_reasoning_effort', label: 'Thinking / reasoning effort', description: 'Controls model thinking before its answer; supported levels depend on the provider and model', type: 'select', options: [{ label: 'Auto', value: 'auto' }, { label: 'Provider default', value: 'default' }, { label: 'Off', value: 'off' }, { label: 'On', value: 'on' }, { label: 'Low', value: 'low' }, { label: 'Medium', value: 'medium' }, { label: 'High', value: 'high' }, { label: 'Max', value: 'max' }] },
-				{ key: 'llm_max_tokens', label: 'Max output tokens', description: 'Requested output cap per model call, potentially shared by thinking and the answer. Separate from run cost/time limits.', type: 'number' },
-			]
+				{
+					key: 'llm_provider',
+					label: 'Provider',
+					description: 'Which LLM service to use',
+					type: 'select',
+					options: [
+						{ label: 'OpenRouter', value: 'openrouter' },
+						{ label: 'Ollama (Local)', value: 'ollama' },
+						{ label: 'Ollama Cloud', value: 'ollama_cloud' },
+						{ label: 'OpenAI-compatible (llama.cpp, etc.)', value: 'openai_compatible' },
+					],
+				},
+				{
+					key: 'openrouter_api_key',
+					provider: 'openrouter',
+					label: 'OpenRouter API Key',
+					description: 'Your OpenRouter API key',
+					type: 'password',
+					placeholder: 'sk-or-...',
+				},
+				{
+					key: 'openrouter_model',
+					provider: 'openrouter',
+					label: 'OpenRouter Model',
+					description: 'Search and select a model from the server',
+					type: 'text',
+				},
+				{
+					key: 'ollama_url',
+					provider: 'ollama',
+					label: 'Ollama URL',
+					description: 'Local Ollama server URL',
+					type: 'text',
+					placeholder: 'http://localhost:11434',
+				},
+				{
+					key: 'ollama_model',
+					provider: 'ollama',
+					label: 'Ollama Model',
+					description: 'Local model name',
+					type: 'text',
+					placeholder: 'llama3',
+				},
+				{
+					key: 'ollama_cloud_url',
+					provider: 'ollama_cloud',
+					label: 'Ollama Cloud URL',
+					description: 'Cloud host URL',
+					type: 'text',
+					placeholder: 'https://ollama.com',
+				},
+				{
+					key: 'ollama_cloud_api_key',
+					provider: 'ollama_cloud',
+					label: 'Ollama Cloud API Key',
+					description: 'Required; create a key at ollama.com/settings/keys',
+					type: 'password',
+				},
+				{
+					key: 'ollama_cloud_model',
+					provider: 'ollama_cloud',
+					label: 'Ollama Cloud Model',
+					description: 'Search and select a model from the server',
+					type: 'text',
+				},
+				{
+					key: 'openai_base_url',
+					provider: 'openai_compatible',
+					label: 'API Base URL',
+					description: 'API base including /v1; e.g. http://localhost:8080/v1 for llama.cpp',
+					type: 'text',
+					placeholder: 'http://localhost:8080/v1',
+				},
+				{
+					key: 'openai_api_key',
+					provider: 'openai_compatible',
+					label: 'API Key (optional)',
+					description: 'Leave empty if your server does not require authentication',
+					type: 'password',
+				},
+				{
+					key: 'openai_model',
+					provider: 'openai_compatible',
+					label: 'Model',
+					description:
+						'Required model ID from your server; use the loaded model name or alias in llama.cpp',
+					type: 'text',
+					placeholder: 'Your loaded model ID',
+				},
+				{
+					key: 'openai_json_mode',
+					provider: 'openai_compatible',
+					label: 'JSON Mode',
+					description:
+						'Disable if your server does not support response_format; prompts still request JSON',
+					type: 'select',
+					options: [
+						{ label: 'Enabled', value: 'true' },
+						{ label: 'Disabled', value: 'false' },
+					],
+				},
+				{
+					key: 'llm_temperature',
+					label: 'Temperature',
+					description: 'LLM temperature (0.0 - 1.0)',
+					type: 'number',
+				},
+				{
+					key: 'llm_reasoning_effort',
+					label: 'Thinking / reasoning effort',
+					description:
+						'Controls model thinking before its answer; supported levels depend on the provider and model',
+					type: 'select',
+					options: [
+						{ label: 'Auto', value: 'auto' },
+						{ label: 'Provider default', value: 'default' },
+						{ label: 'Off', value: 'off' },
+						{ label: 'On', value: 'on' },
+						{ label: 'Low', value: 'low' },
+						{ label: 'Medium', value: 'medium' },
+						{ label: 'High', value: 'high' },
+						{ label: 'Max', value: 'max' },
+					],
+				},
+				{
+					key: 'llm_max_tokens',
+					label: 'Max output tokens',
+					description:
+						'Requested output cap per model call, potentially shared by thinking and the answer. Separate from run cost/time limits.',
+					type: 'number',
+				},
+			],
 		},
 		{
 			label: 'Search Provider',
 			description: 'Configure web search APIs',
 			settings: [
-				{ key: 'search_provider', label: 'Primary Search', description: 'Which search API to use', type: 'select', options: [{ label: 'Brave Search', value: 'brave' }, { label: 'Serper (Google)', value: 'serper' }] },
-				{ key: 'brave_api_key', label: 'Brave Search API Key', description: 'Your Brave Search API key', type: 'password', placeholder: 'BSA...' },
-				{ key: 'serper_api_key', label: 'Serper API Key', description: 'Your Serper API key', type: 'password' },
-			]
+				{
+					key: 'search_provider',
+					label: 'Primary Search',
+					description: 'Which search API to use',
+					type: 'select',
+					options: [
+						{ label: 'Brave Search', value: 'brave' },
+						{ label: 'Serper (Google)', value: 'serper' },
+					],
+				},
+				{
+					key: 'brave_api_key',
+					label: 'Brave Search API Key',
+					description: 'Your Brave Search API key',
+					type: 'password',
+					placeholder: 'BSA...',
+				},
+				{
+					key: 'serper_api_key',
+					label: 'Serper API Key',
+					description: 'Your Serper API key',
+					type: 'password',
+				},
+			],
 		},
 		{
 			label: 'Execution',
 			description: 'Pipeline execution parameters',
 			settings: [
-				{ key: 'max_parallel_fetches', label: 'Max Parallel Fetches', description: 'Concurrent page fetches (1-20)', type: 'number' },
-				{ key: 'fetch_timeout_seconds', label: 'Fetch Timeout (s)', description: 'HTTP fetch timeout in seconds', type: 'number' },
-				{ key: 'search_results_per_query', label: 'Results per Query', description: 'Search results to fetch per query', type: 'number' },
-				{ key: 'max_pages_per_query', label: 'Pages per Query', description: 'Max pages to fetch per search query', type: 'number' },
-			]
+				{
+					key: 'max_parallel_fetches',
+					label: 'Max Parallel Fetches',
+					description: 'Concurrent page fetches (1-20)',
+					type: 'number',
+				},
+				{
+					key: 'fetch_timeout_seconds',
+					label: 'Fetch Timeout (s)',
+					description: 'HTTP fetch timeout in seconds',
+					type: 'number',
+				},
+				{
+					key: 'search_results_per_query',
+					label: 'Results per Query',
+					description: 'Search results to fetch per query',
+					type: 'number',
+				},
+				{
+					key: 'max_pages_per_query',
+					label: 'Pages per Query',
+					description: 'Max pages to fetch per search query',
+					type: 'number',
+				},
+			],
 		},
 		{
 			label: 'Quality',
 			description: 'Result quality thresholds',
 			settings: [
-				{ key: 'precision_recall', label: 'Precision / Recall', description: 'Balance between accuracy and coverage', type: 'select', options: [{ label: 'Favor Recall', value: 'recall' }, { label: 'Balanced', value: 'balanced' }, { label: 'Favor Precision', value: 'precision' }] },
-				{ key: 'evidence_strictness', label: 'Evidence Strictness', description: 'How strictly to require source evidence', type: 'select', options: [{ label: 'Low', value: 'low' }, { label: 'Moderate', value: 'moderate' }, { label: 'Strict', value: 'strict' }] },
-				{ key: 'dedup_similarity_threshold', label: 'Dedup Threshold', description: 'Similarity threshold for deduplication (0.0-1.0)', type: 'number' },
-			]
+				{
+					key: 'precision_recall',
+					label: 'Precision / Recall',
+					description: 'Balance between accuracy and coverage',
+					type: 'select',
+					options: [
+						{ label: 'Favor Recall', value: 'recall' },
+						{ label: 'Balanced', value: 'balanced' },
+						{ label: 'Favor Precision', value: 'precision' },
+					],
+				},
+				{
+					key: 'evidence_strictness',
+					label: 'Evidence Strictness',
+					description: 'How strictly to require source evidence',
+					type: 'select',
+					options: [
+						{ label: 'Low', value: 'low' },
+						{ label: 'Moderate', value: 'moderate' },
+						{ label: 'Strict', value: 'strict' },
+					],
+				},
+				{
+					key: 'dedup_similarity_threshold',
+					label: 'Dedup Threshold',
+					description: 'Similarity threshold for deduplication (0.0-1.0)',
+					type: 'number',
+				},
+			],
 		},
 		{
 			label: 'Content Processing',
 			description: 'Configure document truncation and size limits',
 			settings: [
-				{ key: 'enable_content_truncation', label: 'Enable Truncation', description: 'Enable or disable document text truncation', type: 'select', options: [{ label: 'Enabled', value: 'true' }, { label: 'Disabled', value: 'false' }] },
-				{ key: 'max_extraction_text_chars', label: 'Max Extraction Text (chars)', description: 'Max characters of page text sent to LLM for extraction', type: 'number' },
-				{ key: 'max_pdf_text_chars', label: 'Max PDF Text (chars)', description: 'Max characters extracted from PDF documents', type: 'number' },
-				{ key: 'max_page_size_kb', label: 'Max Page Size (KB)', description: 'Max download size for a single page in kilobytes', type: 'number' },
-			]
+				{
+					key: 'enable_content_truncation',
+					label: 'Enable Truncation',
+					description: 'Enable or disable document text truncation',
+					type: 'select',
+					options: [
+						{ label: 'Enabled', value: 'true' },
+						{ label: 'Disabled', value: 'false' },
+					],
+				},
+				{
+					key: 'max_extraction_text_chars',
+					label: 'Max Extraction Text (chars)',
+					description: 'Max characters of page text sent to LLM for extraction',
+					type: 'number',
+				},
+				{
+					key: 'max_pdf_text_chars',
+					label: 'Max PDF Text (chars)',
+					description: 'Max characters extracted from PDF documents',
+					type: 'number',
+				},
+				{
+					key: 'max_page_size_kb',
+					label: 'Max Page Size (KB)',
+					description: 'Max download size for a single page in kilobytes',
+					type: 'number',
+				},
+			],
 		},
-
 	];
 
 	function getValue(key: string): string {
 		return settingsMap.get(key) ?? (key === 'llm_reasoning_effort' ? 'auto' : '');
 	}
 
-	let activeModel = $derived(settingsMap.get({
-		openrouter: 'openrouter_model', ollama: 'ollama_model',
-		ollama_cloud: 'ollama_cloud_model', openai_compatible: 'openai_model',
-	}[settingsMap.get('llm_provider') || 'openrouter'] ?? 'openrouter_model') ?? '');
-	let isGptOss = $derived(['ollama', 'ollama_cloud'].includes(settingsMap.get('llm_provider') ?? '') && /(?:^|\/)gpt-oss(?:[:\-]|$)/i.test(activeModel));
-	let invalidReasoning = $derived(isGptOss && ['off', 'max'].includes(getValue('llm_reasoning_effort')));
+	let activeModel = $derived(
+		settingsMap.get(
+			{
+				openrouter: 'openrouter_model',
+				ollama: 'ollama_model',
+				ollama_cloud: 'ollama_cloud_model',
+				openai_compatible: 'openai_model',
+			}[settingsMap.get('llm_provider') || 'openrouter'] ?? 'openrouter_model'
+		) ?? ''
+	);
+	let isGptOss = $derived(
+		['ollama', 'ollama_cloud'].includes(settingsMap.get('llm_provider') ?? '') &&
+			/(?:^|\/)gpt-oss(?:[:\-]|$)/i.test(activeModel)
+	);
+	let invalidReasoning = $derived(
+		isGptOss && ['off', 'max'].includes(getValue('llm_reasoning_effort'))
+	);
 
 	function visibleSettings(group: SettingGroup): SettingDef[] {
 		const provider = settingsMap.get('llm_provider') || 'openrouter';
@@ -113,7 +346,9 @@
 		saveError = '';
 		settingsMap.set(key, value);
 		settingsMap = new Map(settingsMap);
-		dirty.add(key);
+		savedFeedback = false;
+		if (value === (savedValues.get(key) ?? '')) dirty.delete(key);
+		else dirty.add(key);
 		dirty = new Set(dirty);
 	}
 
@@ -179,195 +414,397 @@
 		showPasswords = new Set(showPasswords);
 	}
 
-	async function saveAll() {
-		if (invalidReasoning) return;
+	async function saveAll(): Promise<boolean> {
+		if (saving || invalidReasoning) return false;
 		saving = true;
 		saveError = '';
+		const snapshot = new Map([...dirty].map((key) => [key, settingsMap.get(key) ?? '']));
+		debugUi('settings_save_started', { count: snapshot.size });
 		try {
-			// Snapshot values before saving to avoid subscription race
-			const toSave = new Map<string, string>();
-			for (const key of dirty) {
-				const val = settingsMap.get(key);
-				if (val !== undefined) {
-					toSave.set(key, val);
-				}
+			for (const [key, value] of snapshot) {
+				await settings.save(key, value);
+				savedValues.set(key, value);
+				if (settingsMap.get(key) === value) dirty.delete(key);
+				else dirty.add(key);
+				dirty = new Set(dirty);
 			}
-			for (const [key, val] of toSave) {
-				await settings.save(key, val);
-			}
-			dirty = new Set();
-		} catch (e) {
-			saveError = errorText(e);
+			savedFeedback = dirty.size === 0;
+			debugUi('settings_save_finished', { remaining: dirty.size });
+			return dirty.size === 0;
+		} catch (error) {
+			saveError = errorText(error);
+			debugUi('settings_save_failed', { remaining: dirty.size });
+			return false;
 		} finally {
 			saving = false;
 		}
 	}
+
+	function discard() {
+		if (saving) return;
+		settingsMap = new Map(savedValues);
+		dirty = new Set();
+		saveError = '';
+		savedFeedback = false;
+	}
+	async function leave(save: boolean) {
+		if (save && !(await saveAll())) return;
+		if (!save) discard();
+		const action = leaveAction;
+		leaveAction = null;
+		allowLeave = true;
+		try {
+			await action?.();
+		} finally {
+			allowLeave = false;
+		}
+	}
+	beforeNavigate((navigation) => {
+		if (!dirty.size || allowLeave) return;
+		navigation.cancel();
+		if (navigation.to?.url) leaveAction = () => goto(navigation.to!.url.href);
+	});
+	onMount(() => {
+		let disposed = false;
+		let unlisten: (() => void) | undefined;
+		// Browser fixtures have no native window metadata. Register only in the desktop shell.
+		if ((window as any).__TAURI_INTERNALS__?.metadata?.currentWindow) {
+			void import('@tauri-apps/api/window')
+				.then(async ({ getCurrentWindow }) => {
+					const appWindow = getCurrentWindow();
+					const off = await appWindow.onCloseRequested((event) => {
+						if (dirty.size && !allowLeave) {
+							event.preventDefault();
+							leaveAction = () => appWindow.destroy();
+						}
+					});
+					if (disposed) off();
+					else unlisten = off;
+				})
+				.catch((error) => {
+					if (!disposed) saveError = errorText(error);
+				});
+		}
+		return () => {
+			disposed = true;
+			unlisten?.();
+		};
+	});
 </script>
 
 <div class="settings-page">
-	<div class="settings-header">
+	<header class="page-header settings-header">
 		<div>
 			<h1>Settings</h1>
-			<p class="subtitle">Configure API keys, models, and execution parameters.</p>
+			<p>Connections and preferences for new runs.</p>
 		</div>
-		{#if dirty.size > 0}
-			<button class="btn-save" onclick={saveAll} disabled={saving || invalidReasoning}>
-				<SaveIcon size={16} />
-				{saving ? 'Saving...' : `Save (${dirty.size})`}
-			</button>
-		{/if}
-	</div>
-	{#if saveError}<ErrorNotice error={saveError} context="settings" />{/if}
+		<div class="save-actions">
+			<span role="status"
+				>{saving
+					? 'Saving changes…'
+					: dirty.size
+						? `${dirty.size} unsaved ${dirty.size === 1 ? 'change' : 'changes'}`
+						: savedFeedback
+							? 'Changes saved'
+							: 'All changes saved'}</span
+			>
+			<button class="button" onclick={discard} disabled={saving || !dirty.size}>Discard</button>
+			<button
+				class="button primary"
+				onclick={() => saveAll()}
+				disabled={saving || invalidReasoning || !dirty.size}
+				><SaveIcon size={16} />{saving ? 'Saving…' : 'Save'}</button
+			>
+		</div>
+	</header>
+	<nav class="section-nav" aria-label="Settings sections">
+		{#each sectionNames as name, i}<a
+				href={`#settings-${sectionIds[i]}`}
+				onclick={(event) => {
+					event.preventDefault();
+					document.getElementById(`settings-${sectionIds[i]}`)?.scrollIntoView({ block: 'start' });
+				}}>{name}</a
+			>{/each}
+	</nav>
+	<div class="settings-scroll" tabindex="-1">
+		{#if saveError}<ErrorNotice error={saveError} context="settings" />{/if}
 
-	{#each groups as group}
-		<section class="settings-section">
-			<h2>{group.label}</h2>
-			<p class="section-description">{group.description}</p>
+		{#each groups as group, groupIndex}
+			<section class="settings-section" id={`settings-${sectionIds[groupIndex]}`}>
+				<h2>{group.label}</h2>
+				<p class="section-description">{group.description}</p>
 
-			<div class="settings-grid">
-				{#each visibleSettings(group) as setting (setting.key)}
-					<div class="setting-item">
-						<label for={setting.key}>
-							<span class="setting-label">{setting.label}</span>
-							<span class="setting-description">{setting.description}</span>
-						</label>
+				<div class="settings-grid">
+					{#each visibleSettings(group) as setting (setting.key)}
+						<div class="setting-item">
+							<label for={setting.key}>
+								<span class="setting-label">{setting.label}</span>
+								<span class="setting-description">{setting.description}</span>
+							</label>
 
-						{#if setting.key === 'openrouter_model'}
-							<LlmModelPicker
-								id={setting.key}
-								provider="openrouter"
-								value={getValue(setting.key)}
-								apiKey={getValue('openrouter_api_key')}
-								onchange={(model) => handleChange(setting.key, model)}
-							/>
-						{:else if setting.key === 'ollama_cloud_model'}
-							<LlmModelPicker
-								id={setting.key}
-								provider="ollama_cloud"
-								value={getValue(setting.key)}
-								baseUrl={settingsMap.get('ollama_cloud_url') ?? 'https://ollama.com'}
-								apiKey={getValue('ollama_cloud_api_key')}
-								onchange={(model) => handleChange(setting.key, model)}
-							/>
-						{:else if setting.type === 'select'}
-							<select
-								id={setting.key}
-								value={getValue(setting.key)}
-								onchange={(e) => handleChange(setting.key, (e.target as HTMLSelectElement).value)}
-							>
-								{#each setting.options ?? [] as opt}
-									<option value={opt.value} disabled={setting.key === 'llm_reasoning_effort' && isGptOss && ['off', 'max'].includes(opt.value)}>{opt.label}</option>
-								{/each}
-							</select>
-							{#if setting.key === 'llm_reasoning_effort'}
-								<p class="reasoning-help">Auto disables thinking for structured Ollama requests (Low for GPT-OSS) and uses the provider default elsewhere. Provider default leaves thinking unchanged. Other choices request that level explicitly. Changes apply after Save and affect new runs.</p>
-								{#if isGptOss}<p class="reasoning-help">GPT-OSS cannot use Off or Max. Choose Low, Medium, or High; Auto uses Low with Ollama.</p>{/if}
-								{#if invalidReasoning}<ErrorNotice error="GPT-OSS does not support the selected reasoning effort. Choose Auto, Provider default, On, Low, Medium, or High." code="unsupported_setting" context="settings" />{/if}
-							{/if}
-						{:else if setting.type === 'password'}
-							<div class="password-field">
-								<input
-									id={setting.key}
-									type={showPasswords.has(setting.key) ? 'text' : 'password'}
-									value={getValue(setting.key)}
-									placeholder={setting.placeholder}
-									oninput={(e) => handleChange(setting.key, (e.target as HTMLInputElement).value)}
-								/>
-								<button class="btn-toggle-pw" onclick={() => togglePassword(setting.key)} type="button" aria-label="Toggle visibility">
-									{#if showPasswords.has(setting.key)}
-										<EyeOffIcon size={16} />
-									{:else}
-										<EyeIcon size={16} />
+							<div class="setting-control">
+								{#if setting.key === 'openrouter_model'}
+									<LlmModelPicker
+										id={setting.key}
+										provider="openrouter"
+										value={getValue(setting.key)}
+										apiKey={getValue('openrouter_api_key')}
+										onchange={(model) => handleChange(setting.key, model)}
+									/>
+								{:else if setting.key === 'ollama_cloud_model'}
+									<LlmModelPicker
+										id={setting.key}
+										provider="ollama_cloud"
+										value={getValue(setting.key)}
+										baseUrl={settingsMap.get('ollama_cloud_url') ?? 'https://ollama.com'}
+										apiKey={getValue('ollama_cloud_api_key')}
+										onchange={(model) => handleChange(setting.key, model)}
+									/>
+								{:else if setting.type === 'select'}
+									<select
+										id={setting.key}
+										value={getValue(setting.key)}
+										onchange={(e) =>
+											handleChange(setting.key, (e.target as HTMLSelectElement).value)}
+									>
+										{#each setting.options ?? [] as opt}
+											<option
+												value={opt.value}
+												disabled={setting.key === 'llm_reasoning_effort' &&
+													isGptOss &&
+													['off', 'max'].includes(opt.value)}>{opt.label}</option
+											>
+										{/each}
+									</select>
+									{#if setting.key === 'llm_reasoning_effort'}
+										<p class="reasoning-help">
+											Auto disables thinking for structured Ollama requests (Low for GPT-OSS) and
+											uses the provider default elsewhere. Provider default leaves thinking
+											unchanged. Other choices request that level explicitly. Changes apply after
+											Save and affect new runs.
+										</p>
+										{#if isGptOss}<p class="reasoning-help">
+												GPT-OSS cannot use Off or Max. Choose Low, Medium, or High; Auto uses Low
+												with Ollama.
+											</p>{/if}
+										{#if invalidReasoning}<ErrorNotice
+												error="GPT-OSS does not support the selected reasoning effort. Choose Auto, Provider default, On, Low, Medium, or High."
+												code="unsupported_setting"
+												context="settings"
+											/>{/if}
 									{/if}
-								</button>
+								{:else if setting.type === 'password'}
+									<div class="password-field">
+										<input
+											id={setting.key}
+											type={showPasswords.has(setting.key) ? 'text' : 'password'}
+											value={getValue(setting.key)}
+											placeholder={setting.placeholder}
+											oninput={(e) =>
+												handleChange(setting.key, (e.target as HTMLInputElement).value)}
+										/>
+										<button
+											class="btn-toggle-pw"
+											onclick={() => togglePassword(setting.key)}
+											type="button"
+											aria-label="Toggle visibility"
+										>
+											{#if showPasswords.has(setting.key)}
+												<EyeOffIcon size={16} />
+											{:else}
+												<EyeIcon size={16} />
+											{/if}
+										</button>
+									</div>
+								{:else if setting.type === 'number'}
+									<input
+										id={setting.key}
+										type="number"
+										value={getValue(setting.key)}
+										oninput={(e) => handleChange(setting.key, (e.target as HTMLInputElement).value)}
+									/>
+								{:else}
+									<input
+										id={setting.key}
+										type="text"
+										value={getValue(setting.key)}
+										placeholder={setting.placeholder}
+										oninput={(e) => handleChange(setting.key, (e.target as HTMLInputElement).value)}
+									/>
+								{/if}
 							</div>
-						{:else if setting.type === 'number'}
-							<input
-								id={setting.key}
-								type="number"
-								value={getValue(setting.key)}
-								oninput={(e) => handleChange(setting.key, (e.target as HTMLInputElement).value)}
-							/>
-						{:else}
-							<input
-								id={setting.key}
-								type="text"
-								value={getValue(setting.key)}
-								placeholder={setting.placeholder}
-								oninput={(e) => handleChange(setting.key, (e.target as HTMLInputElement).value)}
-							/>
-						{/if}
-					</div>
-				{/each}
-			</div>
-		</section>
-	{/each}
+						</div>
+					{/each}
+				</div>
+			</section>
+		{/each}
 
-	<section class="settings-section">
-		<h2>Network / Proxy</h2>
-		<p class="section-description">
-			Configure one or more proxies and pick which one to route all requests through.
-			Supports <code>http://</code>, <code>https://</code> and <code>socks5://</code> URLs,
-			optionally with credentials (e.g. <code>http://user:pass@host:port</code>).
-		</p>
+		<section class="settings-section" id="settings-network">
+			<h2>Network / Proxy</h2>
+			<p class="section-description">
+				Configure one or more proxies and pick which one to route all requests through. Supports <code
+					>http://</code
+				>, <code>https://</code> and <code>socks5://</code> URLs, optionally with credentials (e.g.
+				<code>http://user:pass@host:port</code>).
+			</p>
 
-		<div class="proxy-list">
-			<label class="proxy-radio">
-				<input
-					type="radio"
-					name="active-proxy"
-					checked={activeProxy === ''}
-					onchange={() => selectActiveProxy('')}
-				/>
-				<span class="proxy-radio-label">Direct connection (no proxy)</span>
-			</label>
-
-			{#each proxies as proxy, i (i)}
-				<div class="proxy-row">
+			<div class="proxy-list">
+				<label class="proxy-radio">
 					<input
 						type="radio"
 						name="active-proxy"
-						checked={proxy.url !== '' && activeProxy === proxy.url}
-						disabled={proxy.url === ''}
-						onchange={() => selectActiveProxy(proxy.url)}
-						aria-label="Use this proxy"
+						checked={activeProxy === ''}
+						onchange={() => selectActiveProxy('')}
 					/>
-					<input
-						class="proxy-name"
-						type="text"
-						placeholder="Name (optional)"
-						value={proxy.name}
-						oninput={(e) => updateProxy(i, 'name', (e.target as HTMLInputElement).value)}
-					/>
-					<input
-						class="proxy-url"
-						type="text"
-						placeholder="http://user:pass@host:port"
-						value={proxy.url}
-						oninput={(e) => updateProxy(i, 'url', (e.target as HTMLInputElement).value)}
-					/>
-					<button class="btn-remove-proxy" type="button" onclick={() => removeProxy(i)} aria-label="Remove proxy">
-						<TrashIcon size={16} />
-					</button>
-				</div>
-			{/each}
+					<span class="proxy-radio-label">Direct connection (no proxy)</span>
+				</label>
 
-			<button class="btn-add-proxy" type="button" onclick={addProxy}>
-				<PlusIcon size={16} />
-				Add proxy
-			</button>
-		</div>
-	</section>
+				{#each proxies as proxy, i (i)}
+					<div class="proxy-row">
+						<input
+							type="radio"
+							name="active-proxy"
+							checked={proxy.url !== '' && activeProxy === proxy.url}
+							disabled={proxy.url === ''}
+							onchange={() => selectActiveProxy(proxy.url)}
+							aria-label="Use this proxy"
+						/>
+						<input
+							class="proxy-name"
+							aria-label="Proxy name"
+							type="text"
+							placeholder="Name (optional)"
+							value={proxy.name}
+							oninput={(e) => updateProxy(i, 'name', (e.target as HTMLInputElement).value)}
+						/>
+						<input
+							class="proxy-url"
+							aria-label="Proxy URL"
+							type="text"
+							placeholder="http://user:pass@host:port"
+							value={proxy.url}
+							oninput={(e) => updateProxy(i, 'url', (e.target as HTMLInputElement).value)}
+						/>
+						<button
+							class="btn-remove-proxy"
+							type="button"
+							onclick={() => removeProxy(i)}
+							aria-label="Remove proxy"
+						>
+							<TrashIcon size={16} />
+						</button>
+					</div>
+				{/each}
 
-	<AppFiles />
+				<button class="btn-add-proxy" type="button" onclick={addProxy}>
+					<PlusIcon size={16} />
+					Add proxy
+				</button>
+			</div>
+		</section>
+
+		<div id="settings-files"><AppFiles /></div>
+	</div>
 </div>
+{#if leaveAction}
+	<Dialog
+		title="Unsaved changes"
+		busy={saving}
+		onclose={() => {
+			leaveAction = null;
+		}}
+	>
+		<p>Save your changes before leaving Settings?</p>
+		{#if saveError}<ErrorNotice error={saveError} context="settings" />{/if}
+		{#snippet footer()}
+			<button
+				class="button"
+				disabled={saving}
+				onclick={() => {
+					leaveAction = null;
+				}}>Stay</button
+			>
+			<button class="button" disabled={saving} onclick={() => leave(false)}>Discard</button>
+			<button
+				class="button primary"
+				disabled={saving || invalidReasoning}
+				onclick={() => leave(true)}>Save and leave</button
+			>
+		{/snippet}
+	</Dialog>
+{/if}
 
 <style>
-	.reasoning-help { font-size: 0.8rem; line-height: 1.45; color: var(--color-surface-600-400); margin: 6px 0 0; }
+	.settings-scroll {
+		flex: 1;
+		min-height: 0;
+		overflow: auto;
+		scrollbar-gutter: stable;
+		padding: 4px 12px 24px 0;
+		container-type: inline-size;
+	}
+	.save-actions {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+	}
+	.save-actions span {
+		color: var(--app-muted);
+		font-size: 12px;
+		flex-basis: 100%;
+		text-align: right;
+	}
+	.section-nav {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		padding: 0 0 12px;
+		flex-shrink: 0;
+	}
+	.section-nav a {
+		padding: 5px 9px;
+		border-radius: 6px;
+		color: var(--app-muted);
+		font-size: 13px;
+		text-decoration: none;
+	}
+	.section-nav a:hover {
+		background: var(--app-subtle);
+		color: var(--app-accent);
+	}
+	.setting-control {
+		min-width: 0;
+	}
+	.setting-control > input,
+	.setting-control > select {
+		width: 100%;
+	}
+	.settings-section,
+	#settings-files {
+		scroll-margin-top: 4px;
+	}
+	@container (max-width: 640px) {
+		.setting-item {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 6px;
+		}
+	}
+
+	.reasoning-help {
+		font-size: 0.8rem;
+		line-height: 1.45;
+		color: var(--app-muted);
+		margin: 6px 0 0;
+	}
 	.settings-page {
-		max-width: 800px;
+		width: 100%;
+		max-width: 1120px;
 		margin: 0 auto;
-		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 		flex: 1;
 		min-height: 0;
 	}
@@ -385,40 +822,12 @@
 		margin-bottom: 4px;
 	}
 
-	.subtitle {
-		color: var(--color-surface-600-400);
-	}
-
-	.btn-save {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 20px;
-		background: var(--color-primary-500);
-		color: white;
-		border: none;
-		border-radius: 8px;
-		font-weight: 600;
-		cursor: pointer;
-		transition: background 0.15s;
-		flex-shrink: 0;
-	}
-
-	.btn-save:hover:not(:disabled) {
-		background: var(--color-primary-600);
-	}
-
-	.btn-save:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
 	.settings-section {
 		margin-bottom: 32px;
 		padding: 20px;
-		border: 1px solid var(--color-surface-300-700);
+		border: 1px solid var(--app-border);
 		border-radius: 12px;
-		background: var(--color-surface-100-900);
+		background: var(--app-panel);
 	}
 
 	h2 {
@@ -428,7 +837,7 @@
 	}
 
 	.section-description {
-		color: var(--color-surface-600-400);
+		color: var(--app-muted);
 		font-size: 0.9rem;
 		margin-bottom: 16px;
 	}
@@ -441,7 +850,7 @@
 
 	.setting-item {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
 		align-items: center;
 		gap: 12px;
 	}
@@ -457,15 +866,15 @@
 
 	.setting-description {
 		font-size: 0.82rem;
-		color: var(--color-surface-600-400);
+		color: var(--app-muted);
 	}
 
 	.setting-item input,
 	.setting-item select {
 		padding: 8px 12px;
-		border: 1px solid var(--color-surface-300-700);
+		border: 1px solid var(--app-border);
 		border-radius: 6px;
-		background: var(--color-surface-200-800);
+		background: var(--app-subtle);
 		color: inherit;
 		font-size: 0.95rem;
 	}
@@ -494,7 +903,7 @@
 		border: none;
 		background: transparent;
 		cursor: pointer;
-		color: var(--color-surface-600-400);
+		color: var(--app-muted);
 		padding: 4px;
 	}
 
@@ -523,9 +932,9 @@
 
 	.proxy-row input[type='text'] {
 		padding: 8px 12px;
-		border: 1px solid var(--color-surface-300-700);
+		border: 1px solid var(--app-border);
 		border-radius: 6px;
-		background: var(--color-surface-200-800);
+		background: var(--app-subtle);
 		color: inherit;
 		font-size: 0.9rem;
 	}
@@ -559,7 +968,7 @@
 		gap: 6px;
 		align-self: flex-start;
 		padding: 8px 14px;
-		border: 1px dashed var(--color-surface-300-700);
+		border: 1px dashed var(--app-border);
 		border-radius: 6px;
 		background: transparent;
 		color: inherit;
@@ -573,7 +982,7 @@
 	}
 
 	.section-description code {
-		background: var(--color-surface-200-800);
+		background: var(--app-subtle);
 		padding: 1px 5px;
 		border-radius: 4px;
 		font-size: 0.85em;

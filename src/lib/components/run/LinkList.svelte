@@ -22,6 +22,10 @@
 		flex-direction: column;
 		gap: 10px;
 		overflow-y: auto;
+		min-height: 0;
+		flex: 1;
+		scrollbar-gutter: stable;
+		padding-right: 12px;
 		padding-bottom: 16px;
 	}
 

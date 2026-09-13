@@ -1,5 +1,13 @@
 <script lang="ts">
-	import { runState, startNewRun, cancelCurrentRun, pauseCurrentRun, resumeCurrentRun, confirmCurrentSchema, resetRun } from '$lib/stores/run';
+	import {
+		runState,
+		startNewRun,
+		cancelCurrentRun,
+		pauseCurrentRun,
+		resumeCurrentRun,
+		confirmCurrentSchema,
+		resetRun,
+	} from '$lib/stores/run';
 	import type { SchemaColumn } from '$lib/types';
 	import type { RunRow } from '$lib/stores/run';
 	import type { StopConditions } from '$lib/api/tauri';
@@ -15,8 +23,15 @@
 	import ResearchView from '$lib/components/run/ResearchView.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import LlmIssues from '$lib/components/run/LlmIssues.svelte';
-	import { ChevronDownIcon, ChevronUpIcon, TableIcon, ImageIcon, LinkIcon, BrainIcon } from '@lucide/svelte';
-	import { logPanelOpen } from '$lib/stores/logs';
+	import {
+		ChevronDownIcon,
+		ChevronUpIcon,
+		TableIcon,
+		ImageIcon,
+		LinkIcon,
+		BrainIcon,
+	} from '@lucide/svelte';
+	import { settings } from '$lib/stores/settings';
 
 	let query = $state('');
 	let runType = $state<'table' | 'images' | 'links' | 'research'>('table');
@@ -32,12 +47,18 @@
 
 	let isIdle = $derived($runState.status === 'idle');
 	let isSchemaReview = $derived($runState.status === 'schema_review');
-	let isSchemaPaused = $derived($runState.status === 'paused' && $runState.pausedFrom === 'schema_review');
+	let isSchemaPaused = $derived(
+		$runState.status === 'paused' && $runState.pausedFrom === 'schema_review'
+	);
 	let isActive = $derived(
-		$runState.status === 'running' || $runState.status === 'paused' || $runState.status === 'pending'
+		$runState.status === 'running' ||
+			$runState.status === 'paused' ||
+			$runState.status === 'pending'
 	);
 	let isFinished = $derived(
-		$runState.status === 'completed' || $runState.status === 'failed' || $runState.status === 'cancelled'
+		$runState.status === 'completed' ||
+			$runState.status === 'failed' ||
+			$runState.status === 'cancelled'
 	);
 	let showResults = $derived(isActive || isFinished || isSchemaReview);
 	let isImageRun = $derived($runState.runType === 'images');
@@ -57,7 +78,6 @@
 			if (!isNaN(budget) && budget > 0) sc.max_budget_usd = budget;
 			const dur = parseInt(maxDuration);
 			if (!isNaN(dur) && dur > 0) sc.max_duration_seconds = dur;
-			logPanelOpen.set(true);
 			await startNewRun(query, runType, sc);
 		} catch (err) {
 			submitError = String(err);
@@ -79,81 +99,168 @@
 		submitError = '';
 		showExport = false;
 	}
+
+	let queryExpanded = $state(false);
+	const modes = [
+		{
+			value: 'table' as const,
+			label: 'Table',
+			icon: TableIcon,
+			description: 'Find entities and compare their details in a table with sources.',
+		},
+		{
+			value: 'images' as const,
+			label: 'Images',
+			icon: ImageIcon,
+			description: 'Find and browse images with links to their original sources.',
+		},
+		{
+			value: 'links' as const,
+			label: 'Links',
+			icon: LinkIcon,
+			description: 'Find relevant pages and resources with short descriptions.',
+		},
+		{
+			value: 'research' as const,
+			label: 'Research',
+			icon: BrainIcon,
+			description: 'Explore a question and get a written answer with sources.',
+		},
+	];
+	let provider = $derived($settings.get('llm_provider') ?? 'openrouter');
+	const providerNames: Record<string, string> = {
+		openrouter: 'OpenRouter',
+		ollama: 'Ollama',
+		ollama_cloud: 'Ollama Cloud',
+		openai_compatible: 'OpenAI-compatible',
+	};
+	let model = $derived(
+		$settings.get(
+			(
+				{
+					openrouter: 'openrouter_model',
+					ollama: 'ollama_model',
+					ollama_cloud: 'ollama_cloud_model',
+					openai_compatible: 'openai_model',
+				} as Record<string, string>
+			)[provider]
+		) ?? 'No model selected'
+	);
 </script>
 
-<div class="query-page" class:has-issues={$runState.llmIssues.length > 0 || !!$runState.error || !!$runState.controlError}>
+<div class="query-page">
 	{#if isIdle}
-		<h1>New Research Query</h1>
-		<p class="subtitle">Describe what you want to research. Query2Table will search, extract, and organize results into a structured table.</p>
-
-		<form class="query-form" onsubmit={handleSubmit}>
-			<div class="mode-toggle">
-				<button type="button" class="mode-btn" class:active={runType === 'table'} onclick={() => (runType = 'table')}>
-					<TableIcon size={16} />
-					Table
-				</button>
-				<button type="button" class="mode-btn" class:active={runType === 'images'} onclick={() => (runType = 'images')}>
-					<ImageIcon size={16} />
-					Images
-				</button>
-				<button type="button" class="mode-btn" class:active={runType === 'links'} onclick={() => (runType = 'links')}>
-					<LinkIcon size={16} />
-					Links
-				</button>
-				<button type="button" class="mode-btn" class:active={runType === 'research'} onclick={() => (runType = 'research')}>
-					<BrainIcon size={16} />
-					Research
-				</button>
+		<header class="page-header">
+			<div>
+				<h1>New Research Query</h1>
+				<p>Turn a question into useful, sourced results.</p>
 			</div>
-
-			<textarea
-				class="query-input"
-				bind:value={query}
-				placeholder={runType === 'images' ? 'e.g. Photos of modern Japanese architecture...' : runType === 'links' ? 'e.g. Best resources for learning Rust async programming...' : runType === 'research' ? 'e.g. What are the trade-offs between Tauri and Electron in 2026? Summarize with sources...' : 'e.g. Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website...'}
-				rows={4}
-			></textarea>
-
-			<button type="button" class="stop-toggle" onclick={() => { showStopConditions = !showStopConditions; }}>
-				{#if showStopConditions}
-					<ChevronUpIcon size={16} />
-				{:else}
-					<ChevronDownIcon size={16} />
-				{/if}
-				Stop Conditions
-			</button>
-
-			{#if showStopConditions}
-				<div class="stop-conditions">
-					<div class="stop-field">
-						<label for="targetRows">{runType === 'images' ? 'Max Images' : runType === 'links' ? 'Max Links' : runType === 'research' ? 'Max Steps' : 'Target Rows'}</label>
-						<input id="targetRows" type="number" min="1" bind:value={targetRows} />
-					</div>
-					<div class="stop-field">
-						<label for="maxBudget">Max Cost ($)</label>
-						<input id="maxBudget" type="number" min="0.01" step="0.01" bind:value={maxBudget} />
-					</div>
-					<div class="stop-field">
-						<label for="maxDuration">Max Duration (s)</label>
-						<input id="maxDuration" type="number" min="10" bind:value={maxDuration} />
-					</div>
+		</header>
+		<div class="query-scroll">
+			<form class="query-form" onsubmit={handleSubmit}>
+				<div class="mode-toggle" role="group" aria-label="Result format">
+					{#each modes as mode}<button
+							type="button"
+							class="mode-btn"
+							class:active={runType === mode.value}
+							aria-pressed={runType === mode.value}
+							onclick={() => {
+								runType = mode.value;
+							}}><mode.icon size={18} />{mode.label}</button
+						>{/each}
 				</div>
-			{/if}
-
-			{#if submitError}
-				<ErrorNotice error={submitError} />
-			{/if}
-			<div class="query-actions">
-				<button type="submit" class="btn-primary" disabled={!query.trim()}>
-					{runType === 'images' ? 'Search Images' : runType === 'links' ? 'Find Links' : runType === 'research' ? 'Start Research' : 'Start Research'}
+				<p class="mode-description">{modes.find((mode) => mode.value === runType)?.description}</p>
+				<label class="query-label" for="research-query">What would you like to find?</label>
+				<textarea
+					id="research-query"
+					class="query-input"
+					bind:value={query}
+					placeholder="e.g. Find YouTube channels about building robots, with their language, focus and website…"
+					rows={5}></textarea>
+				<div class="connection-summary">
+					<span>{providerNames[provider] ?? provider}</span><span class="model-name" title={model}
+						>{model}</span
+					><a href="/settings">Configure</a>
+				</div>
+				<button
+					type="button"
+					class="stop-toggle"
+					aria-expanded={showStopConditions}
+					onclick={() => {
+						showStopConditions = !showStopConditions;
+					}}
+				>
+					{#if showStopConditions}<ChevronUpIcon size={16} />{:else}<ChevronDownIcon
+							size={16}
+						/>{/if}Stop Conditions
+					<span
+						>{targetRows}
+						{runType === 'table' ? 'rows' : runType === 'research' ? 'steps' : runType} · ${maxBudget}
+						· {Math.round(Number(maxDuration) / 60)} min</span
+					>
 				</button>
-			</div>
-		</form>
+				{#if showStopConditions}
+					<div class="stop-conditions">
+						<label for="targetRows"
+							>{runType === 'images'
+								? 'Max Images'
+								: runType === 'links'
+									? 'Max Links'
+									: runType === 'research'
+										? 'Max Steps'
+										: 'Target Rows'}<input
+								id="targetRows"
+								type="number"
+								min="1"
+								bind:value={targetRows}
+							/></label
+						>
+						<label for="maxBudget"
+							>Max Cost ($)<input
+								id="maxBudget"
+								type="number"
+								min="0.01"
+								step="0.01"
+								bind:value={maxBudget}
+							/></label
+						>
+						<label for="maxDuration"
+							>Max Duration (s)<input
+								id="maxDuration"
+								type="number"
+								min="10"
+								bind:value={maxDuration}
+							/></label
+						>
+					</div>
+				{/if}
+				{#if submitError}<ErrorNotice error={submitError} />{/if}
+				<div class="query-actions">
+					<button type="submit" class="button primary" disabled={!query.trim()}
+						>{runType === 'images'
+							? 'Search Images'
+							: runType === 'links'
+								? 'Find Links'
+								: 'Start Research'}</button
+					>
+				</div>
+			</form>
+		</div>
 	{/if}
-
 	{#if showResults}
-		<div class="run-header">
+		<header class="run-header">
 			<div class="run-query-display">
-				<h2>{$runState.query}</h2>
+				<span class="eyebrow"
+					>{modes.find((mode) => mode.value === $runState.runType)?.label ?? 'Results'}</span
+				>
+				<h2 class:expanded={queryExpanded}>{$runState.query}</h2>
+				{#if $runState.query.length > 90}<button
+						class="query-expand"
+						onclick={() => {
+							queryExpanded = !queryExpanded;
+						}}
+						aria-expanded={queryExpanded}>{queryExpanded ? 'Show less' : 'Show full query'}</button
+					>{/if}
 			</div>
 			<RunControls
 				status={$runState.status}
@@ -162,239 +269,281 @@
 				onresume={resumeCurrentRun}
 				oncancel={cancelCurrentRun}
 				onreset={handleReset}
-				onexport={() => { showExport = true; }}
-				showExport={isFinished && ($runState.rows.length > 0 || $runState.imageResults.length > 0 || $runState.linkResults.length > 0 || !!$runState.researchAnswer)}
+				onexport={() => {
+					showExport = true;
+				}}
+				showExport={isFinished &&
+					($runState.rows.length > 0 ||
+						$runState.imageResults.length > 0 ||
+						$runState.linkResults.length > 0 ||
+						!!$runState.researchAnswer)}
+			/>
+		</header>
+		<div class="run-summary">
+			{#if isActive || isSchemaReview}<RunStatusPanel
+					status={$runState.status}
+					runType={$runState.runType}
+					activity={$runState.activity}
+				/>{/if}
+			<ProgressBar
+				stats={$runState.progress}
+				status={$runState.status}
+				runType={$runState.runType}
 			/>
 		</div>
-
-		{#if $runState.error}
-			<ErrorNotice error={$runState.error} />
+		{#if $runState.error || $runState.controlError || $runState.llmIssues.length}
+			<div class="run-notices">
+				{#if $runState.error}<ErrorNotice error={$runState.error} />{/if}
+				{#if $runState.controlError}<ErrorNotice
+						error={$runState.controlError}
+						context="control"
+					/>{/if}
+				<LlmIssues issues={$runState.llmIssues} runStatus={$runState.status} />
+			</div>
 		{/if}
-		{#if $runState.controlError}
-			<ErrorNotice error={$runState.controlError} context="control" />
-		{/if}
-		<LlmIssues issues={$runState.llmIssues} runStatus={$runState.status} />
-
-		{#if isActive || isFinished}
-			<ProgressBar stats={$runState.progress} status={$runState.status} runType={$runState.runType} />
-			{#if isActive && !isResearchRun}
-				<RunStatusPanel status={$runState.status} runType={$runState.runType} />
-			{/if}
-		{/if}
-
 		{#if isSchemaReview || isSchemaPaused}
-			<div hidden={!isSchemaReview}>
+			<div class="schema-workspace" hidden={!isSchemaReview}>
 				<SchemaEditor
 					columns={$runState.schema}
+					pending={$runState.controlPending === 'confirm_schema'}
 					onconfirm={handleSchemaConfirm}
 					oncancel={handleSchemaCancel}
 				/>
 			</div>
-		{/if}
-
-		{#if isImageRun}
-			<ImageGallery images={$runState.imageResults} />
-		{:else if isLinkRun}
-			<LinkList links={$runState.linkResults} />
-		{:else if isResearchRun}
-			<ResearchView steps={$runState.researchSteps} answer={$runState.researchAnswer} running={isActive} />
-		{:else if $runState.schema.length > 0 && !isSchemaReview}
-			<ResultsTable
-				schema={$runState.schema}
-				rows={$runState.rows}
-				onrowclick={(row) => { selectedRow = row; }}
-			/>
+			{#if isSchemaPaused}<div class="empty-state">
+					Schema review is paused. Resume to continue editing.
+				</div>{/if}
+		{:else}
+			<div class="result-workspace">
+				{#if isImageRun}<ImageGallery images={$runState.imageResults} />
+				{:else if isLinkRun}<LinkList links={$runState.linkResults} />
+				{:else if isResearchRun}<ResearchView
+						steps={$runState.researchSteps}
+						answer={$runState.researchAnswer}
+						running={$runState.status === 'running' || $runState.status === 'pending'}
+					/>
+				{:else}<ResultsTable
+						schema={$runState.schema}
+						rows={$runState.rows}
+						onrowclick={(row) => {
+							selectedRow = row;
+						}}
+					/>{/if}
+			</div>
 		{/if}
 	{/if}
-
-	{#if selectedRow}
-		<RowDetailPanel
+	{#if selectedRow}<RowDetailPanel
 			row={selectedRow}
 			columns={columnNames}
-			onclose={() => { selectedRow = null; }}
-		/>
-	{/if}
-
-	{#if showExport && $runState.runId}
-		<ExportDialog
+			onclose={() => {
+				selectedRow = null;
+			}}
+		/>{/if}
+	{#if showExport && $runState.runId}<ExportDialog
 			runId={$runState.runId}
 			runType={$runState.runType}
-			onclose={() => { showExport = false; }}
-		/>
-	{/if}
+			onclose={() => {
+				showExport = false;
+			}}
+		/>{/if}
 </div>
 
 <style>
 	.query-page {
-		width: 100%;
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
 		flex: 1;
+		min-height: 0;
+		min-width: 0;
 		overflow: hidden;
 	}
-
-	.query-page.has-issues { overflow-y: auto; }
-	.query-page.has-issues :global(.results-table-wrap) { min-height: 180px; }
-
-	h1 {
-		font-size: 1.8rem;
-		font-weight: 700;
-		margin-bottom: 8px;
+	.query-scroll {
+		min-height: 0;
+		overflow: auto;
+		scrollbar-gutter: stable;
+		padding-right: 12px;
 	}
-
-	.subtitle {
-		color: var(--color-surface-600-400);
-		margin-bottom: 24px;
-	}
-
 	.query-form {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		overflow-y: auto;
+		max-width: 900px;
+		background: var(--app-panel);
+		border: 1px solid var(--app-border);
+		padding: 24px;
+		border-radius: 12px;
 	}
-
 	.mode-toggle {
 		display: flex;
-		border: 1px solid var(--color-surface-300-700);
-		border-radius: 8px;
-		overflow: hidden;
-		width: fit-content;
+		gap: 6px;
+		flex-wrap: wrap;
 	}
-
 	.mode-btn {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		padding: 8px 16px;
-		border: none;
-		background: var(--color-surface-100-900);
-		color: var(--color-surface-500);
-		font-size: 0.9rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.mode-btn:not(:last-child) {
-		border-right: 1px solid var(--color-surface-300-700);
-	}
-
-	.mode-btn.active {
-		background: var(--color-primary-500);
-		color: white;
-	}
-
-	.query-input {
-		width: 100%;
-		padding: 12px 16px;
-		border: 2px solid var(--color-surface-300-700);
+		justify-content: center;
+		gap: 8px;
+		flex: 1;
+		min-width: 100px;
+		padding: 10px 12px;
+		border: 1px solid var(--app-border);
 		border-radius: 8px;
-		background: var(--color-surface-100-900);
-		color: inherit;
-		font-size: 1rem;
-		font-family: inherit;
+		background: var(--app-bg);
+		color: var(--app-muted);
+	}
+	.mode-btn.active {
+		color: var(--app-accent);
+		border-color: var(--app-accent);
+		background: color-mix(in srgb, var(--app-accent) 9%, var(--app-panel));
+		font-weight: 650;
+	}
+	.mode-description {
+		color: var(--app-muted);
+		margin: 12px 0 24px;
+		font-size: 13px;
+	}
+	.query-label {
+		font-weight: 600;
+		display: block;
+		margin-bottom: 8px;
+	}
+	.query-input {
+		display: block;
+		width: 100%;
 		resize: vertical;
-		transition: border-color 0.15s;
+		min-height: 120px;
+		padding: 14px 16px;
+		border: 1px solid var(--app-border);
+		border-radius: 8px;
+		background: var(--app-bg);
+		color: var(--app-text);
+		line-height: 1.6;
 	}
-
-	.query-input:focus {
-		outline: none;
-		border-color: var(--color-primary-500);
-	}
-
-	.query-actions {
+	.connection-summary {
 		display: flex;
-		justify-content: flex-end;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px 12px;
+		color: var(--app-muted);
+		font-size: 12px;
+		padding: 12px 0 20px;
 	}
-
+	.model-name {
+		max-width: 380px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.connection-summary a {
+		color: var(--app-accent);
+		margin-left: auto;
+	}
 	.stop-toggle {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		background: none;
-		border: none;
-		color: var(--color-surface-600-400);
-		font-size: 0.9rem;
-		cursor: pointer;
-		padding: 4px 0;
+		flex-wrap: wrap;
+		gap: 8px;
+		background: transparent;
+		border: 0;
+		padding: 8px 0;
+		color: var(--app-text);
+		text-align: left;
 	}
-
-	.stop-toggle:hover {
-		color: var(--color-primary-500);
+	.stop-toggle span {
+		color: var(--app-muted);
+		font-size: 12px;
 	}
-
 	.stop-conditions {
 		display: flex;
-		gap: 16px;
-		padding: 12px 16px;
-		border: 1px solid var(--color-surface-300-700);
-		border-radius: 8px;
-		background: var(--color-surface-50-950);
+		flex-wrap: wrap;
+		gap: 12px;
+		margin: 12px 0;
 	}
-
-	.stop-field {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		flex: 1;
+	.stop-conditions label {
+		flex: 1 1 130px;
+		font-size: 12px;
+		color: var(--app-muted);
 	}
-
-	.stop-field label {
-		font-size: 0.8rem;
-		color: var(--color-surface-600-400);
-		font-weight: 600;
-	}
-
-	.stop-field input {
-		padding: 6px 10px;
-		border: 1px solid var(--color-surface-300-700);
-		border-radius: 6px;
-		background: var(--color-surface-100-900);
-		color: inherit;
-		font-size: 0.9rem;
+	.stop-conditions input {
+		display: block;
 		width: 100%;
-	}
-
-	.stop-field input:focus {
-		outline: none;
-		border-color: var(--color-primary-500);
-	}
-
-	.btn-primary {
-		padding: 10px 24px;
-		background: var(--color-primary-500);
-		color: white;
-		border: none;
+		margin-top: 4px;
+		padding: 7px 10px;
+		color: var(--app-text);
+		background: var(--app-bg);
+		border: 1px solid var(--app-border);
 		border-radius: 8px;
-		font-size: 1rem;
-		font-weight: 600;
-		cursor: pointer;
-		transition: background 0.15s;
 	}
-
-	.btn-primary:hover:not(:disabled) {
-		background: var(--color-primary-600);
+	.query-actions {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: 16px;
 	}
-
-	.btn-primary:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
 	.run-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
-		gap: 16px;
-		margin-bottom: 16px;
+		flex-wrap: wrap;
+		gap: 12px 20px;
+		flex-shrink: 0;
+		padding-bottom: 12px;
 	}
-
-	.run-query-display h2 {
-		font-size: 1.3rem;
-		font-weight: 700;
-		margin: 0;
+	.run-query-display {
+		flex: 1 1 240px;
+		min-width: 0;
 	}
-
+	.eyebrow {
+		color: var(--app-muted);
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+	h2 {
+		font-size: 19px;
+		font-weight: 650;
+		line-height: 1.35;
+		overflow-wrap: anywhere;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		margin: 4px 0 0;
+	}
+	h2.expanded {
+		display: block;
+		max-height: 120px;
+		overflow: auto;
+	}
+	.query-expand {
+		font-size: 12px;
+		color: var(--app-accent);
+		background: transparent;
+		padding: 4px 0;
+		border: 0;
+	}
+	.run-summary {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		flex-shrink: 0;
+		padding: 0 0 12px;
+	}
+	.run-notices {
+		max-height: 28vh;
+		overflow: auto;
+		flex-shrink: 0;
+		padding-right: 12px;
+		scrollbar-gutter: stable;
+		margin-bottom: 8px;
+	}
+	.result-workspace,
+	.schema-workspace {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
+		min-width: 0;
+		overflow: hidden;
+	}
+	.schema-workspace[hidden] {
+		display: none;
+	}
 </style>

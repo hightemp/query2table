@@ -13,10 +13,22 @@
 		showExport?: boolean;
 	}
 
-	let { status, pending = null, onpause, onresume, oncancel, onreset, onexport, showExport = false }: Props = $props();
+	let {
+		status,
+		pending = null,
+		onpause,
+		onresume,
+		oncancel,
+		onreset,
+		onexport,
+		showExport = false,
+	}: Props = $props();
 
 	let isActive = $derived(
-		status === 'running' || status === 'paused' || status === 'pending' || status === 'schema_review'
+		status === 'running' ||
+			status === 'paused' ||
+			status === 'pending' ||
+			status === 'schema_review'
 	);
 	let isFinished = $derived(
 		status === 'completed' || status === 'failed' || status === 'cancelled'
@@ -24,8 +36,15 @@
 </script>
 
 <div class="run-controls">
-	<span class="status-badge" class:running={status === 'running'} class:paused={status === 'paused'} class:completed={status === 'completed'} class:failed={status === 'failed'} class:cancelled={status === 'cancelled'}>
-		{status}
+	<span
+		class="status-badge"
+		class:running={status === 'running'}
+		class:paused={status === 'paused'}
+		class:completed={status === 'completed'}
+		class:failed={status === 'failed'}
+		class:cancelled={status === 'cancelled'}
+	>
+		{status.replaceAll('_', ' ')}
 	</span>
 
 	{#if isActive}
@@ -40,7 +59,12 @@
 				{pending === 'resume' ? 'Resuming…' : 'Resume'}
 			</button>
 		{/if}
-		<button class="ctrl-btn ctrl-cancel" onclick={oncancel} aria-label="Cancel" disabled={pending === 'cancel'}>
+		<button
+			class="ctrl-btn ctrl-cancel"
+			onclick={oncancel}
+			aria-label="Cancel"
+			disabled={pending === 'cancel'}
+		>
 			<XCircleIcon size={16} />
 			{pending === 'cancel' ? 'Cancelling…' : 'Cancel'}
 		</button>
@@ -64,6 +88,7 @@
 	.run-controls {
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 8px;
 	}
 
@@ -73,17 +98,17 @@
 		font-size: 0.8rem;
 		font-weight: 600;
 		text-transform: capitalize;
-		background: var(--color-surface-200-800);
-		color: var(--color-surface-600-400);
+		background: var(--app-subtle);
+		color: var(--app-muted);
 	}
 
 	.status-badge.running {
-		background: var(--color-primary-100, rgba(59, 130, 246, 0.15));
+		background: color-mix(in srgb, var(--app-accent) 15%, transparent);
 		color: var(--color-primary-500);
 	}
 
 	.status-badge.paused {
-		background: var(--color-warning-100, rgba(245, 158, 11, 0.15));
+		background: color-mix(in srgb, var(--color-warning-500) 15%, transparent);
 		color: var(--color-warning-500);
 	}
 
@@ -98,8 +123,8 @@
 	}
 
 	.status-badge.cancelled {
-		background: var(--color-surface-200-800);
-		color: var(--color-surface-600-400);
+		background: var(--app-subtle);
+		color: var(--app-muted);
 	}
 
 	.ctrl-btn {
@@ -107,16 +132,16 @@
 		align-items: center;
 		gap: 4px;
 		padding: 6px 12px;
-		border: 1px solid var(--color-surface-300-700);
+		border: 1px solid var(--app-border);
 		border-radius: 6px;
-		background: var(--color-surface-50-950);
+		background: var(--app-panel);
 		cursor: pointer;
 		font-size: 0.85rem;
 		color: inherit;
 	}
 
 	.ctrl-btn:hover {
-		background: var(--color-surface-200-800);
+		background: var(--app-subtle);
 	}
 
 	.ctrl-btn:disabled {
@@ -139,6 +164,6 @@
 	}
 
 	.ctrl-export:hover {
-		background: var(--color-primary-100, rgba(59, 130, 246, 0.1));
+		background: var(--app-subtle);
 	}
 </style>

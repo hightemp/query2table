@@ -1,5 +1,16 @@
 import '@testing-library/jest-dom/vitest';
 
+// jsdom has no native modal implementation; focus containment is tested in real browsers.
+HTMLDialogElement.prototype.showModal = function () {
+	this.setAttribute('open', '');
+	this.querySelector<HTMLElement>('button, input')?.focus();
+};
+HTMLDialogElement.prototype.close = function () {
+	this.removeAttribute('open');
+};
+
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
+
 // Mock Tauri APIs for testing
 const mockInvoke = async (cmd: string, _args?: Record<string, unknown>) => {
 	switch (cmd) {
@@ -11,7 +22,11 @@ const mockInvoke = async (cmd: string, _args?: Record<string, unknown>) => {
 		case 'get_setting':
 			return null;
 		case 'get_app_paths':
-			return { data_dir: '/test/app-data', database_file: '/test/app-data/data.db', log_dir: '/test/app-logs' };
+			return {
+				data_dir: '/test/app-data',
+				database_file: '/test/app-data/data.db',
+				log_dir: '/test/app-logs',
+			};
 		case 'list_ollama_cloud_models':
 			return ['cloud-model', 'gpt-oss:120b', 'qwen3.5:397b'];
 		case 'list_openrouter_models':
