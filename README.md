@@ -21,8 +21,10 @@ Beyond tables, it offers three more dedicated modes: **image search**, which fin
 
 Ask something like *"Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website"* and watch the table fill up in real time.
 
-![](screenshots/2026-03-28_09-50.png)
-![](screenshots/2026-03-28_09-51.png)
+![YC startup research results in the redesigned workspace](screenshots/yc-startups-table.png)
+![Complete result values and source evidence](screenshots/yc-startups-sources.png)
+
+Screenshots show a new run of the example query above, captured in a separate application profile.
 
 ## Features
 

@@ -2,6 +2,20 @@
 
 ## 1. Executive Summary
 
+### Release 0.6.0 and public screenshots (2026-09-13)
+
+- [x] Run the YC-backed AI startups query in an isolated database and replace README screenshots with only that run.
+- [x] Bump all version metadata to 0.6.0, describe the UI/UX changes in the changelog and GitHub release body, and verify release inputs.
+- [ ] Publish v0.6.0, verify every platform build and downloaded release asset, and record the release URL.
+
+Screenshot provenance: a fresh real pipeline run of the exact README example query completed in 124 seconds, making 42 search calls and 10 LLM calls and saving 21 rows. Configuration was read from the existing settings database into memory; existing runs/results were neither read nor copied. The separate screenshot database contains only this run and defaults without API keys. Screenshots were captured from the real Tauri/GTK window, using table sorting and row details; values were not edited. Previous screenshot files were removed from the current tree.
+
+Release-source verification: all seven version locations report 0.6.0; 76 frontend tests and 247 Rust tests passed, Svelte reports 0 errors/warnings, and frontend/native builds passed. Release notes are extracted from the matching CHANGELOG section by GitHub Actions and include the UI changes and new screenshots.
+
+### Result filtering follow-up (observed during the release demo)
+
+- [ ] Enforce requested year constraints during extraction/validation. The exact 2024 example query returned older company founding years; investigate intent/date semantics and do not treat these screenshots as a verified 2024 company directory.
+
 ### UI/UX redesign (2026-09-13)
 
 Approved direction: calm desktop workspace, English UI, light/dark themes, continuous tables, one Settings page with section navigation; Application files stays last. No search/extraction changes or release.

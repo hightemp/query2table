@@ -61,6 +61,18 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Read release notes from changelog
+        id: release-notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const version = context.ref.replace('refs/tags/v', '');
+            const sections = fs.readFileSync('CHANGELOG.md', 'utf8').split(/^## /m);
+            const section = sections.find(text => text.startsWith(`${version} —`));
+            if (!section) throw new Error(`Missing changelog section for ${version}`);
+            core.setOutput('body', section.slice(section.indexOf('\n') + 1).trim());
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -68,10 +80,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Query2Table ${{ github.ref_name }}'
-          releaseBody: |
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) for the changes in this release.
-
-            Download the installer for your platform from the assets below. Existing settings migrate automatically when the app starts.
+          releaseBody: ${{ steps.release-notes.outputs.body }}
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
