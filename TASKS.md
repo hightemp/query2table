@@ -6,11 +6,13 @@
 
 - [x] Run the YC-backed AI startups query in an isolated database and replace README screenshots with only that run.
 - [x] Bump all version metadata to 0.6.0, describe the UI/UX changes in the changelog and GitHub release body, and verify release inputs.
-- [ ] Publish v0.6.0, verify every platform build and downloaded release asset, and record the release URL.
+- [x] Publish v0.6.0, verify every platform build and downloaded release asset, and record the release URL.
 
 Screenshot provenance: a fresh real pipeline run of the exact README example query completed in 124 seconds, making 42 search calls and 10 LLM calls and saving 21 rows. Configuration was read from the existing settings database into memory; existing runs/results were neither read nor copied. The separate screenshot database contains only this run and defaults without API keys. Screenshots were captured from the real Tauri/GTK window, using table sorting and row details; values were not edited. Previous screenshot files were removed from the current tree.
 
 Release-source verification: all seven version locations report 0.6.0; 76 frontend tests and 247 Rust tests passed, Svelte reports 0 errors/warnings, and frontend/native builds passed. Release notes are extracted from the matching CHANGELOG section by GitHub Actions and include the UI changes and new screenshots.
+
+Published [v0.6.0](https://github.com/hightemp/query2table/releases/tag/v0.6.0) from `681648d7de3a7ce71170db24ee21a225776fc23c`. [Actions run 34755097027](https://github.com/hightemp/query2table/actions/runs/34755097027) succeeded for Linux x86_64, Windows x64, and macOS Apple Silicon. All 7 assets were downloaded and matched GitHub's SHA-256 digests; the DEB, macOS app Info.plist, and Windows EXE version resource report 0.6.0. The public stable release is marked latest, its body matches the current CHANGELOG section, and both published screenshots match the captured files.
 
 ### Result filtering follow-up (observed during the release demo)
 
