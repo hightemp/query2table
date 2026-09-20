@@ -2,6 +2,13 @@
 
 ## 1. Executive Summary
 
+### Search pricing defaults and actionable unknown costs (2026-09-20)
+
+- [x] Default Brave/Serper rates to zero, migrate former empty defaults once, and preserve configured rates and historical accounting.
+- [x] Explain unknown costs by provider, clarify when Settings changes take effect, and verify defaults, migration and accounting regressions.
+
+Verification: 269 Rust tests, 82 frontend tests and 4 focused Chromium/WebKit checks passed. Svelte reports zero errors/warnings; frontend/native builds and `git diff --check` passed. Migration tests cover paid-rate preservation, missing/blank defaults, deliberate blanks after upgrade, and unchanged historical accounting. Read-only diagnosis confirmed that prices saved after a run starts do not alter its captured settings; timeout attempts without billing data remain unknown.
+
 ### Deduplication and truthful costs (2026-09-20)
 
 - [x] Preserve row identity and all source evidence while merging duplicates transactionally; reconcile live results, history and export.

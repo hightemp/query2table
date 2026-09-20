@@ -220,6 +220,25 @@ impl SearchProvider for SearchStub {
     }
 }
 #[tokio::test]
+async fn default_zero_search_prices_do_not_create_unknown_costs() {
+    for name in ["brave", "serper"] {
+        let provider = Arc::new(SearchStub {
+            name, fail: false, calls: AtomicUsize::new(0),
+        });
+        let budget = BudgetTracker::new(1.0);
+        let search = SearchManager::with_providers(provider, None, SearchConfig::default())
+            .with_accounting(budget.observer());
+        for _ in 0..25 { search.search("fixture").await.unwrap(); }
+        let stats = budget.snapshot();
+        assert_eq!(stats.search_calls, 25);
+        assert_eq!(stats.estimated_calls, 25);
+        assert_eq!(stats.unpriced_calls, 0);
+        assert_eq!(stats.spent_usd, 0.0);
+        assert_eq!(stats.breakdown[0].pricing.as_ref().unwrap().per_request, 0.0);
+    }
+}
+
+#[tokio::test]
 async fn fallback_attempts_are_counted_and_unpriced_failures_stay_visible() {
     let primary = Arc::new(SearchStub {
         name: "brave",

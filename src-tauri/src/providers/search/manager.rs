@@ -45,8 +45,8 @@ impl Default for SearchConfig {
             brave_api_key: String::new(),
             serper_api_key: String::new(),
             num_results: 10,
-            brave_price_per_1000: None,
-            serper_price_per_1000: None,
+            brave_price_per_1000: Some(0.0),
+            serper_price_per_1000: Some(0.0),
         }
     }
 }
@@ -348,16 +348,15 @@ impl SearchManager {
             Some("serper") => SearchBackend::Serper,
             _ => SearchBackend::Brave,
         };
+        let price = |key: &str| match settings.get(key) {
+            None => Some(0.0),
+            Some(value) => value.trim().parse::<f64>().ok()
+                .filter(|value| value.is_finite() && *value >= 0.0),
+        };
 
         SearchConfig {
-            brave_price_per_1000: settings
-                .get("brave_price_per_1000")
-                .and_then(|v| v.parse::<f64>().ok())
-                .filter(|v| v.is_finite() && *v >= 0.0),
-            serper_price_per_1000: settings
-                .get("serper_price_per_1000")
-                .and_then(|v| v.parse::<f64>().ok())
-                .filter(|v| v.is_finite() && *v >= 0.0),
+            brave_price_per_1000: price("brave_price_per_1000"),
+            serper_price_per_1000: price("serper_price_per_1000"),
             primary,
             brave_api_key: settings.get("brave_api_key").cloned().unwrap_or_default(),
             serper_api_key: settings.get("serper_api_key").cloned().unwrap_or_default(),
@@ -378,6 +377,23 @@ mod tests {
         let config = SearchConfig::default();
         assert_eq!(config.primary, SearchBackend::Brave);
         assert_eq!(config.num_results, 10);
+        assert_eq!(config.brave_price_per_1000, Some(0.0));
+        assert_eq!(config.serper_price_per_1000, Some(0.0));
+    }
+
+    #[test]
+    fn search_price_settings_distinguish_missing_blank_zero_and_paid() {
+        let mut settings = HashMap::new();
+        let defaults = SearchManager::config_from_settings(&settings);
+        assert_eq!(defaults.brave_price_per_1000, Some(0.0));
+        assert_eq!(defaults.serper_price_per_1000, Some(0.0));
+        for (raw, expected) in [("", None), ("0", Some(0.0)), (" 2.5 ", Some(2.5)), ("NaN", None)] {
+            settings.insert("brave_price_per_1000".into(), raw.into());
+            settings.insert("serper_price_per_1000".into(), raw.into());
+            let config = SearchManager::config_from_settings(&settings);
+            assert_eq!(config.brave_price_per_1000, expected);
+            assert_eq!(config.serper_price_per_1000, expected);
+        }
     }
 
     #[test]

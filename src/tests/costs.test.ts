@@ -27,6 +27,44 @@ const accounting: Accounting = {
 	breakdown: [],
 };
 describe('honest cost display and model-scoped rates', () => {
+	it('explains unknown attempts by provider and leaves zero-rate searches quiet', async () => {
+		const line = (provider: string, unknown: number) => ({
+			provider,
+			model: 'fixture',
+			calls: unknown,
+			unpriced_calls: unknown,
+			reported_usd: 0,
+			estimated_usd: 0,
+			prompt_tokens: 0,
+			completion_tokens: 0,
+			pricing: null,
+		});
+		const view = render(CostSummary, {
+			accounting: {
+				...accounting,
+				unpriced_calls: 50,
+				search_calls: 48,
+				breakdown: [
+					line('brave', 27),
+					line('serper', 21),
+					line('openrouter', 1),
+					line('openrouter', 1),
+				],
+			},
+		});
+		expect(screen.getByRole('status')).toHaveTextContent(
+			'Brave Search: 27 · Serper: 21 · OpenRouter: 2'
+		);
+		expect(screen.getByRole('link', { name: 'pricing in Settings' })).toHaveAttribute(
+			'href',
+			'/settings'
+		);
+		expect(
+			screen.getByText(/A saved rate or provider billing response is missing/)
+		).toHaveTextContent('Settings changes apply to new runs');
+		await view.rerender({ accounting: { ...accounting, search_calls: 48, estimated_calls: 48 } });
+		expect(screen.queryByRole('status')).not.toBeInTheDocument();
+	});
 	it('distinguishes reported, estimated, partial and unknown totals', async () => {
 		const view = render(CostSummary, { accounting });
 		expect(screen.getByText('Reported cost $0.2500')).toBeInTheDocument();

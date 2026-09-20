@@ -354,6 +354,8 @@ test('Canonical live rows refresh an open detail panel and remove merged duplica
 
 test('Model tariffs are scoped, validated, saved and restored independently', async ({ page }) => {
 	await page.goto('/settings');
+	await expect(page.getByLabel(/^Brave USD \/ 1,000 requests/)).toHaveValue('0');
+	await expect(page.getByLabel(/^Serper USD \/ 1,000 requests/)).toHaveValue('0');
 	const custom = page.getByRole('checkbox', {
 		name: 'Use custom rates for this model and endpoint',
 	});
@@ -399,14 +401,28 @@ test('Actual accounting updates are shown even before results and distinguish pa
 		llm_calls: 1,
 		search_calls: 1,
 		fetch_calls: 0,
-		breakdown: [],
+		breakdown: [
+			{
+				provider: 'brave',
+				model: 'web search',
+				pricing: null,
+				calls: 1,
+				unpriced_calls: 1,
+				reported_usd: 0,
+				estimated_usd: 0,
+				prompt_tokens: 0,
+				completion_tokens: 0,
+			},
+		],
 	};
 	await emit(page, 'run:accounting', { run_id: 'live', accounting });
 	await expect(page.locator('.cost-summary > summary')).toContainText('Partial cost $0.2500');
 	await expect(page.locator('.cost-warning')).toContainText('unknown cost');
+	await expect(page.locator('.cost-warning')).toContainText('Brave Search: 1');
 	await page.locator('.cost-summary > summary').click();
 	await expect(page.locator('.cost-details')).toContainText('10 input');
 	await expect(page.locator('.cost-details')).toContainText('20 output');
+	await expect(page.locator('.cost-details')).toContainText('Settings changes apply to new runs');
 	await emit(page, 'run:accounting', {
 		run_id: 'another-run',
 		accounting: { ...accounting, spent_usd: 999 },

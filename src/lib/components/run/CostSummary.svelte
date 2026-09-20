@@ -19,6 +19,24 @@
 			return `Partial cost ${usd(accounting.spent_usd)}`;
 		return `${accounting.estimated_calls ? 'Estimated' : 'Reported'} cost ${usd(accounting.spent_usd)}`;
 	});
+	let unknownProviders = $derived.by(() => {
+		const totals = new Map<string, number>();
+		for (const line of accounting?.breakdown ?? []) {
+			if (line.unpriced_calls > 0)
+				totals.set(line.provider, (totals.get(line.provider) ?? 0) + line.unpriced_calls);
+		}
+		const names: Record<string, string> = {
+			brave: 'Brave Search',
+			serper: 'Serper',
+			openrouter: 'OpenRouter',
+			ollama: 'Ollama',
+			ollama_cloud: 'Ollama Cloud',
+			openai_compatible: 'OpenAI-compatible',
+		};
+		return [...totals]
+			.map(([provider, count]) => `${names[provider] ?? provider}: ${count}`)
+			.join(' · ');
+	});
 </script>
 
 <details class="cost-summary">
@@ -77,6 +95,11 @@
 				Run spending limit: {usd(accounting.max_budget_usd)}. New requests stop when accounted
 				spending reaches this limit. Requests already in flight can exceed it.
 			</p>
+			{#if accounting.unpriced_calls > 0}<p>
+					A saved rate or provider billing response is missing for these attempts. Timeouts and
+					cancelled requests may have no final billing information. Settings changes apply to new
+					runs; earlier costs keep the information available during that run.
+				</p>{/if}
 		{:else if legacy !== null}<p>
 				An earlier version recorded this estimate without actual usage or model-specific rates.
 			</p>{/if}
@@ -90,9 +113,10 @@
 		incur charges.
 	</p>{/if}
 {#if accounting && accounting.unpriced_calls > 0}<p class="cost-warning" role="status">
-		Request attempts with unknown cost: {accounting.unpriced_calls}. The money limit covers only
-		known or estimated charges. Review usage reporting and rates in Settings. Use provider-side
-		spending limits when you need a strict cap.
+		Request attempts with unknown cost: {accounting.unpriced_calls}.
+		{#if unknownProviders}<span>{unknownProviders}.</span>{/if}
+		These charges are excluded from the total and spending limit. Expand Usage &amp; cost for details
+		or review <a href="/settings">pricing in Settings</a> for new runs.
 	</p>{/if}
 
 <style>
@@ -130,5 +154,10 @@
 		color: var(--color-warning-500);
 		font-size: 12px;
 		margin: 4px 0;
+		overflow-wrap: anywhere;
+	}
+	.cost-warning a {
+		color: inherit;
+		text-decoration: underline;
 	}
 </style>

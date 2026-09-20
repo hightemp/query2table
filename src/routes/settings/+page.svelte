@@ -218,14 +218,15 @@
 				{
 					key: 'brave_price_per_1000',
 					label: 'Brave USD / 1,000 requests',
-					description: 'Your plan’s effective rate. Leave blank if unknown; explicit 0 means free.',
+					description:
+						'Default 0 excludes search charges from estimates. Set your plan’s rate, or leave blank if unknown. Applies to new runs after Save.',
 					type: 'number',
 				},
 				{
 					key: 'serper_price_per_1000',
 					label: 'Serper USD / 1,000 requests',
 					description:
-						'Your plan’s effective rate. Retries and fallback attempts are counted separately.',
+						'Default 0 excludes search charges from estimates. Set your plan’s rate, or leave blank if unknown. Applies to new runs after Save.',
 					type: 'number',
 				},
 			],

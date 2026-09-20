@@ -311,8 +311,8 @@ impl Database {
             ("llm_max_tokens", "4096"),
             ("llm_reasoning_effort", "auto"),
             ("llm_pricing_overrides", "{}"),
-            ("brave_price_per_1000", ""),
-            ("serper_price_per_1000", ""),
+            ("brave_price_per_1000", "0"),
+            ("serper_price_per_1000", "0"),
             ("ollama_url", "http://localhost:11434"),
             ("ollama_model", "llama3"),
             ("ollama_cloud_url", "https://ollama.com"),
@@ -363,7 +363,21 @@ impl Database {
             .execute(&self.pool)
             .await?;
         }
-
+        // Versioned data migrations run once: a later deliberately blank rate must
+        // remain unknown on restart, while the former empty defaults become zero.
+        let mut tx = self.pool.begin().await?;
+        let version: i64 = sqlx::query_scalar("PRAGMA user_version")
+            .fetch_one(&mut *tx).await?;
+        if version < 1 {
+            let changed = sqlx::query(
+                "UPDATE settings SET value = '0', updated_at = unixepoch()
+                 WHERE key IN ('brave_price_per_1000', 'serper_price_per_1000')
+                   AND trim(value) = ''"
+            ).execute(&mut *tx).await?.rows_affected();
+            sqlx::query("PRAGMA user_version = 1").execute(&mut *tx).await?;
+            tracing::debug!(changed, "[FIX:search-pricing] Migrated empty search defaults to zero");
+        }
+        tx.commit().await?;
 
         Ok(())
     }
@@ -459,6 +473,47 @@ mod tests {
         let db = test_db().await;
         let theme = db.get_setting("theme").await.unwrap();
         assert_eq!(theme, Some("system".to_string()));
+    }
+
+    #[tokio::test]
+    async fn search_prices_default_to_zero_and_upgrade_only_once() {
+        let db = test_db().await;
+        let keys = ["brave_price_per_1000", "serper_price_per_1000"];
+        for key in keys {
+            assert_eq!(db.get_setting(key).await.unwrap().as_deref(), Some("0"));
+            db.set_setting(key, "").await.unwrap();
+        }
+        // Simulate the previous version with both old empty defaults.
+        sqlx::query("PRAGMA user_version = 0").execute(db.pool()).await.unwrap();
+        sqlx::query("INSERT INTO runs(id, query, stats) VALUES ('old', 'fixture', '{\"accounting\":{\"unpriced_calls\":50}}')")
+            .execute(db.pool()).await.unwrap();
+        db.migrate().await.unwrap();
+        for key in keys {
+            assert_eq!(db.get_setting(key).await.unwrap().as_deref(), Some("0"));
+        }
+        let stats: String = sqlx::query_scalar("SELECT stats FROM runs WHERE id = 'old'")
+            .fetch_one(db.pool()).await.unwrap();
+        assert_eq!(stats, "{\"accounting\":{\"unpriced_calls\":50}}");
+        // Clearing a price deliberately after upgrading must survive the next startup.
+        db.set_setting(keys[0], "").await.unwrap();
+        db.set_setting(keys[1], "2.5").await.unwrap();
+        db.migrate().await.unwrap();
+        assert_eq!(db.get_setting(keys[0]).await.unwrap().as_deref(), Some(""));
+        assert_eq!(db.get_setting(keys[1]).await.unwrap().as_deref(), Some("2.5"));
+    }
+
+    #[tokio::test]
+    async fn search_price_upgrade_preserves_paid_rates_and_fills_missing_defaults() {
+        for paid_key in ["brave_price_per_1000", "serper_price_per_1000"] {
+            let db = test_db().await;
+            let other = if paid_key == "brave_price_per_1000" { "serper_price_per_1000" } else { "brave_price_per_1000" };
+            db.set_setting(paid_key, "4.50").await.unwrap();
+            sqlx::query("DELETE FROM settings WHERE key = ?").bind(other).execute(db.pool()).await.unwrap();
+            sqlx::query("PRAGMA user_version = 0").execute(db.pool()).await.unwrap();
+            db.migrate().await.unwrap();
+            assert_eq!(db.get_setting(paid_key).await.unwrap().as_deref(), Some("4.50"));
+            assert_eq!(db.get_setting(other).await.unwrap().as_deref(), Some("0"));
+        }
     }
 
     #[tokio::test]
