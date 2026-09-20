@@ -203,6 +203,24 @@
 					],
 				},
 				{
+					key: 'search_results_per_query',
+					label: 'Results per Query',
+					description:
+						'Maximum results requested per search query. Changes apply to new runs after Save. Brave limits each web request to 20 and each image request to 200.',
+					type: 'number',
+				},
+				{
+					key: 'search_fallback_enabled',
+					label: 'Use backup search provider',
+					description:
+						'When enabled, try the other provider after the primary fails, if its API key is saved. Applies to web and image searches in new runs.',
+					type: 'select',
+					options: [
+						{ label: 'Enabled', value: 'true' },
+						{ label: 'Disabled — selected provider only', value: 'false' },
+					],
+				},
+				{
 					key: 'brave_api_key',
 					label: 'Brave Search API Key',
 					description: 'Your Brave Search API key',
@@ -245,12 +263,6 @@
 					key: 'fetch_timeout_seconds',
 					label: 'Fetch Timeout (s)',
 					description: 'HTTP fetch timeout in seconds',
-					type: 'number',
-				},
-				{
-					key: 'search_results_per_query',
-					label: 'Results per Query',
-					description: 'Search results to fetch per query',
 					type: 'number',
 				},
 				{
@@ -332,7 +344,10 @@
 	];
 
 	function getValue(key: string): string {
-		return settingsMap.get(key) ?? (key === 'llm_reasoning_effort' ? 'auto' : '');
+		return (
+			settingsMap.get(key) ??
+			(key === 'llm_reasoning_effort' ? 'auto' : key === 'search_fallback_enabled' ? 'true' : '')
+		);
 	}
 
 	let activeModel = $derived(
@@ -659,7 +674,11 @@
 										id={setting.key}
 										type="number"
 										step={setting.key.endsWith('_price_per_1000') ? 'any' : undefined}
-										min={setting.key.endsWith('_price_per_1000') ? 0 : undefined}
+										min={setting.key.endsWith('_price_per_1000')
+											? 0
+											: setting.key === 'search_results_per_query'
+												? 1
+												: undefined}
 										value={getValue(setting.key)}
 										oninput={(e) => handleChange(setting.key, (e.target as HTMLInputElement).value)}
 									/>

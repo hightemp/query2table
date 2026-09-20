@@ -60,6 +60,28 @@ test('Settings guard keeps edits and offers save, discard and stay', async ({ pa
 	await expect(page.getByRole('heading', { name: 'Run History' })).toBeVisible();
 });
 
+test('Search fallback can be disabled and remains disabled when Settings is reopened', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 900, height: 600 });
+	await page.goto('/settings');
+	const fallback = page.getByRole('combobox', { name: /^Use backup search provider / });
+	await fallback.scrollIntoViewIfNeeded();
+	await expect(fallback).toHaveValue('true');
+	await fallback.selectOption('false');
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect
+		.poll(() => page.evaluate(() => (window as any).__uiFixture.values.search_fallback_enabled))
+		.toBe('false');
+	await page.getByRole('link', { name: 'History', exact: true }).click();
+	await page.getByRole('link', { name: 'Settings', exact: true }).click();
+	await fallback.scrollIntoViewIfNeeded();
+	await expect(fallback).toHaveValue('false');
+	await fallback.selectOption('true');
+	await page.getByRole('button', { name: 'Discard', exact: true }).click();
+	await expect(fallback).toHaveValue('false');
+});
+
 test('Model menu fits the viewport and keyboard filtering preserves the saved value', async ({
 	page,
 }) => {

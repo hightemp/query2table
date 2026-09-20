@@ -96,6 +96,10 @@ On first launch the app creates a local SQLite database with default settings. O
 
 Stop conditions (target rows, max cost, max duration) are set per-query on the Query page.
 
+**Use backup search provider** controls automatic Brave/Serper fallback for both web and image searches. Disable it to use only the selected primary provider, even if both API keys are saved. The choice applies to new runs after Save; retries stay with the selected provider. When enabled, the other provider is used only after a failure and requires its saved key.
+
+Set **Settings → Search → Results per Query** to choose how many results each search query requests in all four modes, including Research, then Save for new runs. Brave requests clamp this value to the documented endpoint range: [1–20 for web search](https://api-dashboard.search.brave.com/api-reference/web/search/get) and [up to 200 for images](https://api-dashboard.search.brave.com/documentation/services/image-search). This also covers previously saved oversized values. Larger values do not trigger automatic extra pages.
+
 ### Usage, prices, and spending limits
 
 **Usage & cost** distinguishes provider-reported charges, model-rate estimates, partial totals, and unknown costs. Every provider attempt is counted separately, including retries, fallback searches, failed completions with usage data, and cancelled requests whose final charge could not be obtained. Input/output usage comes from provider responses; thinking tokens are not charged a second time on top of output tokens.

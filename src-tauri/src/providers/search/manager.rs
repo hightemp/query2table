@@ -31,6 +31,7 @@ pub enum SearchBackend {
 #[derive(Debug, Clone)]
 pub struct SearchConfig {
     pub primary: SearchBackend,
+    pub fallback_enabled: bool,
     pub brave_api_key: String,
     pub serper_api_key: String,
     pub num_results: u32,
@@ -42,6 +43,7 @@ impl Default for SearchConfig {
     fn default() -> Self {
         Self {
             primary: SearchBackend::Brave,
+            fallback_enabled: true,
             brave_api_key: String::new(),
             serper_api_key: String::new(),
             num_results: 10,
@@ -75,7 +77,7 @@ impl SearchManager {
                 let primary: Arc<dyn SearchProvider> = brave.clone();
                 let image_primary: Arc<dyn ImageSearchProvider> = brave;
                 let (fallback, image_fallback): (Option<Arc<dyn SearchProvider>>, Option<Arc<dyn ImageSearchProvider>>) =
-                    if !config.serper_api_key.is_empty() {
+                    if config.fallback_enabled && !config.serper_api_key.trim().is_empty() {
                         let serper = Arc::new(SerperProvider::new(config.serper_api_key.clone()));
                         (Some(serper.clone() as Arc<dyn SearchProvider>), Some(serper as Arc<dyn ImageSearchProvider>))
                     } else {
@@ -93,7 +95,7 @@ impl SearchManager {
                 let primary: Arc<dyn SearchProvider> = serper.clone();
                 let image_primary: Arc<dyn ImageSearchProvider> = serper;
                 let (fallback, image_fallback): (Option<Arc<dyn SearchProvider>>, Option<Arc<dyn ImageSearchProvider>>) =
-                    if !config.brave_api_key.is_empty() {
+                    if config.fallback_enabled && !config.brave_api_key.trim().is_empty() {
                         let brave = Arc::new(BraveSearchProvider::new(config.brave_api_key.clone()));
                         (Some(brave.clone() as Arc<dyn SearchProvider>), Some(brave as Arc<dyn ImageSearchProvider>))
                     } else {
@@ -105,6 +107,7 @@ impl SearchManager {
 
         info!(
             primary = primary.provider_name(),
+            fallback_enabled = config.fallback_enabled,
             has_fallback = fallback.is_some(),
             "Search manager initialized"
         );
@@ -220,6 +223,7 @@ impl SearchManager {
         match primary_result {
             Ok(results) => Ok(results),
             Err(SearchError::BudgetExceeded) => Err(SearchError::BudgetExceeded),
+            Err(e) if !self.config.fallback_enabled => Err(e),
             Err(e) => {
                 if let Some(ref fallback) = self.fallback {
                     warn!(
@@ -310,6 +314,7 @@ impl SearchManager {
         match primary_result {
             Ok(results) => Ok(results),
             Err(SearchError::BudgetExceeded) => Err(SearchError::BudgetExceeded),
+            Err(e) if !self.config.fallback_enabled => Err(e),
             Err(e) => {
                 if let Some(ref fallback) = self.image_fallback {
                     warn!(
@@ -355,6 +360,8 @@ impl SearchManager {
         };
 
         SearchConfig {
+            fallback_enabled: settings.get("search_fallback_enabled")
+                .map(|value| value == "true").unwrap_or(true),
             brave_price_per_1000: price("brave_price_per_1000"),
             serper_price_per_1000: price("serper_price_per_1000"),
             primary,
@@ -376,9 +383,97 @@ mod tests {
     fn test_default_config() {
         let config = SearchConfig::default();
         assert_eq!(config.primary, SearchBackend::Brave);
+        assert!(config.fallback_enabled);
         assert_eq!(config.num_results, 10);
         assert_eq!(config.brave_price_per_1000, Some(0.0));
         assert_eq!(config.serper_price_per_1000, Some(0.0));
+    }
+
+    #[test]
+    fn fallback_setting_controls_both_provider_types_and_directions() {
+        assert!(SearchManager::config_from_settings(&HashMap::new()).fallback_enabled);
+        for primary in ["brave", "serper"] {
+            for enabled in [false, true] {
+                let settings = HashMap::from([
+                    ("search_provider".into(), primary.into()),
+                    ("search_fallback_enabled".into(), enabled.to_string()),
+                    ("brave_api_key".into(), "test-brave".into()),
+                    ("serper_api_key".into(), "test-serper".into()),
+                ]);
+                let config = SearchManager::config_from_settings(&settings);
+                assert_eq!(config.fallback_enabled, enabled);
+                let manager = SearchManager::from_config(config).unwrap();
+                assert_eq!(manager.primary_name(), primary);
+                assert_eq!(manager.fallback.is_some(), enabled);
+                assert_eq!(manager.image_fallback.is_some(), enabled);
+            }
+        }
+    }
+
+    struct CountedProvider {
+        name: &'static str,
+        fails: bool,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+    impl CountedProvider {
+        fn request(&self) -> Result<(), SearchError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if self.fails { Err(SearchError::AuthError("fixture error".into())) } else { Ok(()) }
+        }
+    }
+    #[async_trait::async_trait]
+    impl SearchProvider for CountedProvider {
+        async fn search(&self, _: SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
+            self.request()?;
+            Ok(vec![])
+        }
+        fn provider_name(&self) -> &str { self.name }
+        async fn health_check(&self) -> Result<(), SearchError> { Ok(()) }
+    }
+    #[async_trait::async_trait]
+    impl ImageSearchProvider for CountedProvider {
+        async fn search_images(&self, _: SearchQuery) -> Result<Vec<ImageSearchResult>, SearchError> {
+            self.request()?;
+            Ok(vec![])
+        }
+    }
+
+    #[tokio::test]
+    async fn disabled_fallback_sends_no_web_or_image_requests_and_records_no_backup_costs() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use crate::orchestrator::budget_tracker::BudgetTracker;
+        for primary_name in ["brave", "serper"] {
+            for enabled in [false, true] {
+                for fails in [false, true] {
+                    let primary = Arc::new(CountedProvider { name: primary_name, fails, calls: AtomicUsize::new(0) });
+                    let fallback = Arc::new(CountedProvider {
+                        name: if primary_name == "brave" { "serper" } else { "brave" },
+                        fails: false, calls: AtomicUsize::new(0),
+                    });
+                    let config = SearchConfig {
+                        primary: if primary_name == "brave" { SearchBackend::Brave } else { SearchBackend::Serper },
+                        fallback_enabled: enabled,
+                        ..Default::default()
+                    };
+                    let budget = BudgetTracker::new(1.0);
+                    // Inject a backup even when disabled to test the runtime admission guard.
+                    let mut manager = SearchManager::with_providers(primary.clone(), Some(fallback.clone()), config)
+                        .with_accounting(budget.observer());
+                    manager.image_primary = primary.clone();
+                    manager.image_fallback = Some(fallback.clone());
+                    assert_eq!(manager.search_with_count("fixture", 100).await.is_ok(), !fails || enabled);
+                    assert_eq!(manager.search_images_with_count("fixture", 100).await.is_ok(), !fails || enabled);
+                    assert_eq!(primary.calls.load(Ordering::SeqCst), 2);
+                    let backup_calls = if enabled && fails { 2 } else { 0 };
+                    assert_eq!(fallback.calls.load(Ordering::SeqCst), backup_calls);
+                    let totals = budget.snapshot();
+                    assert_eq!(totals.search_calls, 2 + backup_calls as u64);
+                    if backup_calls == 0 {
+                        assert!(totals.breakdown.iter().all(|line| line.provider == primary_name));
+                    }
+                }
+            }
+        }
     }
 
     #[test]

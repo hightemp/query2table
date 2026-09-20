@@ -55,6 +55,20 @@ struct BraveImageProperties {
 }
 
 impl BraveSearchProvider {
+    // Endpoint-specific public contracts, rather than the shared Results per Query setting:
+    // https://api-dashboard.search.brave.com/api-reference/web/search/get
+    // https://api-dashboard.search.brave.com/documentation/services/image-search
+    const MAX_WEB_RESULTS: u32 = 20;
+    const MAX_IMAGE_RESULTS: u32 = 200;
+
+    fn result_count(requested: u32, maximum: u32, mode: &str) -> u32 {
+        let effective = requested.clamp(1, maximum);
+        if effective != requested {
+            debug!(requested, effective, mode, "[FIX:search-count] Limited Brave result count");
+        }
+        effective
+    }
+
     pub fn new(api_key: impl Into<String>) -> Self {
         let client = crate::providers::http::apply_proxy(Client::builder())
             .build()
@@ -77,6 +91,7 @@ impl BraveSearchProvider {
 impl SearchProvider for BraveSearchProvider {
     async fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
         let url = format!("{}/web/search", self.base_url);
+        let count = Self::result_count(query.num_results, Self::MAX_WEB_RESULTS, "web");
 
         debug!(query = %query.query, num_results = query.num_results, "Brave search");
 
@@ -87,7 +102,7 @@ impl SearchProvider for BraveSearchProvider {
             .header("X-Subscription-Token", &self.api_key)
             .query(&[
                 ("q", query.query.as_str()),
-                ("count", &query.num_results.to_string()),
+                ("count", &count.to_string()),
             ]);
 
         if let Some(ref lang) = query.language {
@@ -160,6 +175,7 @@ impl SearchProvider for BraveSearchProvider {
 impl ImageSearchProvider for BraveSearchProvider {
     async fn search_images(&self, query: SearchQuery) -> Result<Vec<ImageSearchResult>, SearchError> {
         let url = format!("{}/images/search", self.base_url);
+        let count = Self::result_count(query.num_results, Self::MAX_IMAGE_RESULTS, "images");
 
         debug!(query = %query.query, num_results = query.num_results, "Brave image search");
 
@@ -170,7 +186,7 @@ impl ImageSearchProvider for BraveSearchProvider {
             .header("X-Subscription-Token", &self.api_key)
             .query(&[
                 ("q", query.query.as_str()),
-                ("count", &query.num_results.to_string()),
+                ("count", &count.to_string()),
             ]);
 
         if let Some(ref lang) = query.language {
@@ -235,6 +251,32 @@ impl ImageSearchProvider for BraveSearchProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn web_and_image_counts_are_bounded_in_actual_http_requests() {
+        use wiremock::{matchers::{method, path, query_param}, Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        let mut provider = BraveSearchProvider::new("test-key").with_base_url(server.uri());
+        provider.client = Client::builder().no_proxy().build().unwrap();
+        let cases = [
+            (0, 1, 1), (1, 1, 1), (10, 10, 10), (20, 20, 20), (21, 20, 21),
+            (50, 20, 50), (100, 20, 100), (200, 20, 200), (201, 20, 200),
+            (u32::MAX, 20, 200),
+        ];
+        for (requested, web_count, image_count) in cases {
+            let query = format!("fixture-{requested}");
+            for (endpoint, count) in [("/web/search", web_count), ("/images/search", image_count)] {
+                Mock::given(method("GET")).and(path(endpoint))
+                    .and(query_param("q", &query)).and(query_param("count", count.to_string()))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(
+                        serde_json::json!({"web":{"results":[]},"results":[]})
+                    )).expect(1).mount(&server).await;
+            }
+            provider.search(SearchQuery::new(&query, requested)).await.unwrap();
+            provider.search_images(SearchQuery::new(&query, requested)).await.unwrap();
+        }
+        assert_eq!(server.received_requests().await.unwrap().len(), cases.len() * 2);
+    }
 
     #[test]
     fn test_brave_provider_creation() {

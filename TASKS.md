@@ -2,6 +2,16 @@
 
 ## 1. Executive Summary
 
+### Brave result bounds and explicit fallback control (2026-09-20)
+
+- [x] Enforce Brave endpoint result-count bounds before HTTP requests, including saved oversized values, zero and direct/custom-count calls.
+- [x] Honor search_fallback_enabled for web and image searches in either provider direction; expose and persist the setting in Settings and verify no disabled fallback requests or charges.
+- [x] Move Results per Query into Search beside the provider controls, preserve its saved value, clarify endpoint limits, and make Research use the same setting instead of a fixed count of 8.
+
+Results-setting follow-up: the existing key/value is preserved, so no migration is needed. Research now uses SearchManager's configured count. Verified with 8 existing Settings tests, 14 focused Chromium/WebKit checks, the full 272-test Rust suite, Svelte checks, frontend/native builds, and `git diff --check`.
+
+Verification: 272 Rust tests, 83 frontend tests and 42 Chromium/WebKit checks passed; Svelte reports zero errors/warnings; frontend/native builds and `git diff --check` passed. Mock HTTP requests verify Brave count bounds for web (1–20) and images (1–200), including 100 and u32::MAX. Routing tests cover both provider directions, enabled/disabled policy, successful/failed primary responses, and backup accounting. Settings tests verify Save/reopen, retained API keys and Discard. Existing fallback defaults and saved choices are preserved; changes affect new runs. Public endpoint contracts are linked in README; no paid live search was needed.
+
 ### Search pricing defaults and actionable unknown costs (2026-09-20)
 
 - [x] Default Brave/Serper rates to zero, migrate former empty defaults once, and preserve configured rates and historical accounting.

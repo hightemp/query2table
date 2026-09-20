@@ -31,6 +31,25 @@ describe('LLM provider settings', () => {
 		);
 	});
 
+	it('saves and restores the search fallback choice without clearing provider keys', async () => {
+		await settings.save('brave_api_key', 'fixture-brave');
+		await settings.save('serper_api_key', 'fixture-serper');
+		const page = render(SettingsPage);
+		const fallback = screen.getByRole('combobox', { name: /^Use backup search provider / });
+		expect(fallback).toHaveValue('true');
+		await fireEvent.change(fallback, { target: { value: 'false' } });
+		expect(get(settings).get('search_fallback_enabled')).toBeUndefined();
+		await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+		await waitFor(() => expect(get(settings).get('search_fallback_enabled')).toBe('false'));
+		page.unmount();
+		render(SettingsPage);
+		expect(screen.getByRole('combobox', { name: /^Use backup search provider / })).toHaveValue(
+			'false'
+		);
+		expect(screen.getByLabelText(/^Brave Search API Key /)).toHaveValue('fixture-brave');
+		expect(screen.getByLabelText(/^Serper API Key /)).toHaveValue('fixture-serper');
+	});
+
 	it('explains unsupported GPT-OSS effort choices only for Ollama providers', async () => {
 		render(SettingsPage);
 		await fireEvent.change(screen.getByRole('combobox', { name: /^Provider / }), {

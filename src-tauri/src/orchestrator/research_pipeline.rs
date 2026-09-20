@@ -20,8 +20,6 @@ use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
 
 /// Maximum number of agent tool-call iterations per research run.
 const DEFAULT_MAX_STEPS: u32 = 16;
-/// Number of search results to feed back to the agent per search.
-const SEARCH_RESULTS_PER_QUERY: u32 = 8;
 /// Max characters of fetched page markdown to feed back to the agent.
 const FETCH_MARKDOWN_CHAR_LIMIT: usize = 8000;
 
@@ -164,7 +162,7 @@ impl ResearchPipeline {
 
                     search_count += 1;
                     let (observation, failed) = match search
-                        .search_with_count(&query, SEARCH_RESULTS_PER_QUERY)
+                        .search(&query)
                         .await
                     {
                         Ok(results) => (format_search_results(&results), false),

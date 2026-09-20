@@ -16,6 +16,7 @@ export const test = base.extend({
 				llm_temperature: '0.2',
 				llm_max_tokens: '4096',
 				search_provider: 'brave',
+				search_fallback_enabled: 'true',
 				brave_price_per_1000: '0',
 				serper_price_per_1000: '0',
 				max_parallel_fetches: '8',
