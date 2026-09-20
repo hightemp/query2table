@@ -98,6 +98,11 @@ export interface RowAddedEvent {
 	confidence: number;
 }
 
+export interface RowsReplacedEvent {
+	run_id: string;
+	rows: { id: string; data: Record<string, unknown>; confidence: number }[];
+}
+
 export interface ProgressStats {
 	rows_found: number;
 	pages_fetched: number;
@@ -111,6 +116,54 @@ export interface ProgressStats {
 export interface ProgressEvent {
 	run_id: string;
 	stats: ProgressStats;
+}
+
+export interface PriceQuote {
+	input_per_million: number;
+	output_per_million: number;
+	cached_input_per_million?: number | null;
+	cache_write_per_million?: number | null;
+	per_request: number;
+	source: string;
+	credit_based: boolean;
+}
+
+export interface CostLine {
+	provider: string;
+	model: string;
+	requested_model?: string;
+	calls: number;
+	reported_usd: number;
+	estimated_usd: number;
+	unpriced_calls: number;
+	prompt_tokens: number;
+	completion_tokens: number;
+	pricing: PriceQuote | null;
+}
+
+export interface Accounting {
+	spent_usd: number;
+	max_budget_usd: number;
+	reported_usd: number;
+	estimated_usd: number;
+	reported_calls: number;
+	estimated_calls: number;
+	unpriced_calls: number;
+	pending_calls: number;
+	missing_usage_calls: number;
+	prompt_tokens: number;
+	completion_tokens: number;
+	reasoning_tokens: number;
+	cached_prompt_tokens: number;
+	llm_calls: number;
+	search_calls: number;
+	fetch_calls: number;
+	breakdown: CostLine[];
+}
+
+export interface AccountingEvent {
+	run_id: string;
+	accounting: Accounting;
 }
 
 export interface LogEntryEvent {
@@ -131,6 +184,7 @@ export interface RunErrorEvent {
 }
 
 export type LlmIssueCode =
+	| 'budget_limit'
 	| 'output_limit'
 	| 'context_limit'
 	| 'rate_limit'

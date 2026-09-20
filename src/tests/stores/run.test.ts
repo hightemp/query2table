@@ -77,7 +77,7 @@ describe('run controls and startup events', () => {
 		apiInvoke.mockRejectedValueOnce('Provider not configured');
 		await expect(startNewRun('query')).rejects.toBe('Provider not configured');
 		expect(get(runState)).toMatchObject({ status: 'failed', error: 'Provider not configured' });
-		expect(unlisten).toHaveBeenCalledTimes(11);
+		expect(unlisten).toHaveBeenCalledTimes(13);
 	});
 
 	it('cleans partial subscriptions and reports a listener setup failure', async () => {
@@ -85,7 +85,33 @@ describe('run controls and startup events', () => {
 		await expect(startNewRun('query')).rejects.toThrow('Listener unavailable');
 		expect(get(runState).status).toBe('failed');
 		expect(apiInvoke).not.toHaveBeenCalled();
-		expect(unlisten).toHaveBeenCalledTimes(10);
+		expect(unlisten).toHaveBeenCalledTimes(12);
+	});
+
+	it('reconciles canonical rows and accounting only for the current run and generation', async () => {
+		await startNewRun('query');
+		emit('row_added', { run_id: 'run-1', row_id: 'first', data: { name: 'Old' }, confidence: 0.5 });
+		emit('row_added', {
+			run_id: 'run-1',
+			row_id: 'duplicate',
+			data: { name: 'Old' },
+			confidence: 0.7,
+		});
+		const canonical = [{ id: 'first', data: { name: 'Merged' }, confidence: 0.9 }];
+		emit('rows_replaced', { run_id: 'wrong-run', rows: [] });
+		expect(get(runState).rows).toHaveLength(2);
+		emit('rows_replaced', { run_id: 'run-1', rows: canonical });
+		expect(get(runState).rows).toEqual(canonical);
+		emit('accounting', { run_id: 'run-1', accounting: { spent_usd: 0.3, unpriced_calls: 1 } });
+		expect(get(runState).accounting).toMatchObject({ spent_usd: 0.3 });
+		const stale = callbacks.get('run:rows_replaced')!;
+		const staleCost = callbacks.get('run:accounting')!;
+		resetRun();
+		await startNewRun('another query');
+		stale({ payload: { run_id: 'run-1', rows: canonical } });
+		staleCost({ payload: { run_id: 'run-1', accounting: { spent_usd: 999 } } });
+		expect(get(runState).rows).toEqual([]);
+		expect(get(runState).accounting).toBeNull();
 	});
 
 	it('queues Cancel during startup and waits for backend cancellation before changing status', async () => {

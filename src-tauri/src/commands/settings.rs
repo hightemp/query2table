@@ -138,6 +138,7 @@ pub async fn update_setting(
     key: String,
     value: String,
 ) -> Result<(), String> {
+    crate::providers::accounting::validate_pricing_setting(&key, &value)?;
     state
         .db
         .set_setting(&key, &value)

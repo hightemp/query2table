@@ -44,6 +44,9 @@ impl LinkRanker {
         let mut ranked: Vec<RankedLink> = Vec::new();
 
         for candidate in &candidates {
+            if llm.spending_limit_reached() {
+                break;
+            }
             match Self::score_one(query, candidate, llm, max_text_chars).await {
                 Ok((score, description)) => {
                     let description = if description.trim().is_empty() {

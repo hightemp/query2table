@@ -37,6 +37,14 @@ pub(super) async fn response_json(
     response: reqwest::Response,
     model: &str,
 ) -> Result<serde_json::Value, LlmError> {
+    response_json_with_cost(response, model, false).await
+}
+
+pub(super) async fn response_json_with_cost(
+    response: reqwest::Response,
+    model: &str,
+    openrouter_cost: bool,
+) -> Result<serde_json::Value, LlmError> {
     let status = response.status().as_u16();
     let retry_after_ms = response
         .headers()
@@ -52,7 +60,10 @@ pub(super) async fn response_json(
         .and_then(|v| v.get("error").or_else(|| v.pointer("/choices/0/error")))
         .filter(|error| !error.is_null());
     if !(200..300).contains(&status) || envelope.is_some() {
-        return Err(classify_error(status, envelope, model, retry_after_ms));
+        let usage = value
+            .map(|v| super::types::LlmUsage::from_json(v, openrouter_cost))
+            .unwrap_or_default();
+        return Err(classify_error(status, envelope, model, retry_after_ms).with_usage(usage));
     }
     parsed.map_err(|_| {
         LlmError::ParseError(

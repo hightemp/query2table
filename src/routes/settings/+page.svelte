@@ -5,6 +5,8 @@
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import { debugUi } from '$lib/utils/diagnostics';
 	import LlmModelPicker from '$lib/components/settings/LlmModelPicker.svelte';
+	import ModelPricing from '$lib/components/settings/ModelPricing.svelte';
+	import { validPricingOverrides } from '$lib/utils/pricing';
 	import AppFiles from '$lib/components/settings/AppFiles.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { errorText } from '$lib/utils/errors';
@@ -213,6 +215,19 @@
 					description: 'Your Serper API key',
 					type: 'password',
 				},
+				{
+					key: 'brave_price_per_1000',
+					label: 'Brave USD / 1,000 requests',
+					description: 'Your plan’s effective rate. Leave blank if unknown; explicit 0 means free.',
+					type: 'number',
+				},
+				{
+					key: 'serper_price_per_1000',
+					label: 'Serper USD / 1,000 requests',
+					description:
+						'Your plan’s effective rate. Retries and fallback attempts are counted separately.',
+					type: 'number',
+				},
 			],
 		},
 		{
@@ -333,6 +348,24 @@
 		['ollama', 'ollama_cloud'].includes(settingsMap.get('llm_provider') ?? '') &&
 			/(?:^|\/)gpt-oss(?:[:\-]|$)/i.test(activeModel)
 	);
+	let activeProvider = $derived(settingsMap.get('llm_provider') || 'openrouter');
+	let activeEndpoint = $derived(
+		activeProvider === 'openrouter'
+			? 'https://openrouter.ai/api/v1'
+			: activeProvider === 'ollama'
+				? (settingsMap.get('ollama_url') ?? 'http://localhost:11434')
+				: activeProvider === 'ollama_cloud'
+					? (settingsMap.get('ollama_cloud_url') ?? 'https://ollama.com')
+					: (settingsMap.get('openai_base_url') ?? 'http://localhost:8080/v1')
+	);
+	let invalidPricing = $derived(
+		!validPricingOverrides(settingsMap.get('llm_pricing_overrides') ?? '{}') ||
+			['brave_price_per_1000', 'serper_price_per_1000'].some((key) => {
+				const value = settingsMap.get(key) ?? '';
+				return value.trim() !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0);
+			})
+	);
+
 	let invalidReasoning = $derived(
 		isGptOss && ['off', 'max'].includes(getValue('llm_reasoning_effort'))
 	);
@@ -415,7 +448,7 @@
 	}
 
 	async function saveAll(): Promise<boolean> {
-		if (saving || invalidReasoning) return false;
+		if (saving || invalidReasoning || invalidPricing) return false;
 		saving = true;
 		saveError = '';
 		const snapshot = new Map([...dirty].map((key) => [key, settingsMap.get(key) ?? '']));
@@ -512,7 +545,7 @@
 			<button
 				class="button primary"
 				onclick={() => saveAll()}
-				disabled={saving || invalidReasoning || !dirty.size}
+				disabled={saving || invalidReasoning || invalidPricing || !dirty.size}
 				><SaveIcon size={16} />{saving ? 'Saving…' : 'Save'}</button
 			>
 		</div>
@@ -527,6 +560,10 @@
 			>{/each}
 	</nav>
 	<div class="settings-scroll" tabindex="-1">
+		{#if invalidPricing}<p role="alert">
+				Enter non-negative prices. Each custom model needs both input and output rates; leave
+				unknown search prices blank.
+			</p>{/if}
 		{#if saveError}<ErrorNotice error={saveError} context="settings" />{/if}
 
 		{#each groups as group, groupIndex}
@@ -620,6 +657,8 @@
 									<input
 										id={setting.key}
 										type="number"
+										step={setting.key.endsWith('_price_per_1000') ? 'any' : undefined}
+										min={setting.key.endsWith('_price_per_1000') ? 0 : undefined}
 										value={getValue(setting.key)}
 										oninput={(e) => handleChange(setting.key, (e.target as HTMLInputElement).value)}
 									/>
@@ -636,6 +675,13 @@
 						</div>
 					{/each}
 				</div>
+				{#if groupIndex === 0}<ModelPricing
+						provider={activeProvider}
+						endpoint={activeEndpoint}
+						model={activeModel}
+						value={settingsMap.get('llm_pricing_overrides') ?? '{}'}
+						onchange={(value) => handleChange('llm_pricing_overrides', value)}
+					/>{/if}
 			</section>
 		{/each}
 
@@ -727,7 +773,7 @@
 			<button class="button" disabled={saving} onclick={() => leave(false)}>Discard</button>
 			<button
 				class="button primary"
-				disabled={saving || invalidReasoning}
+				disabled={saving || invalidReasoning || invalidPricing}
 				onclick={() => leave(true)}>Save and leave</button
 			>
 		{/snippet}

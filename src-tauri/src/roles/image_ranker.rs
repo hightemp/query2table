@@ -34,7 +34,11 @@ impl ImageRanker {
         let mut all_ranked: Vec<RankedImageResult> = Vec::new();
 
         for chunk in results.chunks(BATCH_SIZE) {
-            let items: Vec<String> = chunk.iter()
+            if llm.spending_limit_reached() {
+                break;
+            }
+            let items: Vec<String> = chunk
+                .iter()
                 .enumerate()
                 .map(|(i, r)| {
                     let mut desc = format!("{}. title: \"{}\"", i + 1, r.title);
@@ -73,8 +77,11 @@ impl ImageRanker {
                 Message::user(prompt),
             ];
 
-            let response = llm.complete_for_stage("image_ranker", messages, true).await
-                .map_err(|e| format!("LLM ranking failed: {e}"))?;
+            let response = match llm.complete_for_stage("image_ranker", messages, true).await {
+                Ok(response) => response,
+                Err(error) if error.code() == "budget_limit" => break,
+                Err(error) => return Err(format!("LLM ranking failed: {error}")),
+            };
 
             let scores = Self::parse_scores(&response.content, chunk.len()).unwrap_or_else(|e| {
                 llm.report_invalid_response("image_ranker", &format!("Invalid relevance scores: {e}. This image batch was skipped."), &response);

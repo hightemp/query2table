@@ -159,6 +159,11 @@ impl LlmProvider for MockLlmProvider {
         };
 
         Ok(CompletionResponse {
+            usage: query2table_lib::providers::llm::LlmUsage {
+                prompt_tokens: Some(100),
+                completion_tokens: Some(200),
+                ..Default::default()
+            },
             content,
             model: "mock-model".to_string(),
             prompt_tokens: 100,
@@ -223,6 +228,7 @@ impl SearchProvider for MockSearchProvider {
     async fn search(&self, _query: SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
         if let Some(ref err) = self.error {
             return Err(match err {
+                SearchError::BudgetExceeded => SearchError::BudgetExceeded,
                 SearchError::RequestFailed(msg) => SearchError::RequestFailed(msg.clone()),
                 SearchError::AuthError(msg) => SearchError::AuthError(msg.clone()),
                 SearchError::RateLimited { retry_after_secs } => SearchError::RateLimited { retry_after_secs: *retry_after_secs },
@@ -283,6 +289,7 @@ pub fn test_pipeline_config() -> PipelineConfig {
             brave_api_key: "test-key".to_string(),
             serper_api_key: String::new(),
             num_results: 10,
+            ..SearchConfig::default()
         },
         stop: StopConfig {
             target_row_count: 100,

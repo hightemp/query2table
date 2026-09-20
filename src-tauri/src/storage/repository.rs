@@ -8,6 +8,13 @@ pub struct Repository {
     pool: SqlitePool,
 }
 
+pub struct EntityMerge {
+    pub member_ids: Vec<String>,
+    pub group_id: String,
+    pub data: serde_json::Value,
+    pub confidence: f64,
+}
+
 impl Repository {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -61,6 +68,12 @@ impl Repository {
             .bind(run_id)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    pub async fn merge_run_stats(&self, run_id: &str, patch_json: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE runs SET stats = json_patch(CASE WHEN json_valid(stats) THEN stats ELSE '{}' END, json(?)), updated_at = unixepoch() WHERE id = ?")
+            .bind(patch_json).bind(run_id).execute(&self.pool).await?;
         Ok(())
     }
 
@@ -369,6 +382,66 @@ impl Repository {
         .bind(id)
         .execute(&self.pool)
         .await?;
+        Ok(())
+    }
+
+    /// Apply a complete merge batch atomically, keeping the first member's ID.
+    /// Every source record is moved before a duplicate entity is removed.
+    pub async fn merge_entity_rows(
+        &self,
+        run_id: &str,
+        groups: &[EntityMerge],
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        let mut seen = std::collections::HashSet::new();
+        for group in groups {
+            if group.member_ids.len() < 2 {
+                return Err(sqlx::Error::Protocol(
+                    "A merge needs at least two members".into(),
+                ));
+            }
+            for id in &group.member_ids {
+                if !seen.insert(id) {
+                    return Err(sqlx::Error::Protocol(
+                        "An entity belongs to multiple merge groups".into(),
+                    ));
+                }
+                let exists: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM entity_rows WHERE id = ? AND run_id = ?)",
+                )
+                .bind(id)
+                .bind(run_id)
+                .fetch_one(&mut *tx)
+                .await?;
+                if !exists {
+                    return Err(sqlx::Error::Protocol(
+                        "Merge member is missing or belongs to another run".into(),
+                    ));
+                }
+            }
+            let representative = &group.member_ids[0];
+            sqlx::query("UPDATE entity_rows SET data = ?, confidence = ?, dedup_group_id = ?, status = 'deduplicated' WHERE id = ? AND run_id = ?")
+                .bind(group.data.to_string()).bind(group.confidence).bind(&group.group_id)
+                .bind(representative).bind(run_id).execute(&mut *tx).await?;
+            for duplicate in &group.member_ids[1..] {
+                sqlx::query("UPDATE row_sources SET entity_row_id = ? WHERE entity_row_id = ?")
+                    .bind(representative)
+                    .bind(duplicate)
+                    .execute(&mut *tx)
+                    .await?;
+                sqlx::query("DELETE FROM entity_rows WHERE id = ? AND run_id = ?")
+                    .bind(duplicate)
+                    .bind(run_id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+        tx.commit().await?;
+        debug!(
+            run_id,
+            groups = groups.len(),
+            "[FIX:dedup] Committed entity merges and preserved source records"
+        );
         Ok(())
     }
 
@@ -824,6 +897,170 @@ mod tests {
         let db = Database::with_pool(pool.clone()).await;
         db.migrate().await.unwrap();
         (Repository::new(pool), db)
+    }
+
+    #[tokio::test]
+    async fn dedup_merges_exact_members_and_preserves_all_source_metadata() {
+        let (repo, _db) = test_repo().await;
+        repo.create_run("merge", "test", "{}").await.unwrap();
+        repo.create_run("other", "test", "{}").await.unwrap();
+        let query = repo
+            .create_search_query("merge", "query", "en", None, "brave", 0)
+            .await
+            .unwrap();
+        let result = repo
+            .create_search_result(
+                &query,
+                "merge",
+                "https://example.com/shared",
+                "Title",
+                "Snippet",
+                1,
+            )
+            .await
+            .unwrap();
+        let page = repo
+            .create_fetched_page(
+                &result,
+                "merge",
+                "https://example.com/shared",
+                "success",
+                Some("Evidence"),
+                Some(8),
+                Some(1),
+                Some(200),
+            )
+            .await
+            .unwrap();
+        let mut ids = Vec::new();
+        let mut source_ids = Vec::new();
+        for (index, name) in ["Alpha", "Beta", "Alpha", "Gamma", "Beta"]
+            .iter()
+            .enumerate()
+        {
+            let id = repo
+                .create_entity_row(
+                    "merge",
+                    &serde_json::json!({"name":name}).to_string(),
+                    0.8,
+                    "validated",
+                )
+                .await
+                .unwrap();
+            let source = repo
+                .create_row_source(
+                    &id,
+                    "https://example.com/shared",
+                    Some(&format!("Title {index}")),
+                    Some(&format!("Evidence {index}")),
+                    Some(&page),
+                )
+                .await
+                .unwrap();
+            ids.push(id);
+            source_ids.push(source);
+        }
+        let unrelated = repo
+            .create_entity_row("other", r#"{"name":"Elsewhere"}"#, 0.9, "validated")
+            .await
+            .unwrap();
+        let groups = vec![
+            EntityMerge {
+                member_ids: vec![ids[0].clone(), ids[2].clone()],
+                group_id: "alpha".into(),
+                data: serde_json::json!({"name":"Alpha","count":0,"enabled":false}),
+                confidence: 0.95,
+            },
+            EntityMerge {
+                member_ids: vec![ids[1].clone(), ids[4].clone()],
+                group_id: "beta".into(),
+                data: serde_json::json!({"name":"Beta"}),
+                confidence: 0.9,
+            },
+        ];
+        repo.merge_entity_rows("merge", &groups).await.unwrap();
+        let rows = repo.get_entity_rows_by_run("merge").await.unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(repo.count_entity_rows("merge").await.unwrap(), 3);
+        let alpha = rows.iter().find(|row| row.id == ids[0]).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&alpha.data).unwrap(),
+            groups[0].data
+        );
+        assert!(rows
+            .iter()
+            .any(|row| row.id == ids[3] && row.status == "validated"));
+        for (representative, members) in [(&ids[0], vec![0, 2]), (&ids[1], vec![1, 4])] {
+            let sources = repo.get_row_sources(representative).await.unwrap();
+            assert_eq!(sources.len(), 2);
+            for index in members {
+                let source = sources
+                    .iter()
+                    .find(|source| source.id == source_ids[index])
+                    .unwrap();
+                assert_eq!(
+                    source.title.as_deref(),
+                    Some(format!("Title {index}").as_str())
+                );
+                assert_eq!(
+                    source.snippet.as_deref(),
+                    Some(format!("Evidence {index}").as_str())
+                );
+                assert_eq!(source.fetched_page_id.as_deref(), Some(page.as_str()));
+            }
+        }
+        assert_eq!(
+            repo.get_entity_rows_by_run("other").await.unwrap()[0].id,
+            unrelated
+        );
+        assert!(repo.get_row_sources(&ids[2]).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn invalid_later_merge_rolls_back_every_prior_change() {
+        let (repo, _db) = test_repo().await;
+        repo.create_run("merge", "test", "{}").await.unwrap();
+        let first = repo
+            .create_entity_row("merge", r#"{"name":"Alpha"}"#, 0.8, "validated")
+            .await
+            .unwrap();
+        let second = repo
+            .create_entity_row("merge", r#"{"name":"Alpha"}"#, 0.8, "validated")
+            .await
+            .unwrap();
+        let source = repo
+            .create_row_source(
+                &second,
+                "https://example.com",
+                Some("Title"),
+                Some("Snippet"),
+                None,
+            )
+            .await
+            .unwrap();
+        let groups = vec![
+            EntityMerge {
+                member_ids: vec![first.clone(), second.clone()],
+                group_id: "valid".into(),
+                data: serde_json::json!({"name":"Changed"}),
+                confidence: 1.0,
+            },
+            EntityMerge {
+                member_ids: vec!["missing".into(), "missing2".into()],
+                group_id: "invalid".into(),
+                data: serde_json::json!({}),
+                confidence: 1.0,
+            },
+        ];
+        assert!(repo.merge_entity_rows("merge", &groups).await.is_err());
+        assert_eq!(repo.count_entity_rows("merge").await.unwrap(), 2);
+        assert_eq!(repo.get_row_sources(&second).await.unwrap()[0].id, source);
+        assert!(repo
+            .get_entity_rows_by_run("merge")
+            .await
+            .unwrap()
+            .iter()
+            .all(|row| row.status == "validated" && row.data.contains("Alpha")));
     }
 
     #[tokio::test]

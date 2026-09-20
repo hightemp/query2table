@@ -33,6 +33,7 @@ impl SearchExecutor {
         let mut all_results = Vec::new();
         let mut seen_urls = std::collections::HashSet::new();
         let mut failed_count = 0;
+        let mut executed_count = 0;
 
         // Execute queries sorted by priority (1 = highest)
         let mut sorted_queries: Vec<&PlannedSearch> = queries.iter().collect();
@@ -57,6 +58,10 @@ impl SearchExecutor {
                         }
                     }
                 }
+                Err(SearchError::BudgetExceeded) => {
+                    warn!("[FIX:cost] Stopping searches at spending limit");
+                    break;
+                }
                 Err(e) => {
                     warn!(
                         query = %query.query_text,
@@ -66,6 +71,7 @@ impl SearchExecutor {
                     failed_count += 1;
                 }
             }
+            executed_count += 1;
         }
 
         debug!(
@@ -77,7 +83,7 @@ impl SearchExecutor {
 
         Ok(CollectedResults {
             results: all_results,
-            total_queries_executed: queries.len(),
+            total_queries_executed: executed_count,
             failed_queries: failed_count,
         })
     }

@@ -567,8 +567,31 @@ async fn test_deduplication() {
     assert!(result.is_ok(), "Pipeline should complete: {:?}", result.err());
     assert_eq!(result.unwrap(), PipelineState::Completed);
 
+    let canonical = repo.get_entity_rows_by_run(&run_id).await.unwrap();
+    assert_eq!(canonical.len(), 2);
+    let names: std::collections::HashSet<_> = canonical
+        .iter()
+        .map(|row| {
+            serde_json::from_str::<serde_json::Value>(&row.data).unwrap()["name"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(
+        names,
+        std::collections::HashSet::from(["SAP SE".to_string(), "Siemens AG".to_string()])
+    );
+    for row in &canonical {
+        assert!(repo.get_row_sources(&row.id).await.unwrap().len() > 1);
+    }
+
     // Verify stats contain dedup info
-    let run = repo.get_run(&run_id).await.unwrap().expect("Run should exist");
+    let run = repo
+        .get_run(&run_id)
+        .await
+        .unwrap()
+        .expect("Run should exist");
     if let Some(stats_str) = &run.stats {
         let stats: serde_json::Value = serde_json::from_str(stats_str).unwrap();
         let rows_found = stats["rows_found"].as_u64().unwrap_or(0);
@@ -594,6 +617,10 @@ async fn test_budget_stop_condition() {
     let mut config = test_pipeline_config();
     config.max_budget_usd = 0.0001; // Extremely low budget
     config.stop.max_budget_usd = 0.0001;
+    let scope =
+        serde_json::to_string(&("openrouter", "https://openrouter.ai/api/v1", "mock-model"))
+            .unwrap();
+    config.llm.pricing_overrides=serde_json::json!({(scope): {"input_per_million":1.0,"output_per_million":1.0,"per_request":0.0,"source":"manual","credit_based":false}}).to_string();
     let fetcher = test_fetcher(&config);
 
     let mock_search = MockSearchProvider::new()
@@ -618,8 +645,19 @@ async fn test_budget_stop_condition() {
     pipeline.set_fetcher(fetcher);
 
     let result = pipeline.run().await;
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap(), PipelineState::Completed);
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Run spending limit reached"));
+    let run = repo.get_run(&run_id).await.unwrap().unwrap();
+    assert_eq!(run.status, "failed");
+    let stats: serde_json::Value = serde_json::from_str(run.stats.as_ref().unwrap()).unwrap();
+    assert_eq!(stats["accounting"]["llm_calls"], 1);
+    assert_eq!(stats["accounting"]["search_calls"], 0);
+    assert_eq!(stats["accounting"]["prompt_tokens"], 100);
+    assert_eq!(stats["accounting"]["completion_tokens"], 200);
+    assert_eq!(stats["accounting"]["estimated_calls"], 1);
+    assert!((stats["spent_usd"].as_f64().unwrap() - 0.0003).abs() < 1e-9);
 }
 
 // =============================================================================

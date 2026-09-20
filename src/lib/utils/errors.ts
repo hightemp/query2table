@@ -34,6 +34,20 @@ export function presentError(error: unknown, context: ErrorContext = 'run', code
 			'Copy the displayed path and open it manually in your file manager.');
 	}
 
+	if (/pricing settings are invalid/.test(text)) {
+		return result(
+			'Pricing settings are incomplete',
+			'Some custom rates could not be saved.',
+			'Enter non-negative input and output rates, or turn custom rates off. Leave search prices blank when unknown.'
+		);
+	}
+	if (matches('budget_limit', /run spending limit reached/)) {
+		return result(
+			'The run spending limit was reached',
+			'No more provider requests can start within this run’s accounted budget.',
+			'Review Usage & cost. Increase Max Cost for a new run if you want to continue. Unpriced and already running requests can exceed the displayed limit.'
+		);
+	}
 	if (matches('model_not_found', /model.*(?:not found|not available|does not exist|unavailable)|(?:unknown|missing) model/)) {
 		return result('The selected model is unavailable', 'The service could not find or provide the requested model.',
 			'Choose an available model from the provider list. For a local server, install or load the model and check its exact name.', '/settings#llm_provider');

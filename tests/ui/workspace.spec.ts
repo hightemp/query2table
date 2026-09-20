@@ -307,3 +307,109 @@ test('Empty history results and image close during loading leave no stale dialog
 	await page.evaluate(() => (window as any).__uiFixture.pendingImages[0]('data:invalid'));
 	await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+
+test('Canonical live rows refresh an open detail panel and remove merged duplicates after cancellation', async ({
+	page,
+}) => {
+	await page.goto('/');
+	await page.getByLabel('What would you like to find?').fill('Find companies');
+	await page.getByRole('button', { name: 'Start Research' }).click();
+	await emit(page, 'run:schema_proposed', {
+		run_id: 'live',
+		columns: [{ name: 'Name', type: 'text', description: '', required: true }],
+	});
+	await page.getByRole('button', { name: 'Confirm Schema' }).click();
+	await emit(page, 'run:status_changed', { run_id: 'live', status: 'running' });
+	for (const id of ['first', 'duplicate'])
+		await emit(page, 'run:row_added', {
+			run_id: 'live',
+			row_id: id,
+			data: { Name: 'Alpha' },
+			confidence: 0.8,
+		});
+	await page.getByRole('button', { name: 'Open row 1 details', exact: true }).click();
+	await expect(page.getByRole('dialog')).toContainText('Alpha');
+	await emit(page, 'run:status_changed', { run_id: 'live', status: 'cancelled' });
+	await emit(page, 'run:rows_replaced', {
+		run_id: 'live',
+		rows: [{ id: 'first', data: { Name: 'Alpha merged' }, confidence: 0.95 }],
+	});
+	await expect(page.getByRole('dialog')).toContainText('Alpha merged');
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() =>
+					(window as any).__uiFixture.calls.filter(
+						(call: any) => call.command === 'get_row_sources'
+					).length
+			)
+		)
+		.toBe(2);
+	await page.keyboard.press('Escape');
+	await expect(page.locator('.data-row')).toHaveCount(1);
+	await page.getByRole('button', { name: 'Open row 1 details', exact: true }).click();
+	await emit(page, 'run:rows_replaced', { run_id: 'live', rows: [] });
+	await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('Model tariffs are scoped, validated, saved and restored independently', async ({ page }) => {
+	await page.goto('/settings');
+	const custom = page.getByRole('checkbox', {
+		name: 'Use custom rates for this model and endpoint',
+	});
+	await custom.scrollIntoViewIfNeeded();
+	await custom.check();
+	await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+	await page.getByLabel('Input USD / 1M tokens', { exact: true }).fill('0.15');
+	await page.getByLabel('Output USD / 1M tokens', { exact: true }).fill('0.60');
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+	const model = page.getByRole('combobox', { name: /Ollama Cloud Model/ });
+	await model.scrollIntoViewIfNeeded();
+	await model.click();
+	await model.fill('model-0');
+	await page.getByRole('option', { name: 'model-0', exact: true }).click();
+	await expect(custom).not.toBeChecked();
+	await model.fill('deepseek-test');
+	await page.getByRole('option', { name: 'deepseek-test', exact: true }).click();
+	await expect(custom).toBeChecked();
+	await expect(page.getByLabel('Input USD / 1M tokens', { exact: true })).toHaveValue('0.15');
+});
+
+test('Actual accounting updates are shown even before results and distinguish partial totals', async ({
+	page,
+}) => {
+	await page.goto('/');
+	await page.getByLabel('What would you like to find?').fill('Find companies');
+	await page.getByRole('button', { name: 'Start Research' }).click();
+	const accounting = {
+		spent_usd: 0.25,
+		max_budget_usd: 1,
+		reported_usd: 0.25,
+		estimated_usd: 0,
+		reported_calls: 1,
+		estimated_calls: 0,
+		unpriced_calls: 1,
+		pending_calls: 0,
+		missing_usage_calls: 1,
+		prompt_tokens: 10,
+		completion_tokens: 20,
+		reasoning_tokens: 5,
+		cached_prompt_tokens: 0,
+		llm_calls: 1,
+		search_calls: 1,
+		fetch_calls: 0,
+		breakdown: [],
+	};
+	await emit(page, 'run:accounting', { run_id: 'live', accounting });
+	await expect(page.locator('.cost-summary > summary')).toContainText('Partial cost $0.2500');
+	await expect(page.locator('.cost-warning')).toContainText('unknown cost');
+	await page.locator('.cost-summary > summary').click();
+	await expect(page.locator('.cost-details')).toContainText('10 input');
+	await expect(page.locator('.cost-details')).toContainText('20 output');
+	await emit(page, 'run:accounting', {
+		run_id: 'another-run',
+		accounting: { ...accounting, spent_usd: 999 },
+	});
+	await expect(page.locator('.cost-summary > summary')).toContainText('$0.2500');
+});

@@ -96,6 +96,19 @@ On first launch the app creates a local SQLite database with default settings. O
 
 Stop conditions (target rows, max cost, max duration) are set per-query on the Query page.
 
+### Usage, prices, and spending limits
+
+**Usage & cost** distinguishes provider-reported charges, model-rate estimates, partial totals, and unknown costs. Every provider attempt is counted separately, including retries, fallback searches, failed completions with usage data, and cancelled requests whose final charge could not be obtained. Input/output usage comes from provider responses; thinking tokens are not charged a second time on top of output tokens.
+
+- **OpenRouter:** prefer the [reported request cost](https://openrouter.ai/docs/cookbook/administration/usage-accounting). If it is unavailable, estimate from reported tokens and the actual returned model's public catalog rates.
+- **Ollama Cloud:** estimate usage-credit consumption from [published model rates](https://ollama.com/pricing), including cached input and recognized peak pricing periods. Included credits, subscription payments, and cash charges can differ from this estimate. Unrecognized or unavailable tariffs remain unknown.
+- **Custom model rates:** configure input/output USD per million tokens in Settings. Rates belong to a specific provider, endpoint, and model. Explicit zero rates mean free usage; missing rates never silently become zero. Published rates are fetched without changing saved manual rates.
+- **Search:** configure your plan's effective USD per 1,000 requests separately for Brave and Serper, or leave the price blank if unknown. Failed attempts without billing data remain unpriced.
+
+The run's **Max Cost** prevents new provider requests once accounted spending reaches its cap. It is not a guaranteed invoice ceiling: estimates can differ from billing, unknown charges cannot be included, and requests already in flight may still incur charges. Use provider-side limits when a strict cap is required. Accounting survives completion, failure, cancellation, and empty-result runs. Earlier history entries are explicitly labeled as historical estimates.
+
+Deduplication preserves the first member's row ID, merges the group's values and source records transactionally, and reconciles the live table with history and export. Previously overwritten historical results cannot be reconstructed automatically; rerun those queries to obtain fresh results.
+
 Settings keep **Save** and **Discard** visible while scrolling. Section links jump directly to the relevant controls, and leaving with unsaved changes offers Save / Discard / Stay. Edits made during a save remain available for the next save.
 
 Results use a continuous, virtualized table with local search and keyboard sorting. Open a row's **Details** to read or copy complete values and inspect its saved sources. Research puts the answer before expandable activity. Images support grid/list views and keyboard previews; export and deletion show explicit progress and outcomes. Clearing the diagnostic **Logs** panel does not reset run activity.

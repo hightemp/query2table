@@ -97,6 +97,61 @@ pub struct LlmUsage {
     pub prompt_tokens: Option<u32>,
     pub completion_tokens: Option<u32>,
     pub reasoning_tokens: Option<u32>,
+    pub cached_prompt_tokens: Option<u32>,
+    pub cache_write_tokens: Option<u32>,
+    pub cost_usd: Option<f64>,
+    pub model: Option<String>,
+    pub remote_model: Option<String>,
+    pub remote_host: Option<String>,
+}
+
+impl LlmUsage {
+    pub fn from_json(value: &serde_json::Value, openrouter_cost: bool) -> Self {
+        let count = |pointer: &str| {
+            value
+                .pointer(pointer)
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u32::try_from(v).ok())
+        };
+        let cost = value
+            .pointer("/usage/cost_usd")
+            .or_else(|| {
+                openrouter_cost
+                    .then(|| value.pointer("/usage/cost"))
+                    .flatten()
+            })
+            .and_then(|value| value.as_f64())
+            .filter(|cost| cost.is_finite() && *cost >= 0.0);
+        Self {
+            prompt_tokens: count("/usage/prompt_tokens").or_else(|| count("/prompt_eval_count")),
+            completion_tokens: count("/usage/completion_tokens").or_else(|| count("/eval_count")),
+            reasoning_tokens: count("/usage/completion_tokens_details/reasoning_tokens"),
+            cached_prompt_tokens: count("/usage/prompt_tokens_details/cached_tokens")
+                .or_else(|| count("/prompt_eval_cached_count")),
+            cache_write_tokens: count("/usage/prompt_tokens_details/cache_write_tokens"),
+            cost_usd: cost,
+            model: value
+                .get("model")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+            remote_model: value
+                .get("remote_model")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+            remote_host: value
+                .get("remote_host")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+        }
+    }
+    pub fn has_measurements(&self) -> bool {
+        self.prompt_tokens.is_some()
+            || self.completion_tokens.is_some()
+            || self.cost_usd.is_some()
+            || self.reasoning_tokens.is_some()
+            || self.cached_prompt_tokens.is_some()
+            || self.cache_write_tokens.is_some()
+    }
 }
 
 /// A bounded, secret-free diagnostic emitted for every failed provider attempt.
@@ -125,11 +180,20 @@ pub struct CompletionResponse {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
+    pub usage: LlmUsage,
 }
 
 /// Error type for LLM provider operations.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum LlmError {
+    #[error("Run spending limit reached. Increase the run's Max Cost to send more requests.")]
+    BudgetExceeded,
+
+    #[error("{error}")]
+    WithUsage {
+        error: Box<LlmError>,
+        usage: Box<LlmUsage>,
+    },
     #[error("API request failed: {0}")]
     RequestFailed(String),
 
@@ -164,10 +228,10 @@ pub enum LlmError {
     UnsupportedSetting(String),
 
     #[error("The model reached the output token limit ({limit}) before finishing its answer. Increase Max Tokens, reduce reasoning effort, or request a smaller output.")]
-    OutputLimit { limit: u32, usage: LlmUsage },
+    OutputLimit { limit: u32, usage: Box<LlmUsage> },
 
     #[error("The model returned an empty answer. Try a lower reasoning effort or a larger Max Tokens limit.")]
-    EmptyResponse { usage: LlmUsage },
+    EmptyResponse { usage: Box<LlmUsage> },
 
     #[error("The provider request timed out. Check the connection and model availability, or try a faster model.")]
     Timeout,
@@ -179,6 +243,8 @@ pub enum LlmError {
 impl LlmError {
     pub fn code(&self) -> &'static str {
         match self {
+            Self::BudgetExceeded => "budget_limit",
+            Self::WithUsage { error, .. } => error.code(),
             Self::OutputLimit { .. } => "output_limit",
             Self::ContextLimit => "context_limit",
             Self::RateLimited { .. } => "rate_limit",
@@ -197,6 +263,9 @@ impl LlmError {
     }
 
     pub fn retryable(&self) -> bool {
+        if let Self::WithUsage { error, .. } = self {
+            return error.retryable();
+        }
         matches!(
             self,
             Self::RateLimited { .. }
@@ -212,15 +281,29 @@ impl LlmError {
 
     pub fn usage(&self) -> LlmUsage {
         match self {
-            Self::OutputLimit { usage, .. } | Self::EmptyResponse { usage } => usage.clone(),
+            Self::WithUsage { usage, .. }
+            | Self::OutputLimit { usage, .. }
+            | Self::EmptyResponse { usage } => usage.as_ref().clone(),
             _ => LlmUsage::default(),
         }
     }
 
     pub fn retry_after_ms(&self) -> Option<u64> {
         match self {
+            Self::WithUsage { error, .. } => error.retry_after_ms(),
             Self::RateLimited { retry_after_ms } => Some(*retry_after_ms),
             _ => None,
+        }
+    }
+
+    pub fn with_usage(self, usage: LlmUsage) -> Self {
+        if usage.has_measurements() {
+            Self::WithUsage {
+                error: Box::new(self),
+                usage: Box::new(usage),
+            }
+        } else {
+            self
         }
     }
 }
@@ -228,6 +311,14 @@ impl LlmError {
 /// Trait that all LLM providers must implement.
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
+    async fn pricing(
+        &self,
+        _model: &str,
+        _usage: &LlmUsage,
+        _at: chrono::DateTime<chrono::Utc>,
+    ) -> Option<crate::providers::accounting::PriceQuote> {
+        None
+    }
     /// Send a chat completion request and return the response.
     async fn chat_completion(
         &self,

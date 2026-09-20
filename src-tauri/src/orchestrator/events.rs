@@ -18,6 +18,26 @@ pub struct EventPublisher {
 }
 
 impl EventPublisher {
+    pub fn emit_accounting(&self, accounting: &super::budget_tracker::BudgetSnapshot) {
+        if let Err(error) = self.app.emit(
+            "run:accounting",
+            serde_json::json!({"run_id":self.run_id,"accounting":accounting}),
+        ) {
+            tracing::error!(%error, "Failed to publish accounting");
+        }
+    }
+    pub fn emit_rows_replaced(&self, rows: &[crate::storage::repository::EntityRowRow]) {
+        let rows: Vec<_> = rows.iter().map(|row| serde_json::json!({
+            "id": row.id, "data": serde_json::from_str::<serde_json::Value>(&row.data).unwrap_or_default(),
+            "confidence": row.confidence,
+        })).collect();
+        if let Err(error) = self.app.emit(
+            "run:rows_replaced",
+            serde_json::json!({ "run_id": self.run_id, "rows": rows }),
+        ) {
+            tracing::error!(%error, "Failed to publish canonical rows");
+        }
+    }
     pub fn new(app: AppHandle, run_id: String) -> Self {
         Self { app, run_id }
     }

@@ -9,11 +9,11 @@
 		resetRun,
 	} from '$lib/stores/run';
 	import type { SchemaColumn } from '$lib/types';
-	import type { RunRow } from '$lib/stores/run';
 	import type { StopConditions } from '$lib/api/tauri';
 	import SchemaEditor from '$lib/components/run/SchemaEditor.svelte';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
+	import CostSummary from '$lib/components/run/CostSummary.svelte';
 	import ProgressBar from '$lib/components/run/ProgressBar.svelte';
 	import RunControls from '$lib/components/run/RunControls.svelte';
 	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
@@ -35,7 +35,8 @@
 
 	let query = $state('');
 	let runType = $state<'table' | 'images' | 'links' | 'research'>('table');
-	let selectedRow = $state<RunRow | null>(null);
+	let selectedRowId = $state<string | null>(null);
+	let selectedRow = $derived($runState.rows.find((row) => row.id === selectedRowId) ?? null);
 	let submitError = $state('');
 	let showExport = $state(false);
 	let showStopConditions = $state(false);
@@ -95,7 +96,7 @@
 	function handleReset() {
 		resetRun();
 		query = '';
-		selectedRow = null;
+		selectedRowId = null;
 		submitError = '';
 		showExport = false;
 	}
@@ -199,6 +200,10 @@
 						· {Math.round(Number(maxDuration) / 60)} min</span
 					>
 				</button>
+				<p class="budget-help">
+					The money limit covers reported or estimated charges. Unpriced requests and requests
+					already in flight can exceed it.
+				</p>
 				{#if showStopConditions}
 					<div class="stop-conditions">
 						<label for="targetRows"
@@ -290,6 +295,7 @@
 				status={$runState.status}
 				runType={$runState.runType}
 			/>
+			<CostSummary accounting={$runState.accounting} />
 		</div>
 		{#if $runState.error || $runState.controlError || $runState.llmIssues.length}
 			<div class="run-notices">
@@ -326,7 +332,7 @@
 						schema={$runState.schema}
 						rows={$runState.rows}
 						onrowclick={(row) => {
-							selectedRow = row;
+							selectedRowId = row.id;
 						}}
 					/>{/if}
 			</div>
@@ -336,7 +342,7 @@
 			row={selectedRow}
 			columns={columnNames}
 			onclose={() => {
-				selectedRow = null;
+				selectedRowId = null;
 			}}
 		/>{/if}
 	{#if showExport && $runState.runId}<ExportDialog
@@ -349,6 +355,11 @@
 </div>
 
 <style>
+	.budget-help {
+		color: var(--app-muted);
+		font-size: 12px;
+		margin: 4px 0 8px;
+	}
 	.query-page {
 		display: flex;
 		flex-direction: column;

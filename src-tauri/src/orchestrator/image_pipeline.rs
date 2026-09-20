@@ -13,7 +13,7 @@ use crate::roles::image_ranker::ImageRanker;
 use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
 use super::events::{EventPublisher, ProgressStats};
-use crate::roles::stopping_controller::{StoppingController, PipelineStats};
+use crate::roles::stopping_controller::{StoppingController, PipelineStats, StopReason};
 
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
 
@@ -41,7 +41,9 @@ impl ImagePipeline {
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
         let budget = BudgetTracker::new(config.max_budget_usd);
-        let (control, supervisor) = RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
+        let (control, supervisor) =
+            RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
+        let supervisor = supervisor.with_budget(budget.clone());
 
         let pipeline = Self {
             run_id,
@@ -78,18 +80,21 @@ impl ImagePipeline {
         let search = Arc::new(
             SearchManager::from_config(self.config.search.clone())
                 .map_err(|e| format!("Search config: {e}"))?
+                .with_accounting(self.budget.observer()),
         );
-        let llm = LlmManager::from_config_with_diagnostics(self.config.llm.clone(), self.control.issue_sender()).ok();
+        let llm = LlmManager::from_config_with_diagnostics(
+            self.config.llm.clone(),
+            self.control.issue_sender(),
+        )
+        .map(|manager| manager.with_accounting(self.budget.observer()))
+        .ok();
 
         // Generate search query variations (LLM-based or static fallback)
         let queries = match &llm {
             Some(llm_mgr) => {
                 self.log("INFO", "image_pipeline", "Generating image search queries with LLM...").await;
                 match Self::generate_queries_with_llm(&self.query, llm_mgr).await {
-                    Ok(q) => {
-                        self.budget.record_llm_call(500, 300);
-                        q
-                    }
+                    Ok(q) => q,
                     Err(e) => {
                         warn!(error = %e, "LLM query generation failed, using static fallback");
                         self.log("WARN", "image_pipeline", &format!("LLM query generation failed: {e}, using static fallback")).await;
@@ -110,16 +115,17 @@ impl ImagePipeline {
             .await
             .map_err(|e| format!("Image search: {e}"))?;
 
-        for _ in 0..collected.total_queries_executed {
-            self.budget.record_search_call();
-        }
-
-        self.log("INFO", "image_searcher", &format!(
-            "Found {} unique images from {} queries ({} failed)",
-            collected.results.len(),
-            collected.total_queries_executed,
-            collected.failed_queries,
-        )).await;
+        self.log(
+            "INFO",
+            "image_searcher",
+            &format!(
+                "Found {} unique images from {} queries ({} failed)",
+                collected.results.len(),
+                collected.total_queries_executed,
+                collected.failed_queries,
+            ),
+        )
+        .await;
 
         if collected.results.is_empty() {
             self.log("WARN", "image_pipeline", "No images found").await;
@@ -128,19 +134,33 @@ impl ImagePipeline {
         }
 
         // Check stop conditions after search
-        if let Some(reason) = self.check_stop_conditions(0) {
-            self.log("INFO", "stopping_controller", &format!("Stopping after search: {:?}", reason)).await;
+        if let Some(reason) = self
+            .check_stop_conditions(0)
+            .filter(|reason| reason != &StopReason::BudgetExceeded)
+        {
+            self.log(
+                "INFO",
+                "stopping_controller",
+                &format!("Stopping after search: {:?}", reason),
+            )
+            .await;
             self.set_status("completed").await;
             return Ok(PipelineState::Completed);
         }
 
         // Optional LLM ranking
-        let ranked_results = if let Some(ref llm_mgr) = llm {
-            self.log("INFO", "image_ranker", "Ranking images with LLM...").await;
+        let ranking_skipped = llm.is_none() || self.budget.is_exceeded();
+        let ranked_results = if let Some(ref llm_mgr) = llm.filter(|_| !self.budget.is_exceeded()) {
+            self.log("INFO", "image_ranker", "Ranking images with LLM...")
+                .await;
             match ImageRanker::rank(&self.query, collected.results, llm_mgr, 0.7).await {
                 Ok(ranked) => {
-                    self.budget.record_llm_call(1000, 500);
-                    self.log("INFO", "image_ranker", &format!("Ranked: {} images passed relevance filter", ranked.len())).await;
+                    self.log(
+                        "INFO",
+                        "image_ranker",
+                        &format!("Ranked: {} images passed relevance filter", ranked.len()),
+                    )
+                    .await;
                     ranked
                 }
                 Err(e) => {
@@ -151,8 +171,15 @@ impl ImagePipeline {
                 }
             }
         } else {
-            self.log("INFO", "image_pipeline", "LLM not configured, skipping ranking").await;
-            collected.results.into_iter()
+            self.log(
+                "INFO",
+                "image_pipeline",
+                "Ranking skipped; saving retrieved images without relevance scores",
+            )
+            .await;
+            collected
+                .results
+                .into_iter()
                 .map(|r| crate::roles::image_ranker::RankedImageResult {
                     result: r,
                     relevance_score: 0.5,
@@ -175,22 +202,35 @@ impl ImagePipeline {
 
         for ranked in &ranked_results {
             let img = &ranked.result;
-            let image_id = self.repo.create_image_result(
-                &self.run_id,
-                &img.image_url,
-                &img.thumbnail_url,
-                &img.title,
-                &img.source_url,
-                img.width,
-                img.height,
-                Some(ranked.relevance_score),
-            ).await.map_err(|e| format!("Storage: {e}"))?;
+            let image_id = self
+                .repo
+                .create_image_result(
+                    &self.run_id,
+                    &img.image_url,
+                    &img.thumbnail_url,
+                    &img.title,
+                    &img.source_url,
+                    img.width,
+                    img.height,
+                    (!ranking_skipped).then_some(ranked.relevance_score),
+                )
+                .await
+                .map_err(|e| format!("Storage: {e}"))?;
 
             stored_count += 1;
 
             // Emit event for real-time UI updates
             if let Some(ref events) = self.events {
-                events.emit_image_added(&image_id, &img.image_url, &img.thumbnail_url, &img.title, &img.source_url, img.width, img.height, Some(ranked.relevance_score));
+                events.emit_image_added(
+                    &image_id,
+                    &img.image_url,
+                    &img.thumbnail_url,
+                    &img.title,
+                    &img.source_url,
+                    img.width,
+                    img.height,
+                    (!ranking_skipped).then_some(ranked.relevance_score),
+                );
                 events.emit_progress(ProgressStats {
                     rows_found: stored_count,
                     pages_fetched: 0,
@@ -203,10 +243,9 @@ impl ImagePipeline {
             }
 
             // Check stop conditions during storage
-            if let Some(reason) = self.check_stop_conditions(stored_count as usize) {
-                self.log("INFO", "stopping_controller", &format!("Stopping during storage: {:?}", reason)).await;
-                break;
-            }
+            // The count cap was applied before storage. A monetary cap stops new
+            // provider calls, not persistence of results already paid for. Cancel
+            // remains responsive through the supervisor while writes complete.
         }
 
         // Update run stats
@@ -302,7 +341,7 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
         queries
     }
 
-    fn check_stop_conditions(&self, image_count: usize) -> Option<String> {
+    fn check_stop_conditions(&self, image_count: usize) -> Option<StopReason> {
         let stats = PipelineStats {
             row_count: image_count,
             estimated_cost_usd: self.budget.spent_usd(),
@@ -311,7 +350,6 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
             last_batch_total_rows: 0,
         };
         StoppingController::should_stop(&self.config.stop, &stats)
-            .map(|reason| format!("{:?}", reason))
     }
 
     async fn set_status(&self, status: &str) {

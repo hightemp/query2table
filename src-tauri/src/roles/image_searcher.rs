@@ -26,6 +26,7 @@ impl ImageSearcher {
         let mut all_results = Vec::new();
         let mut seen_urls = HashSet::new();
         let mut failed_count = 0;
+        let mut executed_count = 0;
 
         for query in queries {
             match search.search_images_with_count(query, num_results).await {
@@ -41,11 +42,16 @@ impl ImageSearcher {
                         }
                     }
                 }
+                Err(SearchError::BudgetExceeded) => {
+                    warn!("[FIX:cost] Stopping searches at spending limit");
+                    break;
+                }
                 Err(e) => {
                     warn!(query = %query, error = %e, "Image search query failed");
                     failed_count += 1;
                 }
             }
+            executed_count += 1;
         }
 
         debug!(
@@ -57,7 +63,7 @@ impl ImageSearcher {
 
         Ok(CollectedImageResults {
             results: all_results,
-            total_queries_executed: queries.len(),
+            total_queries_executed: executed_count,
             failed_queries: failed_count,
         })
     }

@@ -45,6 +45,15 @@ impl LlmProvider for OpenRouterProvider {
         self.inner.chat_completion(request).await
     }
 
+    async fn pricing(
+        &self,
+        model: &str,
+        usage: &LlmUsage,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Option<crate::providers::accounting::PriceQuote> {
+        self.inner.pricing(model, usage, at).await
+    }
+
     fn provider_name(&self) -> &str {
         self.inner.provider_name()
     }

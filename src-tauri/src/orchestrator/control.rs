@@ -13,6 +13,7 @@ use crate::providers::llm::types::LlmIssue;
 use crate::storage::models::SchemaColumn;
 use crate::storage::repository::Repository;
 
+use super::budget_tracker::{BudgetSnapshot, BudgetTracker};
 use super::events::EventPublisher;
 use super::pipeline::{PipelineCommand, PipelineState};
 
@@ -40,6 +41,7 @@ pub(crate) struct RunSupervisor {
     paused: watch::Sender<bool>,
     schema: watch::Sender<Option<Vec<SchemaColumn>>>,
     issues: mpsc::UnboundedReceiver<LlmIssue>,
+    budget: Option<BudgetTracker>,
 }
 
 impl RunControl {
@@ -69,6 +71,7 @@ impl RunControl {
                 paused: paused_tx,
                 schema: schema_tx,
                 issues,
+                budget: None,
             },
         )
     }
@@ -139,6 +142,7 @@ struct ControlWriter {
 }
 
 enum ControlWrite {
+    Accounting(BudgetSnapshot),
     Status {
         status: String,
         acknowledged: Option<oneshot::Sender<()>>,
@@ -177,6 +181,13 @@ impl ControlWriter {
             // not cancel a database operation or discard a queued write.
             self.active = Some(Box::pin(async move {
                 let (result, acknowledged) = match write {
+                    ControlWrite::Accounting(snapshot) => {
+                        let patch = serde_json::json!({"accounting": snapshot, "spent_usd": snapshot.spent_usd});
+                        (
+                            repo.merge_run_stats(&run_id, &patch.to_string()).await,
+                            None,
+                        )
+                    }
                     ControlWrite::Status {
                         status,
                         acknowledged,
@@ -224,6 +235,64 @@ impl ControlWriter {
 }
 
 impl RunSupervisor {
+    pub(crate) fn with_budget(mut self, budget: BudgetTracker) -> Self {
+        self.budget = Some(budget);
+        self
+    }
+
+    fn publish_accounting(
+        &self,
+        writes: &mut ControlWriter,
+        previous: &mut Option<BudgetSnapshot>,
+        terminal: bool,
+    ) {
+        let Some(budget) = &self.budget else {
+            return;
+        };
+        if terminal {
+            budget.finalize_pending();
+        }
+        let snapshot = budget.snapshot();
+        if terminal || previous.as_ref() != Some(&snapshot) {
+            writes
+                .queue
+                .push_back(ControlWrite::Accounting(snapshot.clone()));
+            if let Some(events) = &self.events {
+                events.emit_accounting(&snapshot);
+            }
+            *previous = Some(snapshot);
+        }
+    }
+
+    async fn reconcile_terminal_rows(&self) {
+        // A cancellation may arrive after the merge commits but before the pipeline returns.
+        // Read canonical rows only after work is dropped and queued writes are flushed.
+        let result = async {
+            if self
+                .repo
+                .get_run(&self.run_id)
+                .await?
+                .is_some_and(|run| run.run_type == "table")
+            {
+                let rows = self.repo.get_entity_rows_by_run(&self.run_id).await?;
+                self.repo
+                    .merge_run_stats(
+                        &self.run_id,
+                        &serde_json::json!({"rows_found":rows.len()}).to_string(),
+                    )
+                    .await?;
+                if let Some(events) = &self.events {
+                    events.emit_rows_replaced(&rows);
+                }
+            }
+            Ok::<_, sqlx::Error>(())
+        }
+        .await;
+        if let Err(error) = result {
+            error!(run_id = %self.run_id, %error, "[FIX:dedup] Could not reconcile terminal rows");
+        }
+    }
+
     /// Keep the same pinned future across pause/resume. In-flight requests are
     /// retained; cancelling drops them and the scoped worker pools immediately.
     pub(crate) async fn run<F, E>(mut self, work: F) -> Result<PipelineState, E>
@@ -236,6 +305,8 @@ impl RunSupervisor {
         let mut commands_open = true;
         let mut stage = "pending".to_string();
         let mut writes = ControlWriter::new(self.run_id.clone(), self.repo.clone());
+        let mut accounting_clock = tokio::time::interval(Duration::from_millis(500));
+        let mut last_accounting = None;
 
         loop {
             tokio::select! {
@@ -246,9 +317,11 @@ impl RunSupervisor {
                         Some(PipelineCommand::Cancel) => {
                             drop(work);
                             self.drain_issues(&mut writes);
+                            self.publish_accounting(&mut writes, &mut last_accounting, true);
                             self.publish_status("cancelled", &mut writes, None);
                             self.log("INFO", "[FIX:run-control] Cancelled active pipeline and worker requests", &mut writes);
                             writes.flush().await;
+                            self.reconcile_terminal_rows().await;
                             return Ok(PipelineState::Cancelled);
                         }
                         Some(PipelineCommand::Pause) if !paused => {
@@ -273,8 +346,10 @@ impl RunSupervisor {
                             if paused {
                                 drop(work);
                                 self.drain_issues(&mut writes);
+                            self.publish_accounting(&mut writes, &mut last_accounting, true);
                                 self.publish_status("cancelled", &mut writes, None);
                                 writes.flush().await;
+                                self.reconcile_terminal_rows().await;
                                 return Ok(PipelineState::Cancelled);
                             }
                         }
@@ -292,11 +367,13 @@ impl RunSupervisor {
                         let _ = update.acknowledged.send(());
                     }
                 }
+                _ = accounting_clock.tick() => self.publish_accounting(&mut writes, &mut last_accounting, false),
                 Some(issue) = self.issues.recv() => self.publish_issue(issue, &mut writes),
                 () = writes.progress(), if writes.pending() => {}
                 result = &mut work, if !paused => {
                     drop(work);
                     self.drain_issues(&mut writes);
+                            self.publish_accounting(&mut writes, &mut last_accounting, true);
                     let failure = match &result {
                         Err(err) => Some(err.to_string()),
                         Ok(PipelineState::Failed(message)) => Some(message.clone()),
@@ -315,6 +392,7 @@ impl RunSupervisor {
                     // Work has been dropped, so it can no longer retain a DB
                     // connection. Ordered writes make the terminal status last.
                     writes.flush().await;
+                    self.reconcile_terminal_rows().await;
                     return result;
                 }
             }
@@ -515,16 +593,33 @@ mod tests {
             let (tx, rx) = mpsc::channel(16);
             let (control, supervisor) =
                 RunControl::new("db-control".into(), repo.clone(), None, rx);
+            let budget = BudgetTracker::new(1.0);
+            let supervisor = supervisor.with_budget(budget.clone());
             let mut paused = control.pause_signal();
             let (started_tx, started_rx) = oneshot::channel();
             let (release_tx, release_rx) = oneshot::channel();
             let task = tokio::spawn(supervisor.run(async move {
                 control.set_status("running").await;
                 let connection = pool.acquire().await.unwrap();
+                let guard = crate::providers::accounting::UsageGuard::begin(
+                    Some(budget.observer()),
+                    crate::providers::accounting::RequestInfo {
+                        kind: crate::providers::accounting::RequestKind::Llm,
+                        provider: "test".into(),
+                        model: "test".into(),
+                    },
+                )
+                .unwrap();
+                guard.capture(crate::providers::llm::LlmUsage {
+                    prompt_tokens: Some(12),
+                    cost_usd: Some(0.02),
+                    ..Default::default()
+                });
                 control.issue_sender().send(output_limit_issue()).unwrap();
                 started_tx.send(()).unwrap();
                 let _ = release_rx.await;
                 drop(connection);
+                guard.finish(None);
                 control.set_status("completed").await;
                 Ok::<_, String>(PipelineState::Completed)
             }));
@@ -551,6 +646,19 @@ mod tests {
                     .unwrap(),
                 expected
             );
+            let stored: serde_json::Value = serde_json::from_str(
+                repo.get_run("db-control")
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .stats
+                    .as_ref()
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(stored["accounting"]["llm_calls"], 1);
+            assert_eq!(stored["accounting"]["pending_calls"], 0);
+            assert_eq!(stored["accounting"]["reported_usd"], 0.02);
             assert_eq!(
                 repo.get_run("db-control").await.unwrap().unwrap().status,
                 expected.as_status_str()

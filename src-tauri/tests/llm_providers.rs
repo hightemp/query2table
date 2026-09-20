@@ -804,15 +804,16 @@ async fn manager_does_not_retry_permanent_errors_and_preserves_usage() {
         LlmError::UnsupportedSetting("unsupported".into()),
         LlmError::ParseError("invalid JSON".into()),
         LlmError::EmptyResponse {
-            usage: LlmUsage::default(),
+            usage: Box::default(),
         },
         LlmError::OutputLimit {
             limit: 128,
-            usage: LlmUsage {
+            usage: Box::new(LlmUsage {
                 prompt_tokens: Some(10),
                 completion_tokens: Some(128),
                 reasoning_tokens: Some(120),
-            },
+                ..Default::default()
+            }),
         },
         LlmError::ProviderError {
             message: "bad request".into(),
@@ -917,6 +918,11 @@ async fn parsing_diagnostic_keeps_response_usage_and_does_not_include_content() 
         "extractor",
         "The answer does not contain the required rows array.",
         &CompletionResponse {
+            usage: query2table_lib::providers::llm::LlmUsage {
+                prompt_tokens: Some(123),
+                completion_tokens: Some(34),
+                ..Default::default()
+            },
             model: "test-model".into(),
             content: "PRIVATE_MODEL_RESPONSE".into(),
             prompt_tokens: 123,

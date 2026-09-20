@@ -12,7 +12,6 @@ use crate::storage::repository::Repository;
 use crate::roles::link_ranker::{LinkRanker, PageCandidate};
 use crate::roles::search_executor::SearchExecutor;
 use crate::roles::search_planner::PlannedSearch;
-use crate::roles::stopping_controller::{PipelineStats, StoppingController};
 
 use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
@@ -44,7 +43,9 @@ impl LinkPipeline {
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
         let budget = BudgetTracker::new(config.max_budget_usd);
-        let (control, supervisor) = RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
+        let (control, supervisor) =
+            RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
+        let supervisor = supervisor.with_budget(budget.clone());
 
         let pipeline = Self {
             run_id,
@@ -82,19 +83,22 @@ impl LinkPipeline {
         // Initialize providers
         let search = Arc::new(
             SearchManager::from_config(self.config.search.clone())
-                .map_err(|e| format!("Search config: {e}"))?,
+                .map_err(|e| format!("Search config: {e}"))?
+                .with_accounting(self.budget.observer()),
         );
-        let llm = LlmManager::from_config_with_diagnostics(self.config.llm.clone(), self.control.issue_sender()).ok();
+        let llm = LlmManager::from_config_with_diagnostics(
+            self.config.llm.clone(),
+            self.control.issue_sender(),
+        )
+        .map(|manager| manager.with_accounting(self.budget.observer()))
+        .ok();
 
         // Generate search query variations (LLM-based or static fallback)
         let queries = match &llm {
             Some(llm_mgr) => {
                 self.log("INFO", "link_pipeline", "Generating search queries with LLM...").await;
                 match Self::generate_queries_with_llm(&self.query, llm_mgr).await {
-                    Ok(q) => {
-                        self.budget.record_llm_call(500, 300);
-                        q
-                    }
+                    Ok(q) => q,
                     Err(e) => {
                         warn!(error = %e, "LLM query generation failed, using static fallback");
                         self.log("WARN", "link_pipeline", &format!("LLM query generation failed: {e}, using static fallback")).await;
@@ -125,16 +129,17 @@ impl LinkPipeline {
             .await
             .map_err(|e| format!("Search: {e}"))?;
 
-        for _ in 0..collected.total_queries_executed {
-            self.budget.record_search_call();
-        }
-
-        self.log("INFO", "search_executor", &format!(
-            "Found {} unique URLs from {} queries ({} failed)",
-            collected.results.len(),
-            collected.total_queries_executed,
-            collected.failed_queries,
-        )).await;
+        self.log(
+            "INFO",
+            "search_executor",
+            &format!(
+                "Found {} unique URLs from {} queries ({} failed)",
+                collected.results.len(),
+                collected.total_queries_executed,
+                collected.failed_queries,
+            ),
+        )
+        .await;
 
         if collected.results.is_empty() {
             self.log("WARN", "link_pipeline", "No search results found").await;
@@ -246,13 +251,26 @@ impl LinkPipeline {
         };
 
         let ranked = if let Some(ref llm_mgr) = llm {
-            self.log("INFO", "link_ranker", "Scoring page relevance with LLM...").await;
+            self.log("INFO", "link_ranker", "Scoring page relevance with LLM...")
+                .await;
             let min_relevance = self.config.min_confidence;
-            let candidate_count = candidates.len();
-            match LinkRanker::rank(&self.query, candidates, llm_mgr, min_relevance, max_text_chars).await {
+            let _candidate_count = candidates.len();
+            match LinkRanker::rank(
+                &self.query,
+                candidates,
+                llm_mgr,
+                min_relevance,
+                max_text_chars,
+            )
+            .await
+            {
                 Ok(r) => {
-                    self.budget.record_llm_call(1000 * candidate_count as u32, 150 * candidate_count as u32);
-                    self.log("INFO", "link_ranker", &format!("Ranked: {} pages passed relevance filter", r.len())).await;
+                    self.log(
+                        "INFO",
+                        "link_ranker",
+                        &format!("Ranked: {} pages passed relevance filter", r.len()),
+                    )
+                    .await;
                     r
                 }
                 Err(e) => {
@@ -319,10 +337,9 @@ impl LinkPipeline {
                 });
             }
 
-            if let Some(reason) = self.check_stop_conditions(stored_count as usize) {
-                self.log("INFO", "stopping_controller", &format!("Stopping during storage: {:?}", reason)).await;
-                break;
-            }
+            // The count cap was applied before storage. A monetary cap stops new
+            // provider calls, not persistence of results already paid for. Cancel
+            // remains responsive through the supervisor while writes complete.
         }
 
         // Update run stats
@@ -403,17 +420,6 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
         queries.push(format!("best {} resources", query));
         queries.push(format!("{} list", query));
         queries
-    }
-
-    fn check_stop_conditions(&self, link_count: usize) -> Option<String> {
-        let stats = PipelineStats {
-            row_count: link_count,
-            estimated_cost_usd: self.budget.spent_usd(),
-            start_time: self.start_time,
-            last_batch_new_rows: 0,
-            last_batch_total_rows: 0,
-        };
-        StoppingController::should_stop(&self.config.stop, &stats).map(|reason| format!("{:?}", reason))
     }
 
     async fn set_status(&self, status: &str) {

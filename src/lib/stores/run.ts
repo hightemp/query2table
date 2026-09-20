@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import type {
 	SchemaColumn,
+	Accounting,
 	ProgressStats,
 	RowAddedEvent,
 	ImageResult,
@@ -21,6 +22,8 @@ import {
 	confirmSchema as apiConfirmSchema,
 	onStatusChanged,
 	onRowAdded,
+	onRowsReplaced,
+	onAccounting,
 	onProgressUpdate,
 	onSchemaProposed,
 	onRunError,
@@ -59,6 +62,7 @@ export interface RunState {
 	pausedFrom: string | null;
 	llmIssues: LlmIssueEvent[];
 	activity: LogEntryEvent[];
+	accounting: Accounting | null;
 }
 
 const initialState: RunState = {
@@ -79,6 +83,7 @@ const initialState: RunState = {
 	pausedFrom: null,
 	llmIssues: [],
 	activity: [],
+	accounting: null,
 };
 
 export const runState = writable<RunState>({ ...initialState });
@@ -140,6 +145,16 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 				if (s.runId !== e.run_id) return s;
 				return { ...s, progress: e.stats };
 			});
+		}),
+		subscribe(onRowsReplaced, (event) => {
+			runState.update((state) => ({
+				...state,
+				rows: event.rows,
+				progress: state.progress ? { ...state.progress, rows_found: event.rows.length } : null,
+			}));
+		}),
+		subscribe(onAccounting, (event) => {
+			runState.update((state) => ({ ...state, accounting: event.accounting }));
 		}),
 		subscribe(onSchemaProposed, (e) => {
 			runState.update((s) => {

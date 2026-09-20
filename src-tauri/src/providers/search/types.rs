@@ -5,6 +5,8 @@ use thiserror::Error;
 /// Error types for search operations.
 #[derive(Debug, Error)]
 pub enum SearchError {
+    #[error("Run spending limit reached. Increase the run's Max Cost to send more requests.")]
+    BudgetExceeded,
     #[error("Search request failed: {0}")]
     RequestFailed(String),
 

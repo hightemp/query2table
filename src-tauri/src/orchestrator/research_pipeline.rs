@@ -50,7 +50,9 @@ impl ResearchPipeline {
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
         let budget = BudgetTracker::new(config.max_budget_usd);
-        let (control, supervisor) = RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
+        let (control, supervisor) =
+            RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
+        let supervisor = supervisor.with_budget(budget.clone());
 
         let pipeline = Self {
             run_id,
@@ -85,8 +87,11 @@ impl ResearchPipeline {
         self.log("INFO", "research", "Starting agentic research...").await;
 
         // LLM is mandatory for research mode.
-        let llm = match LlmManager::from_config_with_diagnostics(self.config.llm.clone(), self.control.issue_sender()) {
-            Ok(m) => m,
+        let llm = match LlmManager::from_config_with_diagnostics(
+            self.config.llm.clone(),
+            self.control.issue_sender(),
+        ) {
+            Ok(m) => m.with_accounting(self.budget.observer()),
             Err(e) => {
                 let msg = format!("LLM not configured: {e}");
                 self.log("ERROR", "research", &msg).await;
@@ -95,7 +100,7 @@ impl ResearchPipeline {
         };
 
         let search = match SearchManager::from_config(self.config.search.clone()) {
-            Ok(s) => Arc::new(s),
+            Ok(s) => Arc::new(s.with_accounting(self.budget.observer())),
             Err(e) => {
                 let msg = format!("Search not configured: {e}");
                 self.log("ERROR", "research", &msg).await;
@@ -133,7 +138,7 @@ impl ResearchPipeline {
                 break;
             }
 
-            let (action, prompt_tokens, completion_tokens) =
+            let (action, _prompt_tokens, _completion_tokens) =
                 match ResearchAgent::decide_next_step(&llm, messages.clone()).await {
                     Ok(v) => v,
                     Err(e) => {
@@ -151,12 +156,12 @@ impl ResearchPipeline {
                         continue;
                     }
                 };
-            self.budget.record_llm_call(prompt_tokens, completion_tokens);
 
             match action {
                 AgentAction::Search { query } => {
-                    self.log("INFO", "research", &format!("Search: {query}")).await;
-                    self.budget.record_search_call();
+                    self.log("INFO", "research", &format!("Search: {query}"))
+                        .await;
+
                     search_count += 1;
                     let (observation, failed) = match search
                         .search_with_count(&query, SEARCH_RESULTS_PER_QUERY)
@@ -243,14 +248,20 @@ impl ResearchPipeline {
         }
 
         // If the loop ended without an explicit answer, request one final answer.
-        if !answered {
-            self.log("INFO", "research", "Step/limit reached, requesting final answer").await;
+        if !answered && self.budget.is_exceeded() {
+            self.store_answer("_The run reached its spending limit before a final answer was available. Saved activity remains available._").await;
+        } else if !answered {
+            self.log(
+                "INFO",
+                "research",
+                "Step/limit reached, requesting final answer",
+            )
+            .await;
             messages.push(Message::user(
                 "You have reached your step limit. Provide your best final answer now as a JSON answer tool call.".to_string(),
             ));
             match ResearchAgent::decide_next_step(&llm, messages.clone()).await {
-                Ok((AgentAction::Answer { markdown }, p, c)) => {
-                    self.budget.record_llm_call(p, c);
+                Ok((AgentAction::Answer { markdown }, _p, _c)) => {
                     self.store_answer(&markdown).await;
                 }
                 _ => {

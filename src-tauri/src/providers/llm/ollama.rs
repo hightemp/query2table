@@ -13,6 +13,7 @@ pub struct OllamaProvider {
     base_url: String,
     api_key: String,
     cloud: bool,
+    prices: tokio::sync::OnceCell<Option<super::pricing::OllamaPrices>>,
 }
 
 impl OllamaProvider {
@@ -40,6 +41,7 @@ impl OllamaProvider {
             base_url: base_url.trim_end_matches("/api").to_string(),
             api_key: api_key.trim().to_string(),
             cloud,
+            prices: tokio::sync::OnceCell::new(),
         })
     }
 
@@ -235,10 +237,12 @@ impl LlmProvider for OllamaProvider {
             .await
             .map_err(transport_error)?;
 
-        let chat_resp: OllamaChatResponse =
-            serde_json::from_value(response_json(resp, &request.model).await?).map_err(|_| {
-                LlmError::ParseError("Ollama returned an invalid completion response.".into())
-            })?;
+        let value = response_json(resp, &request.model).await?;
+        let counts = LlmUsage::from_json(&value, false);
+        let chat_resp: OllamaChatResponse = serde_json::from_value(value).map_err(|_| {
+            LlmError::ParseError("Ollama returned an invalid completion response.".into())
+                .with_usage(counts.clone())
+        })?;
 
         let prompt_tokens = chat_resp.prompt_eval_count.unwrap_or(0);
         let completion_tokens = chat_resp.eval_count.unwrap_or(0);
@@ -250,9 +254,10 @@ impl LlmProvider for OllamaProvider {
             ),
             None if done_reason == "length" => (String::new(), 0),
             None => {
-                return Err(LlmError::ParseError(
-                    "Ollama response contains no message".into(),
-                ))
+                return Err(
+                    LlmError::ParseError("Ollama response contains no message".into())
+                        .with_usage(counts.clone()),
+                )
             }
         };
         debug!(model = %request.model, elapsed_ms = started.elapsed().as_millis(),
@@ -263,32 +268,72 @@ impl LlmProvider for OllamaProvider {
                 thinking_chars, "[FIX:ollama-json] Token limit reached before a complete answer");
             return Err(LlmError::OutputLimit {
                 limit: request.max_tokens,
-                usage: LlmUsage {
-                    prompt_tokens: chat_resp.prompt_eval_count,
-                    completion_tokens: chat_resp.eval_count,
-                    reasoning_tokens: None,
-                },
+                usage: Box::new(counts),
             });
         }
         if content.trim().is_empty() {
             warn!(model = %request.model, completion_tokens, thinking_chars, done_reason,
                 "[FIX:ollama-json] Model returned an empty answer");
             return Err(LlmError::EmptyResponse {
-                usage: LlmUsage {
-                    prompt_tokens: chat_resp.prompt_eval_count,
-                    completion_tokens: chat_resp.eval_count,
-                    reasoning_tokens: None,
-                },
+                usage: Box::new(counts),
             });
         }
 
         Ok(CompletionResponse {
+            usage: counts,
             content,
             model: chat_resp.model.unwrap_or(request.model),
             prompt_tokens,
             completion_tokens,
             total_tokens: prompt_tokens.saturating_add(completion_tokens),
         })
+    }
+
+    async fn pricing(
+        &self,
+        model: &str,
+        usage: &LlmUsage,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Option<crate::providers::accounting::PriceQuote> {
+        let official = url::Url::parse(&self.base_url)
+            .ok()
+            .is_some_and(|url| url.host_str() == Some("ollama.com"));
+        let remote = usage
+            .remote_host
+            .as_deref()
+            .and_then(|host| url::Url::parse(host).ok())
+            .is_some_and(|url| url.host_str() == Some("ollama.com"));
+        let cloud = if usage.remote_host.is_some() {
+            remote
+        } else {
+            self.cloud && official
+        };
+        if !cloud {
+            return None;
+        }
+        let prices = self
+            .prices
+            .get_or_init(|| async {
+                let response = self
+                    .client
+                    .get("https://ollama.com/pricing")
+                    .timeout(std::time::Duration::from_secs(8))
+                    .send()
+                    .await
+                    .ok()?;
+                let html = super::pricing::limited_text(response).await?;
+                super::pricing::OllamaPrices::parse(&html)
+            })
+            .await
+            .as_ref()?;
+        prices.quote(
+            usage
+                .remote_model
+                .as_deref()
+                .or(usage.model.as_deref())
+                .unwrap_or(model),
+            at,
+        )
     }
 
     fn provider_name(&self) -> &str {

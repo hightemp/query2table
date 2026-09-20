@@ -7,6 +7,8 @@ import type {
 	SchemaColumn,
 	StatusChangedEvent,
 	RowAddedEvent,
+	AccountingEvent,
+	RowsReplacedEvent,
 	ProgressEvent,
 	LogEntryEvent,
 	SchemaProposedEvent,
@@ -148,6 +150,14 @@ export function onStatusChanged(cb: (e: StatusChangedEvent) => void): Promise<Un
 
 export function onRowAdded(cb: (e: RowAddedEvent) => void): Promise<UnlistenFn> {
 	return listen<RowAddedEvent>('run:row_added', (event) => cb(event.payload));
+}
+
+export function onRowsReplaced(cb: (e: RowsReplacedEvent) => void): Promise<UnlistenFn> {
+	return listen<RowsReplacedEvent>('run:rows_replaced', (event) => cb(event.payload));
+}
+
+export function onAccounting(cb: (event: AccountingEvent) => void): Promise<UnlistenFn> {
+	return listen<AccountingEvent>('run:accounting', (event) => cb(event.payload));
 }
 
 export function onProgressUpdate(cb: (e: ProgressEvent) => void): Promise<UnlistenFn> {

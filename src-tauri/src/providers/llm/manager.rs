@@ -1,3 +1,6 @@
+use crate::providers::accounting::{
+    PriceQuote, RequestInfo, RequestKind, UsageGuard, UsageObserver,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
@@ -36,6 +39,7 @@ pub struct LlmConfig {
     pub temperature: f32,
     pub max_tokens: u32,
     pub reasoning_effort: ReasoningEffort,
+    pub pricing_overrides: String,
 }
 
 impl Default for LlmConfig {
@@ -56,6 +60,7 @@ impl Default for LlmConfig {
             temperature: 0.2,
             max_tokens: 4096,
             reasoning_effort: ReasoningEffort::Auto,
+            pricing_overrides: "{}".into(),
         }
     }
 }
@@ -66,6 +71,7 @@ pub struct LlmManager {
     provider: Arc<dyn LlmProvider>,
     config: LlmConfig,
     diagnostics: Option<UnboundedSender<LlmIssue>>,
+    accounting: Option<Arc<dyn UsageObserver>>,
 }
 
 impl LlmManager {
@@ -141,6 +147,7 @@ impl LlmManager {
             provider,
             config,
             diagnostics: None,
+            accounting: None,
         })
     }
 
@@ -159,6 +166,80 @@ impl LlmManager {
         self
     }
 
+    pub fn with_accounting(mut self, observer: Arc<dyn UsageObserver>) -> Self {
+        self.accounting = Some(observer);
+        self
+    }
+
+    fn manual_pricing(&self, model: &str) -> Option<PriceQuote> {
+        let (provider, endpoint) = match self.config.backend {
+            LlmBackend::OpenRouter => ("openrouter", "https://openrouter.ai/api/v1"),
+            LlmBackend::Ollama => ("ollama", self.config.ollama_url.as_str()),
+            LlmBackend::OllamaCloud => ("ollama_cloud", self.config.ollama_cloud_url.as_str()),
+            LlmBackend::OpenAiCompatible => {
+                ("openai_compatible", self.config.openai_base_url.as_str())
+            }
+        };
+        let key = serde_json::to_string(&(
+            provider,
+            endpoint.trim().trim_end_matches('/'),
+            model.trim(),
+        ))
+        .ok()?;
+        let values: std::collections::HashMap<String, PriceQuote> =
+            serde_json::from_str(&self.config.pricing_overrides).ok()?;
+        let mut quote = values.get(&key)?.clone();
+        if !quote.valid() {
+            return None;
+        }
+        quote.source = "Manual model rates".into();
+        Some(quote)
+    }
+
+    async fn accounted_completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, LlmError> {
+        let requested_model = request.model.clone();
+        let started = chrono::Utc::now();
+        let guard = UsageGuard::begin(
+            self.accounting.clone(),
+            RequestInfo {
+                kind: RequestKind::Llm,
+                provider: self.safe_diagnostic_text(self.provider_name(), 64),
+                model: self.safe_diagnostic_text(&requested_model, 200),
+            },
+        )
+        .map_err(|_| LlmError::BudgetExceeded)?;
+        let result = self.provider.chat_completion(request).await;
+        let usage = match &result {
+            Ok(response) => response.usage.clone(),
+            Err(error) => error.usage(),
+        };
+        let mut recorded_usage = usage.clone();
+        recorded_usage.model = usage
+            .remote_model
+            .as_deref()
+            .or(usage.model.as_deref())
+            .map(|model| self.safe_diagnostic_text(model, 200));
+        guard.capture(recorded_usage);
+        let pricing = if self.accounting.is_some() && usage.cost_usd.is_none() {
+            match self.manual_pricing(&requested_model) {
+                Some(quote) => Some(quote),
+                None if usage.has_measurements() => {
+                    self.provider
+                        .pricing(&requested_model, &usage, started)
+                        .await
+                }
+                None => None,
+            }
+        } else {
+            None
+        };
+        guard.finish(pricing);
+        result
+    }
+
     /// Report a role's parse/shape failure without moving its fallback policy
     /// into the transport client. Callers must not include raw model content.
     pub fn report_invalid_response(
@@ -174,10 +255,9 @@ impl LlmManager {
             stage: Some(self.safe_diagnostic_text(stage, 80)),
             message: self.safe_diagnostic_text(message, 1200),
             max_tokens: self.config.max_tokens,
-            prompt_tokens: (response.prompt_tokens > 0).then_some(response.prompt_tokens),
-            completion_tokens: (response.completion_tokens > 0)
-                .then_some(response.completion_tokens),
-            reasoning_tokens: None,
+            prompt_tokens: response.usage.prompt_tokens,
+            completion_tokens: response.usage.completion_tokens,
+            reasoning_tokens: response.usage.reasoning_tokens,
             retry_after_ms: None,
             attempt: 1,
             max_attempts: 1,
@@ -264,7 +344,7 @@ impl LlmManager {
             let req = request.clone();
             let request = &request;
             async move {
-                match self.provider.chat_completion(req).await {
+                match self.accounted_completion(req).await {
                     Ok(resp) => (Ok(resp), RetryAction::Success, None),
                     Err(error) => {
                         let will_retry = error.retryable() && current_attempt < max_attempts;
@@ -309,6 +389,12 @@ impl LlmManager {
     }
 
     /// Get the currently active provider name.
+    pub fn spending_limit_reached(&self) -> bool {
+        self.accounting
+            .as_ref()
+            .is_some_and(|observer| observer.exceeded())
+    }
+
     pub fn provider_name(&self) -> &str {
         self.provider.provider_name()
     }
@@ -324,6 +410,7 @@ impl LlmManager {
             provider,
             config,
             diagnostics: None,
+            accounting: None,
         }
     }
 
@@ -339,6 +426,10 @@ impl LlmManager {
         let defaults = LlmConfig::default();
         LlmConfig {
             backend,
+            pricing_overrides: settings
+                .get("llm_pricing_overrides")
+                .cloned()
+                .unwrap_or_else(|| "{}".into()),
             openrouter_api_key: settings
                 .get("openrouter_api_key")
                 .cloned()

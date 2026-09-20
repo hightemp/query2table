@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import CostSummary from '$lib/components/run/CostSummary.svelte';
+	import { storedCosts } from '$lib/utils/costs';
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import { debugUi } from '$lib/utils/diagnostics';
 	import {
@@ -47,6 +49,7 @@
 
 	// View state
 	let viewingRun = $state<RunInfo | null>(null);
+	let costs = $derived(storedCosts(viewingRun?.stats));
 	let viewSchema = $state<SchemaColumn[]>([]);
 	let viewRows = $state<RunRow[]>([]);
 	let viewImages = $state<ImageResult[]>([]);
@@ -249,6 +252,7 @@
 			</div>
 		</div>
 
+		<CostSummary accounting={costs.accounting} legacy={costs.legacy} />
 		<div class="history-notices">
 			{#if error}<ErrorNotice {error} context="history" />{/if}
 			{#if viewingRun.error}<ErrorNotice error={viewingRun.error} />{/if}

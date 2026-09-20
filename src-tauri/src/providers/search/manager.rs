@@ -1,3 +1,6 @@
+use crate::providers::accounting::{
+    PriceQuote, RequestInfo, RequestKind, UsageGuard, UsageObserver,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, warn};
@@ -31,6 +34,8 @@ pub struct SearchConfig {
     pub brave_api_key: String,
     pub serper_api_key: String,
     pub num_results: u32,
+    pub brave_price_per_1000: Option<f64>,
+    pub serper_price_per_1000: Option<f64>,
 }
 
 impl Default for SearchConfig {
@@ -40,17 +45,21 @@ impl Default for SearchConfig {
             brave_api_key: String::new(),
             serper_api_key: String::new(),
             num_results: 10,
+            brave_price_per_1000: None,
+            serper_price_per_1000: None,
         }
     }
 }
 
 /// Manages search providers with primary/fallback routing.
+#[derive(Clone)]
 pub struct SearchManager {
     primary: Arc<dyn SearchProvider>,
     fallback: Option<Arc<dyn SearchProvider>>,
     image_primary: Arc<dyn ImageSearchProvider>,
     image_fallback: Option<Arc<dyn ImageSearchProvider>>,
     config: SearchConfig,
+    accounting: Option<Arc<dyn UsageObserver>>,
 }
 
 impl SearchManager {
@@ -100,7 +109,56 @@ impl SearchManager {
             "Search manager initialized"
         );
 
-        Ok(Self { primary, fallback, image_primary, image_fallback, config })
+        Ok(Self {
+            primary,
+            fallback,
+            image_primary,
+            image_fallback,
+            config,
+            accounting: None,
+        })
+    }
+
+    pub fn with_accounting(mut self, observer: Arc<dyn UsageObserver>) -> Self {
+        self.accounting = Some(observer);
+        self
+    }
+
+    async fn accounted_search<T>(
+        &self,
+        provider: &str,
+        mode: &str,
+        operation: impl std::future::Future<Output = Result<T, SearchError>>,
+    ) -> Result<T, SearchError> {
+        let guard = UsageGuard::begin(
+            self.accounting.clone(),
+            RequestInfo {
+                kind: RequestKind::Search,
+                provider: provider.into(),
+                model: mode.into(),
+            },
+        )
+        .map_err(|_| SearchError::BudgetExceeded)?;
+        let result = operation.await;
+        let rate = match provider {
+            "brave" => self.config.brave_price_per_1000,
+            "serper" => self.config.serper_price_per_1000,
+            _ => None,
+        };
+        let quote = rate
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .filter(|_| result.is_ok())
+            .map(|rate| PriceQuote {
+                input_per_million: 0.0,
+                output_per_million: 0.0,
+                cached_input_per_million: None,
+                cache_write_per_million: None,
+                per_request: rate / 1000.0,
+                source: "Manual search rate".into(),
+                credit_based: false,
+            });
+        guard.finish(quote);
+        result
     }
 
     /// Execute a search, with retry on transient errors, then falling back to secondary provider.
@@ -138,7 +196,14 @@ impl SearchManager {
             let q = q.clone();
             async move {
                 let search_query = SearchQuery::new(&q, num_results);
-                match primary.search(search_query).await {
+                match self
+                    .accounted_search(
+                        primary.provider_name(),
+                        "web search",
+                        primary.search(search_query),
+                    )
+                    .await
+                {
                     Ok(results) => (Ok(results), RetryAction::Success, None),
                     Err(SearchError::RateLimited { retry_after_secs }) => {
                         let hint = retry_after_secs.map(Duration::from_secs);
@@ -154,6 +219,7 @@ impl SearchManager {
 
         match primary_result {
             Ok(results) => Ok(results),
+            Err(SearchError::BudgetExceeded) => Err(SearchError::BudgetExceeded),
             Err(e) => {
                 if let Some(ref fallback) = self.fallback {
                     warn!(
@@ -163,7 +229,12 @@ impl SearchManager {
                         "Primary search failed after retries, trying fallback"
                     );
                     let fallback_query = SearchQuery::new(query, num_results);
-                    fallback.search(fallback_query).await
+                    self.accounted_search(
+                        fallback.provider_name(),
+                        "web search",
+                        fallback.search(fallback_query),
+                    )
+                    .await
                 } else {
                     Err(e)
                 }
@@ -179,7 +250,14 @@ impl SearchManager {
     ) -> Self {
         // For testing: use dummy image providers (no-op)
         let image_primary: Arc<dyn ImageSearchProvider> = Arc::new(NoopImageProvider);
-        Self { primary, fallback, image_primary, image_fallback: None, config }
+        Self {
+            primary,
+            fallback,
+            image_primary,
+            image_fallback: None,
+            config,
+            accounting: None,
+        }
     }
 
     /// Execute an image search, with retry on transient errors, then falling back.
@@ -208,7 +286,14 @@ impl SearchManager {
             let q = q.clone();
             async move {
                 let search_query = SearchQuery::new(&q, num_results);
-                match image_primary.search_images(search_query).await {
+                match self
+                    .accounted_search(
+                        self.primary_name(),
+                        "image search",
+                        image_primary.search_images(search_query),
+                    )
+                    .await
+                {
                     Ok(results) => (Ok(results), RetryAction::Success, None),
                     Err(SearchError::RateLimited { retry_after_secs }) => {
                         let hint = retry_after_secs.map(Duration::from_secs);
@@ -224,6 +309,7 @@ impl SearchManager {
 
         match primary_result {
             Ok(results) => Ok(results),
+            Err(SearchError::BudgetExceeded) => Err(SearchError::BudgetExceeded),
             Err(e) => {
                 if let Some(ref fallback) = self.image_fallback {
                     warn!(
@@ -231,7 +317,16 @@ impl SearchManager {
                         "Primary image search failed after retries, trying fallback"
                     );
                     let fallback_query = SearchQuery::new(query, num_results);
-                    fallback.search_images(fallback_query).await
+                    self.accounted_search(
+                        if self.config.primary == SearchBackend::Brave {
+                            "serper"
+                        } else {
+                            "brave"
+                        },
+                        "image search",
+                        fallback.search_images(fallback_query),
+                    )
+                    .await
                 } else {
                     Err(e)
                 }
@@ -255,6 +350,14 @@ impl SearchManager {
         };
 
         SearchConfig {
+            brave_price_per_1000: settings
+                .get("brave_price_per_1000")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite() && *v >= 0.0),
+            serper_price_per_1000: settings
+                .get("serper_price_per_1000")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite() && *v >= 0.0),
             primary,
             brave_api_key: settings.get("brave_api_key").cloned().unwrap_or_default(),
             serper_api_key: settings.get("serper_api_key").cloned().unwrap_or_default(),
@@ -307,6 +410,7 @@ mod tests {
             brave_api_key: "brave-key".to_string(),
             serper_api_key: "serper-key".to_string(),
             num_results: 10,
+            ..Default::default()
         };
         let manager = SearchManager::from_config(config).unwrap();
         assert_eq!(manager.primary_name(), "brave");
@@ -320,6 +424,7 @@ mod tests {
             serper_api_key: "serper-key".to_string(),
             brave_api_key: String::new(),
             num_results: 10,
+            ..Default::default()
         };
         let manager = SearchManager::from_config(config).unwrap();
         assert_eq!(manager.primary_name(), "serper");

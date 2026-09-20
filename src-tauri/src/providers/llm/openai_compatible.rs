@@ -3,7 +3,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use super::endpoint::{normalize_base_url, response_json, transport_error};
+use super::endpoint::{
+    normalize_base_url, response_json, response_json_with_cost, transport_error,
+};
 
 use super::types::*;
 use crate::providers::http::apply_proxy;
@@ -15,6 +17,9 @@ pub struct OpenAiCompatibleProvider {
     base_url: String,
     name: &'static str,
     json_mode_enabled: bool,
+    prices: tokio::sync::OnceCell<
+        Option<std::collections::HashMap<String, crate::providers::accounting::PriceQuote>>,
+    >,
 }
 
 impl OpenAiCompatibleProvider {
@@ -34,6 +39,7 @@ impl OpenAiCompatibleProvider {
             base_url,
             name: "openai_compatible",
             json_mode_enabled,
+            prices: tokio::sync::OnceCell::new(),
         })
     }
 
@@ -140,12 +146,6 @@ struct Usage {
     prompt_tokens: Option<u32>,
     completion_tokens: Option<u32>,
     total_tokens: Option<u32>,
-    completion_tokens_details: Option<CompletionTokenDetails>,
-}
-
-#[derive(Deserialize)]
-struct CompletionTokenDetails {
-    reasoning_tokens: Option<u32>,
 }
 
 #[async_trait]
@@ -219,28 +219,22 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 .header("X-Title", "Query2Table");
         }
         let resp = http_request.send().await.map_err(transport_error)?;
-        let chat_resp: ChatResponse =
-            serde_json::from_value(response_json(resp, &request.model).await?).map_err(|_| {
-                LlmError::ParseError("The provider returned an invalid completion response.".into())
-            })?;
+        let value =
+            response_json_with_cost(resp, &request.model, self.name == "openrouter").await?;
+        let counts = LlmUsage::from_json(&value, self.name == "openrouter");
+        let chat_resp: ChatResponse = serde_json::from_value(value).map_err(|_| {
+            LlmError::ParseError("The provider returned an invalid completion response.".into())
+                .with_usage(counts.clone())
+        })?;
         let usage = chat_resp.usage.unwrap_or_default();
-        let counts = LlmUsage {
-            prompt_tokens: usage.prompt_tokens,
-            completion_tokens: usage.completion_tokens,
-            reasoning_tokens: usage
-                .completion_tokens_details
-                .as_ref()
-                .and_then(|details| details.reasoning_tokens),
-        };
-        let choice = chat_resp
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| LlmError::ParseError("The provider returned no choices.".into()))?;
+        let choice = chat_resp.choices.into_iter().next().ok_or_else(|| {
+            LlmError::ParseError("The provider returned no choices.".into())
+                .with_usage(counts.clone())
+        })?;
         if choice.finish_reason.as_deref() == Some("length") {
             return Err(LlmError::OutputLimit {
                 limit: request.max_tokens,
-                usage: counts,
+                usage: Box::new(counts),
             });
         }
         let content = choice
@@ -248,11 +242,14 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .and_then(|message| message.content)
             .unwrap_or_default();
         if content.trim().is_empty() {
-            return Err(LlmError::EmptyResponse { usage: counts });
+            return Err(LlmError::EmptyResponse {
+                usage: Box::new(counts),
+            });
         }
 
         Ok(CompletionResponse {
             content,
+            usage: counts,
             model: chat_resp.model.unwrap_or(request.model),
             prompt_tokens: usage.prompt_tokens.unwrap_or(0),
             completion_tokens: usage.completion_tokens.unwrap_or(0),
@@ -263,6 +260,37 @@ impl LlmProvider for OpenAiCompatibleProvider {
                     .saturating_add(usage.completion_tokens.unwrap_or(0))
             }),
         })
+    }
+
+    async fn pricing(
+        &self,
+        model: &str,
+        usage: &LlmUsage,
+        _at: chrono::DateTime<chrono::Utc>,
+    ) -> Option<crate::providers::accounting::PriceQuote> {
+        if self.name != "openrouter" {
+            return None;
+        }
+        let catalog = self
+            .prices
+            .get_or_init(|| async {
+                let response = self
+                    .client
+                    .get(format!("{}/models", self.base_url))
+                    .bearer_auth(&self.api_key)
+                    .timeout(std::time::Duration::from_secs(8))
+                    .send()
+                    .await
+                    .ok()?;
+                let text = super::pricing::limited_text(response).await?;
+                let json = serde_json::from_str(&text).ok()?;
+                Some(super::pricing::openrouter_catalog(&json))
+            })
+            .await
+            .as_ref()?;
+        catalog
+            .get(usage.model.as_deref().unwrap_or(model))
+            .cloned()
     }
 
     fn provider_name(&self) -> &str {

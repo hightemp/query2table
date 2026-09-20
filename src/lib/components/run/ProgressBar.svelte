@@ -29,7 +29,7 @@
 			<strong>{stats.queries_executed}</strong>{#if stats.queries_total > 0}
 				/ {stats.queries_total}{/if}</span
 		>
-		<span>{elapsed(stats.elapsed_secs)}</span><span>${stats.spent_usd.toFixed(4)}</span>
+		<span>{elapsed(stats.elapsed_secs)}</span>
 	{:else if ['pending', 'running'].includes(status)}<span>Waiting for the first results…</span>{/if}
 </div>
 

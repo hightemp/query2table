@@ -2,6 +2,16 @@
 
 ## 1. Executive Summary
 
+### Deduplication and truthful costs (2026-09-20)
+
+- [x] Preserve row identity and all source evidence while merging duplicates transactionally; reconcile live results, history and export.
+- [x] Account for real provider usage and each request attempt, use model-specific rates, distinguish reported/estimated/unknown costs, and enforce spending checks before new requests.
+- [x] Persist and display accounting on every terminal path; verify regressions and complete TASKS-RU.md items 1 and 3.
+
+Verification: 265 Rust tests, 81 frontend tests and 40 Chromium/WebKit checks passed; Svelte reports zero errors/warnings; frontend/native builds and `git diff --check` passed. An additional public-metadata-only test read current Ollama pricing without credentials or inference. Native Tauri WebView checks used an isolated synthetic database, verified cost details and limit warnings, and saved model-scoped zero rates through Settings. Clippy completed with existing unrelated warnings. No user results/settings were changed; version remains 0.6.0.
+
+Limits: historical overwritten rows require a fresh run. Spending caps block new requests using reported/estimated amounts; unknown charges and already-running requests can exceed them. Provider-side caps are needed for strict billing limits. Published/manual rate snapshots remain attached to each run; earlier history retains an explicit historical-estimate label.
+
 ### Release 0.6.0 and public screenshots (2026-09-13)
 
 - [x] Run the YC-backed AI startups query in an isolated database and replace README screenshots with only that run.

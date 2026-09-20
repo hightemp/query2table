@@ -10,6 +10,8 @@ pub struct DedupGroup {
     pub merged: ExtractedRow,
     pub sources: Vec<String>,
     pub member_count: usize,
+    /// Input positions are retained so persistence never guesses entity identity.
+    pub member_indices: Vec<usize>,
 }
 
 /// Result of deduplication.
@@ -25,6 +27,15 @@ pub struct DedupResult {
 pub struct Deduplicator;
 
 impl Deduplicator {
+    pub fn name_column(columns: &[crate::storage::models::SchemaColumn]) -> &str {
+        columns
+            .iter()
+            .find(|column| column.name.eq_ignore_ascii_case("name"))
+            .or_else(|| columns.iter().find(|column| column.col_type == "text"))
+            .map(|column| column.name.as_str())
+            .unwrap_or("")
+    }
+
     /// Deduplicate rows by comparing their "name" field (or first text column).
     pub fn deduplicate(
         rows: &[ExtractedRow],
@@ -87,13 +98,15 @@ impl Deduplicator {
                 .collect();
             let group_id = crate::utils::id::new_id();
 
-            DedupGroup {
-                group_id,
-                merged,
-                sources,
-                member_count: indices.len(),
-            }
-        }).collect();
+                DedupGroup {
+                    group_id,
+                    merged,
+                    sources,
+                    member_count: indices.len(),
+                    member_indices: indices,
+                }
+            })
+            .collect();
 
         debug!(
             unique = unique_entities,
@@ -110,7 +123,11 @@ impl Deduplicator {
     }
 
     fn get_name(row: &ExtractedRow, name_column: &str) -> String {
-        row.data.get(name_column)
+        if name_column.is_empty() {
+            return String::new();
+        }
+        row.data
+            .get(name_column)
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_lowercase()
@@ -188,6 +205,54 @@ mod tests {
             source_url: format!("https://source-{}.com", name.replace(' ', "-")),
             source_title: "Test".to_string(),
         }
+    }
+
+    #[test]
+    fn membership_and_zero_values_survive_high_confidence_merges() {
+        let rows = vec![
+            make_row("Alpha", json!({"count":0,"enabled":false}), 0.9),
+            make_row("Beta", json!({}), 0.8),
+            make_row(
+                "Alpha",
+                json!({"count":10,"enabled":true,"note":"extra"}),
+                0.5,
+            ),
+        ];
+        let result = Deduplicator::deduplicate(&rows, "name", 0.9);
+        assert_eq!(result.groups[0].member_indices, vec![0, 2]);
+        assert_eq!(result.groups[0].merged.data["count"], 0);
+        assert_eq!(result.groups[0].merged.data["enabled"], false);
+        assert_eq!(result.groups[0].merged.data["note"], "extra");
+        assert_eq!(result.groups[1].member_indices, vec![1]);
+    }
+    #[test]
+    fn schema_identity_column_is_explicit_and_missing_names_never_merge() {
+        use crate::storage::models::SchemaColumn;
+        let column = |name: &str, kind: &str| SchemaColumn {
+            name: name.into(),
+            col_type: kind.into(),
+            description: String::new(),
+            required: false,
+        };
+        assert_eq!(
+            Deduplicator::name_column(&[column("Company", "text")]),
+            "Company"
+        );
+        assert_eq!(
+            Deduplicator::name_column(&[column("Description", "text"), column("Name", "text")]),
+            "Name"
+        );
+        assert_eq!(Deduplicator::name_column(&[column("Year", "number")]), "");
+        let row = ExtractedRow {
+            data: json!({"":"same"}),
+            confidence: 0.8,
+            source_url: String::new(),
+            source_title: String::new(),
+        };
+        assert_eq!(
+            Deduplicator::deduplicate(&[row.clone(), row], "", 0.8).unique_entities,
+            2
+        );
     }
 
     #[test]

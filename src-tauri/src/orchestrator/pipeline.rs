@@ -9,7 +9,7 @@ use crate::providers::search::manager::{SearchManager, SearchConfig};
 use crate::providers::http::client::HttpFetcher;
 use crate::providers::http::rate_limiter::RateLimiter;
 use crate::storage::models::SchemaColumn;
-use crate::storage::repository::Repository;
+use crate::storage::repository::{EntityMerge, Repository};
 
 use crate::roles::query_interpreter::QueryInterpreter;
 use crate::roles::schema_planner::SchemaPlanner;
@@ -155,7 +155,9 @@ impl Pipeline {
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
         let budget = BudgetTracker::new(config.max_budget_usd);
-        let (control, supervisor) = RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
+        let (control, supervisor) =
+            RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
+        let supervisor = supervisor.with_budget(budget.clone());
 
         let pipeline = Self {
             run_id,
@@ -208,19 +210,34 @@ impl Pipeline {
     async fn run_inner(mut self) -> Result<PipelineState, PipelineError> {
         // Initialize providers (use overrides if set, otherwise create from config)
         let llm = if let Some(llm) = self.llm_override.take() {
-            Arc::new(llm.as_ref().clone().with_diagnostics(self.control.issue_sender()))
+            Arc::new(
+                llm.as_ref()
+                    .clone()
+                    .with_diagnostics(self.control.issue_sender())
+                    .with_accounting(self.budget.observer()),
+            )
         } else {
             Arc::new(
-                LlmManager::from_config_with_diagnostics(self.config.llm.clone(), self.control.issue_sender())
-                    .map_err(|e| PipelineError::Config(format!("LLM: {e}")))?
+                LlmManager::from_config_with_diagnostics(
+                    self.config.llm.clone(),
+                    self.control.issue_sender(),
+                )
+                .map_err(|e| PipelineError::Config(format!("LLM: {e}")))?
+                .with_accounting(self.budget.observer()),
             )
         };
         let search = if let Some(search) = self.search_override.take() {
-            search
+            Arc::new(
+                search
+                    .as_ref()
+                    .clone()
+                    .with_accounting(self.budget.observer()),
+            )
         } else {
             Arc::new(
                 SearchManager::from_config(self.config.search.clone())
                     .map_err(|e| PipelineError::Config(format!("Search: {e}")))?
+                    .with_accounting(self.budget.observer()),
             )
         };
 
@@ -228,12 +245,22 @@ impl Pipeline {
         self.set_state(PipelineState::Interpreting).await;
         self.log("INFO", "interpreter", "Analyzing query with LLM...").await;
 
-        let intent = QueryInterpreter::interpret(&self.query, &llm).await
+        let intent = QueryInterpreter::interpret(&self.query, &llm)
+            .await
             .map_err(|e| PipelineError::Llm(format!("Interpreter: {e}")))?;
-        self.budget.record_llm_call(500, 200); // estimated tokens
 
-        self.log("INFO", "interpreter", &format!("Identified entity type: '{}'", intent.entity_type)).await;
-        self.log("INFO", "interpreter", &format!("Attributes: {:?}", intent.attributes)).await;
+        self.log(
+            "INFO",
+            "interpreter",
+            &format!("Identified entity type: '{}'", intent.entity_type),
+        )
+        .await;
+        self.log(
+            "INFO",
+            "interpreter",
+            &format!("Attributes: {:?}", intent.attributes),
+        )
+        .await;
         if !intent.constraints.is_empty() {
             self.log("INFO", "interpreter", &format!("Constraints: {:?}", intent.constraints)).await;
         }
@@ -245,9 +272,9 @@ impl Pipeline {
         self.set_state(PipelineState::Planning).await;
         self.log("INFO", "planner", "Generating table schema with LLM...").await;
 
-        let proposed_schema = SchemaPlanner::plan(&intent, &llm).await
+        let proposed_schema = SchemaPlanner::plan(&intent, &llm)
+            .await
             .map_err(|e| PipelineError::Llm(format!("SchemaPlanner: {e}")))?;
-        self.budget.record_llm_call(500, 300);
 
         // Save proposed schema
         let columns_json = serde_json::to_string(&proposed_schema.columns)
@@ -283,9 +310,15 @@ impl Pipeline {
         self.set_state(PipelineState::Running).await;
         self.log("INFO", "search_planner", "Generating search queries with LLM...").await;
 
-        let search_plan = SearchPlanner::plan(&intent, &crate::roles::schema_planner::ProposedSchema { columns: confirmed_columns.clone() }, &llm).await
-            .map_err(|e| PipelineError::Llm(format!("SearchPlanner: {e}")))?;
-        self.budget.record_llm_call(500, 300);
+        let search_plan = SearchPlanner::plan(
+            &intent,
+            &crate::roles::schema_planner::ProposedSchema {
+                columns: confirmed_columns.clone(),
+            },
+            &llm,
+        )
+        .await
+        .map_err(|e| PipelineError::Llm(format!("SearchPlanner: {e}")))?;
 
         // Expand queries
         let languages = if intent.languages.is_empty() {
@@ -293,10 +326,19 @@ impl Pipeline {
         } else {
             intent.languages.clone()
         };
-        self.log("INFO", "query_expander", &format!("Expanding {} search queries across {} languages with LLM...", search_plan.queries.len(), languages.len())).await;
-        let expanded = QueryExpander::expand(&search_plan.queries, &languages, &llm).await
+        self.log(
+            "INFO",
+            "query_expander",
+            &format!(
+                "Expanding {} search queries across {} languages with LLM...",
+                search_plan.queries.len(),
+                languages.len()
+            ),
+        )
+        .await;
+        let expanded = QueryExpander::expand(&search_plan.queries, &languages, &llm)
+            .await
             .map_err(|e| PipelineError::Llm(format!("QueryExpander: {e}")))?;
-        self.budget.record_llm_call(300, 400);
 
         let all_queries = [search_plan.queries.as_slice(), expanded.queries.as_slice()].concat();
         self.log("INFO", "search_planner", &format!("{} search queries planned across {} languages", all_queries.len(), languages.len())).await;
@@ -319,18 +361,21 @@ impl Pipeline {
         // --- Phase 5: Execute searches ---
         self.log("INFO", "search_executor", &format!("Executing {} search queries via {}...", all_queries.len(), search.primary_name())).await;
 
-        let collected = SearchExecutor::execute(&all_queries, &search).await
+        let collected = SearchExecutor::execute(&all_queries, &search)
+            .await
             .map_err(|e| PipelineError::Search(format!("SearchExecutor: {e}")))?;
-        for _ in 0..collected.total_queries_executed {
-            self.budget.record_search_call();
-        }
 
-        self.log("INFO", "search_executor", &format!(
-            "Found {} URLs from {} queries ({} failed)",
-            collected.results.len(),
-            collected.total_queries_executed,
-            collected.failed_queries,
-        )).await;
+        self.log(
+            "INFO",
+            "search_executor",
+            &format!(
+                "Found {} URLs from {} queries ({} failed)",
+                collected.results.len(),
+                collected.total_queries_executed,
+                collected.failed_queries,
+            ),
+        )
+        .await;
 
         // Save search results to DB
         let search_queries = self.repo.get_search_queries_by_run(&self.run_id).await
@@ -408,6 +453,7 @@ impl Pipeline {
 
         // Process fetched pages → extraction → validation → dedup
         let mut all_valid_rows: Vec<ExtractedRow> = Vec::new();
+        let mut saved_row_ids = Vec::new();
         let mut pages_fetched: u64 = 0;
         let mut pages_failed: u64 = 0;
         let mut fetch_done = false;
@@ -495,7 +541,7 @@ impl Pipeline {
                     match extract_result {
                         Some(ExtractResult::Success(output)) => {
                             extract_pending = extract_pending.saturating_sub(1);
-                            self.budget.record_llm_call(2000, 500); // rough estimate per extraction
+
 
                             // Validate extracted rows
                             let validated = Validator::validate(&output.rows, &confirmed_columns, self.config.min_confidence);
@@ -523,6 +569,8 @@ impl Pipeline {
                                     None,
                                     Some(&output.fetched_page_id),
                                 ).await.map_err(|e| PipelineError::Storage(e.to_string()))?;
+
+                                saved_row_ids.push(row_id.clone());
 
                                 // Emit event
                                 if let Some(ref events) = self.events {
@@ -563,32 +611,52 @@ impl Pipeline {
 
         let dedup_result = Deduplicator::deduplicate(
             &all_valid_rows,
-            "name",
+            Deduplicator::name_column(&confirmed_columns),
             self.config.dedup_similarity,
         );
 
-        // Update dedup groups in DB
-        for group in &dedup_result.groups {
-            let data_str = group.merged.data.to_string();
-            let rows = self.repo.get_entity_rows_by_run(&self.run_id).await
-                .map_err(|e| PipelineError::Storage(e.to_string()))?;
+        let merges = dedup_result
+            .groups
+            .iter()
+            .filter(|group| group.member_count > 1)
+            .map(|group| {
+                let member_ids = group
+                    .member_indices
+                    .iter()
+                    .map(|&index| {
+                        saved_row_ids.get(index).cloned().ok_or_else(|| {
+                            PipelineError::Internal("Deduplication lost row identity".into())
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(EntityMerge {
+                    member_ids,
+                    group_id: group.group_id.clone(),
+                    data: group.merged.data.clone(),
+                    confidence: group.merged.confidence,
+                })
+            })
+            .collect::<Result<Vec<_>, PipelineError>>()?;
+        self.repo
+            .merge_entity_rows(&self.run_id, &merges)
+            .await
+            .map_err(|error| PipelineError::Storage(error.to_string()))?;
+        self.emit_progress(
+            pages_fetched,
+            total_pages as u64,
+            dedup_result.unique_entities as u64,
+            collected.total_queries_executed as u64,
+        );
 
-            // Find the first matching row to update as the group representative
-            if let Some(db_row) = rows.first() {
-                self.repo.update_entity_row_dedup(
-                    &db_row.id,
-                    &group.group_id,
-                    &data_str,
-                    group.merged.confidence,
-                ).await.map_err(|e| PipelineError::Storage(e.to_string()))?;
-            }
-        }
-
-        self.log("INFO", "deduplicator", &format!(
-            "{} unique entities, {} duplicates merged",
-            dedup_result.unique_entities,
-            dedup_result.duplicates_merged,
-        )).await;
+        self.log(
+            "INFO",
+            "deduplicator",
+            &format!(
+                "{} unique entities, {} duplicates merged",
+                dedup_result.unique_entities, dedup_result.duplicates_merged,
+            ),
+        )
+        .await;
 
         // --- Phase 8: Finalize ---
         let final_count = dedup_result.unique_entities;
