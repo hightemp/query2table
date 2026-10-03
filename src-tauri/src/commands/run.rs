@@ -75,20 +75,7 @@ pub async fn start_run(
     let settings: HashMap<String, String> = settings_list.into_iter().collect();
 
     let mut config = PipelineConfig::from_settings(&settings);
-
-    // Override stop conditions with per-query values
-    if let Some(sc) = stop_conditions {
-        if let Some(v) = sc.target_row_count {
-            config.stop.target_row_count = v;
-        }
-        if let Some(v) = sc.max_budget_usd {
-            config.stop.max_budget_usd = v;
-            config.max_budget_usd = v;
-        }
-        if let Some(v) = sc.max_duration_seconds {
-            config.stop.max_duration_secs = v;
-        }
-    }
+    apply_stop_conditions(&mut config, stop_conditions);
     let repo = Arc::new(Repository::new(state.db.pool().clone()));
     let notifications_enabled = settings
         .get("notifications_enabled")
@@ -517,6 +504,7 @@ pub async fn set_link_hidden(
 #[derive(Debug, Serialize)]
 pub struct ResearchStepInfo {
     pub id: String,
+    pub turn_index: i64,
     pub step_index: i64,
     pub step_type: String,
     pub content: String,
@@ -524,9 +512,36 @@ pub struct ResearchStepInfo {
 }
 
 #[derive(Debug, Serialize)]
+pub struct ResearchTurnInfo {
+    pub turn_index: i64,
+    pub question: String,
+    pub answer_markdown: Option<String>,
+    pub follow_ups: Vec<String>,
+    pub status: String,
+    pub limits: serde_json::Value,
+    pub accounting: Option<serde_json::Value>,
+}
+
+impl From<crate::storage::repository::ResearchTurnRow> for ResearchTurnInfo {
+    fn from(turn: crate::storage::repository::ResearchTurnRow) -> Self {
+        Self {
+            turn_index: turn.turn_index,
+            question: turn.question,
+            answer_markdown: turn.answer_markdown,
+            follow_ups: serde_json::from_str(&turn.follow_ups).unwrap_or_default(),
+            status: turn.status,
+            limits: serde_json::from_str(&turn.limits).unwrap_or_default(),
+            accounting: turn.accounting.and_then(|a| serde_json::from_str(&a).ok()),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 pub struct ResearchResultInfo {
+    /// The latest answer, for views that show one answer.
     pub answer_markdown: Option<String>,
     pub steps: Vec<ResearchStepInfo>,
+    pub turns: Vec<ResearchTurnInfo>,
 }
 
 #[tauri::command]
@@ -536,17 +551,129 @@ pub async fn get_research_result(
 ) -> Result<ResearchResultInfo, String> {
     let repo = Repository::new(state.db.pool().clone());
     let steps = repo.get_research_steps(&run_id).await.map_err(|e| e.to_string())?;
-    let answer = repo.get_research_result(&run_id).await.map_err(|e| e.to_string())?;
+    let turns = repo.get_research_turns(&run_id).await.map_err(|e| e.to_string())?;
     Ok(ResearchResultInfo {
-        answer_markdown: answer.map(|a| a.answer_markdown),
+        answer_markdown: turns.iter().rev().find_map(|t| t.answer_markdown.clone()),
         steps: steps.into_iter().map(|s| ResearchStepInfo {
             id: s.id,
+            turn_index: s.turn_index,
             step_index: s.step_index,
             step_type: s.step_type,
             content: s.content,
             url: s.url,
         }).collect(),
+        turns: turns.into_iter().map(ResearchTurnInfo::from).collect(),
     })
+}
+
+/// Applies a run's own stop conditions over the defaults from settings.
+fn apply_stop_conditions(config: &mut PipelineConfig, stop_conditions: Option<StopConditions>) {
+    if let Some(sc) = stop_conditions {
+        if let Some(v) = sc.target_row_count {
+            config.stop.target_row_count = v;
+        }
+        if let Some(v) = sc.max_budget_usd {
+            config.stop.max_budget_usd = v;
+            config.max_budget_usd = v;
+        }
+        if let Some(v) = sc.max_duration_seconds {
+            config.stop.max_duration_secs = v;
+        }
+    }
+}
+
+/// Earlier answered turns as context for a follow-up, with the pages each turn read.
+fn research_history(
+    turns: &[crate::storage::repository::ResearchTurnRow],
+    steps: &[crate::storage::repository::ResearchStepRow],
+) -> Vec<crate::roles::research_agent::PriorTurn> {
+    turns
+        .iter()
+        .filter_map(|turn| {
+            let answer = turn.answer_markdown.clone()?;
+            let sources = steps
+                .iter()
+                .filter(|s| s.turn_index == turn.turn_index && s.step_type == "fetch")
+                .filter_map(|s| {
+                    let url = s.url.clone()?;
+                    let content = s.content.trim();
+                    let first_line = content.lines().next().unwrap_or_default().trim();
+                    // Older steps stored a character count or the page text instead of a title.
+                    let title = if first_line.is_empty() || first_line.starts_with("Read page (") {
+                        url::Url::parse(&url).ok()?.host_str()?.trim_start_matches("www.").to_string()
+                    } else {
+                        first_line.chars().take(160).collect()
+                    };
+                    Some((url, title))
+                })
+                .collect();
+            Some(crate::roles::research_agent::PriorTurn { question: turn.question.clone(), answer, sources })
+        })
+        .collect()
+}
+
+/// Asks a follow-up question in a research conversation. The agent searches and reads
+/// pages as needed, with the earlier questions, answers and sources as context.
+#[tauri::command]
+pub async fn ask_follow_up(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    controller: State<'_, RunController>,
+    run_id: String,
+    question: String,
+    stop_conditions: Option<StopConditions>,
+) -> Result<(), String> {
+    let question = question.trim().to_string();
+    if question.is_empty() {
+        return Err("Enter a question.".to_string());
+    }
+    if controller.active.lock().await.contains_key(&run_id) {
+        return Err("This conversation is still answering a question.".to_string());
+    }
+    let repo = Arc::new(Repository::new(state.db.pool().clone()));
+    let run = repo
+        .get_run(&run_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Run not found".to_string())?;
+    if run.run_type != "research" {
+        return Err("Follow-up questions are available for research runs only.".to_string());
+    }
+
+    let settings_list = state.db.get_all_settings().await.map_err(|e| e.to_string())?;
+    let settings: HashMap<String, String> = settings_list.into_iter().collect();
+    let mut config = PipelineConfig::from_settings(&settings);
+    apply_stop_conditions(&mut config, stop_conditions);
+
+    let turns = repo.get_research_turns(&run_id).await.map_err(|e| e.to_string())?;
+    let steps = repo.get_research_steps(&run_id).await.map_err(|e| e.to_string())?;
+    let history = research_history(&turns, &steps);
+    let turn_index = repo.next_research_turn_index(&run_id).await.map_err(|e| e.to_string())?;
+
+    let notifications_enabled = settings
+        .get("notifications_enabled")
+        .map_or(true, |value| value != "false");
+    let events = Some(EventPublisher::new(app.clone(), run_id.clone(), notifications_enabled));
+    let (pipeline, cmd_tx) = ResearchPipeline::follow_up(
+        run_id.clone(),
+        question,
+        turn_index,
+        history,
+        config,
+        repo,
+        events,
+    );
+    controller.active.lock().await.insert(run_id.clone(), cmd_tx);
+    let controller_handle = controller.active.clone();
+    tokio::spawn(async move {
+        let result = pipeline.run().await;
+        match &result {
+            Ok(state) => info!(run_id = %run_id, state = ?state, "Research follow-up finished"),
+            Err(e) => error!(run_id = %run_id, error = %e, "Research follow-up failed"),
+        }
+        controller_handle.lock().await.remove(&run_id);
+    });
+    Ok(())
 }
 
 #[cfg(test)]
@@ -601,5 +728,87 @@ mod control_tests {
         controller.active.lock().await.insert("finished".into(), tx);
         drop(rx);
         assert!(controller.send("finished", PipelineCommand::Cancel).await.is_err());
+    }
+}
+
+#[cfg(test)]
+mod research_conversation_tests {
+    use super::*;
+    use crate::storage::repository::{ResearchStepRow, ResearchTurnRow};
+
+    fn turn(index: i64, question: &str, answer: Option<&str>, status: &str) -> ResearchTurnRow {
+        ResearchTurnRow {
+            id: format!("t{index}"),
+            run_id: "run".into(),
+            turn_index: index,
+            question: question.into(),
+            answer_markdown: answer.map(String::from),
+            follow_ups: r#"["Next?"]"#.into(),
+            status: status.into(),
+            limits: r#"{"target_row_count":16}"#.into(),
+            accounting: None,
+            created_at: 0,
+        }
+    }
+
+    fn step(turn_index: i64, kind: &str, content: &str, url: Option<&str>) -> ResearchStepRow {
+        ResearchStepRow {
+            id: format!("{turn_index}{content}"),
+            run_id: "run".into(),
+            turn_index,
+            step_index: 0,
+            step_type: kind.into(),
+            content: content.into(),
+            url: url.map(String::from),
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn history_includes_answered_turns_and_the_pages_they_read() {
+        let turns = [
+            turn(0, "Find proxies", Some("Use Proxy-Seller."), "completed"),
+            turn(1, "Cancelled question", None, "cancelled"),
+            turn(2, "Cheapest?", Some("Proxy5."), "completed"),
+        ];
+        let steps = [
+            step(0, "fetch", "Proxy-Seller", Some("https://proxy-seller.me/")),
+            step(0, "fetch", "Read page (10 characters of content).", Some("https://www.froxy.com/")),
+            step(0, "search", "proxies", None),
+            step(2, "fetch", "Line one\nraw page text", Some("https://proxy5.net/")),
+        ];
+        let history = research_history(&turns, &steps);
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].question, "Find proxies");
+        assert_eq!(
+            history[0].sources,
+            vec![
+                ("https://proxy-seller.me/".to_string(), "Proxy-Seller".to_string()),
+                ("https://www.froxy.com/".to_string(), "froxy.com".to_string()),
+            ]
+        );
+        assert_eq!(history[1].sources, vec![("https://proxy5.net/".to_string(), "Line one".to_string())]);
+    }
+
+    #[test]
+    fn stop_conditions_override_the_settings() {
+        let mut config = PipelineConfig::from_settings(&HashMap::new());
+        apply_stop_conditions(
+            &mut config,
+            Some(StopConditions { target_row_count: Some(12), max_budget_usd: Some(0.5), max_duration_seconds: Some(300) }),
+        );
+        assert_eq!(config.stop.target_row_count, 12);
+        assert_eq!((config.max_budget_usd, config.stop.max_budget_usd), (0.5, 0.5));
+        assert_eq!(config.stop.max_duration_secs, 300);
+    }
+
+    #[test]
+    fn turns_are_sent_with_parsed_follow_ups_limits_and_cost() {
+        let mut answered = turn(0, "Find proxies", Some("Use Proxy-Seller."), "completed");
+        answered.accounting = Some(r#"{"spent_usd":0.25}"#.into());
+        let info = ResearchTurnInfo::from(answered);
+        assert_eq!(info.follow_ups, vec!["Next?".to_string()]);
+        assert_eq!(info.limits["target_row_count"], 16);
+        assert_eq!(info.accounting.unwrap()["spent_usd"], 0.25);
     }
 }

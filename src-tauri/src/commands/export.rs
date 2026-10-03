@@ -11,6 +11,9 @@ pub struct ExportRequest {
     pub run_id: String,
     pub format: String,
     pub path: String,
+    /// Research only: export just this turn of the conversation.
+    #[serde(default)]
+    pub turn_index: Option<i64>,
 }
 
 #[tauri::command]
@@ -27,13 +30,13 @@ pub async fn export_run(
 
     let path = std::path::Path::new(&request.path);
 
-    // Research mode exports the Markdown answer directly (format is ignored).
+    // Research mode exports the conversation as Markdown (format is ignored).
     if run.run_type == "research" {
-        let answer = repo.get_research_result(&request.run_id).await
-            .map_err(|e| format!("Failed to get research result: {e}"))?
-            .map(|r| r.answer_markdown)
-            .unwrap_or_default();
-        std::fs::write(path, answer)
+        let turns = repo.get_research_turns(&request.run_id).await
+            .map_err(|e| format!("Failed to get research conversation: {e}"))?;
+        let steps = repo.get_research_steps(&request.run_id).await
+            .map_err(|e| format!("Failed to get research steps: {e}"))?;
+        std::fs::write(path, conversation_markdown(&turns, &steps, request.turn_index))
             .map_err(|e| format!("Failed to write file: {e}"))?;
         return Ok(());
     }
@@ -149,6 +152,52 @@ fn link_export_rows(
     (columns, rows)
 }
 
+const READ_COUNT_PREFIX: &str = "Read page (";
+
+/// Markdown of a research conversation: each turn's question, answer and the pages read for it.
+/// `only` limits the export to one turn.
+fn conversation_markdown(
+    turns: &[crate::storage::repository::ResearchTurnRow],
+    steps: &[crate::storage::repository::ResearchStepRow],
+    only: Option<i64>,
+) -> String {
+    turns
+        .iter()
+        .filter(|turn| only.map_or(true, |index| turn.turn_index == index))
+        .map(|turn| {
+            let mut out = format!("# {}\n\n", turn.question.trim());
+            match turn.answer_markdown.as_deref().map(str::trim).filter(|a| !a.is_empty()) {
+                Some(answer) => out.push_str(answer),
+                None => out.push_str("_No answer was produced._"),
+            }
+            out.push('\n');
+            let pages: Vec<String> = steps
+                .iter()
+                .filter(|step| step.turn_index == turn.turn_index && step.step_type == "fetch")
+                .filter_map(|step| {
+                    let url = step.url.as_deref()?;
+                    let title = step.content.trim();
+                    // Older runs stored a character count or the page text instead of a title.
+                    let title = if title.is_empty() || title.starts_with(READ_COUNT_PREFIX) || title.contains('\n') {
+                        url::Url::parse(url).ok()?.host_str()?.trim_start_matches("www.").to_string()
+                    } else {
+                        title.to_string()
+                    };
+                    Some(format!("[{}]({url})", title.replace('[', "\\[").replace(']', "\\]")))
+                })
+                .collect();
+            if !pages.is_empty() {
+                out.push_str("\n**Pages read**\n\n");
+                for (i, page) in pages.iter().enumerate() {
+                    out.push_str(&format!("{}. {page}\n", i + 1));
+                }
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join("\n---\n\n")
+}
+
 #[cfg(test)]
 mod link_export_tests {
     use super::*;
@@ -183,5 +232,59 @@ mod link_export_tests {
         assert_eq!(rows[0].data["reason"], "Matches");
         assert_eq!(rows[0].data["relevance_score"], "0.90");
         assert_eq!(rows[0].data["visited"], "yes");
+    }
+}
+
+#[cfg(test)]
+mod research_export_tests {
+    use super::*;
+    use crate::storage::repository::{ResearchStepRow, ResearchTurnRow};
+
+    fn turn(index: i64, question: &str, answer: Option<&str>) -> ResearchTurnRow {
+        ResearchTurnRow {
+            id: format!("t{index}"),
+            run_id: "run".into(),
+            turn_index: index,
+            question: question.into(),
+            answer_markdown: answer.map(String::from),
+            follow_ups: "[]".into(),
+            status: "completed".into(),
+            limits: "{}".into(),
+            accounting: None,
+            created_at: index,
+        }
+    }
+
+    fn read(turn_index: i64, url: &str, title: &str) -> ResearchStepRow {
+        ResearchStepRow {
+            id: format!("{turn_index}{url}"),
+            run_id: "run".into(),
+            turn_index,
+            step_index: 0,
+            step_type: "fetch".into(),
+            content: title.into(),
+            url: Some(url.into()),
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn a_conversation_exports_every_turn_with_its_read_pages() {
+        let turns = [turn(0, "Find proxies", Some("Use Proxy-Seller.")), turn(1, "Cheapest?", Some("Proxy5."))];
+        let steps = [read(0, "https://proxy-seller.me/", "Proxy-Seller"), read(1, "https://proxy5.net/", "Read page (10 characters of content).")];
+        assert_eq!(
+            conversation_markdown(&turns, &steps, None),
+            "# Find proxies\n\nUse Proxy-Seller.\n\n**Pages read**\n\n1. [Proxy-Seller](https://proxy-seller.me/)\n\n---\n\n# Cheapest?\n\nProxy5.\n\n**Pages read**\n\n1. [proxy5.net](https://proxy5.net/)\n"
+        );
+        assert_eq!(
+            conversation_markdown(&turns, &steps, Some(1)),
+            "# Cheapest?\n\nProxy5.\n\n**Pages read**\n\n1. [proxy5.net](https://proxy5.net/)\n"
+        );
+    }
+
+    #[test]
+    fn unanswered_turns_say_so() {
+        let turns = [turn(0, "Find proxies", None)];
+        assert_eq!(conversation_markdown(&turns, &[], None), "# Find proxies\n\n_No answer was produced._\n");
     }
 }

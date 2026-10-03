@@ -11,6 +11,7 @@ import type {
 	ResearchStep,
 	ResearchStepEvent,
 	ResearchAnswerEvent,
+	ResearchResult,
 	LlmIssueEvent,
 	LogEntryEvent,
 } from '$lib/types';
@@ -33,6 +34,10 @@ import {
 	onResearchStep,
 	onResearchAnswer,
 	onLlmIssue,
+	askFollowUp as apiAskFollowUp,
+	getRun,
+	getResearchResult,
+	type StopConditions,
 } from '$lib/api/tauri';
 import { addLog } from '$lib/stores/logs';
 
@@ -46,6 +51,36 @@ export interface RunRow {
 
 export type RunControl = 'pause' | 'resume' | 'cancel' | 'confirm_schema';
 
+export interface ResearchTurnState {
+	index: number;
+	question: string;
+	answer: string | null;
+	followUps: string[];
+	/** running, completed, cancelled or failed */
+	status: string;
+	steps: ResearchStep[];
+	/** Final usage and cost of the turn, once it has ended. */
+	accounting: Accounting | null;
+}
+
+const TERMINAL = ['completed', 'failed', 'cancelled'];
+
+function newTurn(index: number, question: string): ResearchTurnState {
+	return { index, question, answer: null, followUps: [], status: 'running', steps: [], accounting: null };
+}
+
+/** Applies a change to one turn, adding turns up to `index` if events arrive first. */
+function updateTurn(
+	turns: ResearchTurnState[],
+	index: number,
+	change: (turn: ResearchTurnState) => ResearchTurnState
+): ResearchTurnState[] {
+	const next = [...turns];
+	while (next.length <= index) next.push(newTurn(next.length, ''));
+	next[index] = change(next[index]);
+	return next;
+}
+
 export interface RunState {
 	runId: string | null;
 	query: string;
@@ -55,7 +90,11 @@ export interface RunState {
 	rows: RunRow[];
 	imageResults: ImageResult[];
 	linkResults: LinkResult[];
+	/** Turns of a research conversation, in order. */
+	researchTurns: ResearchTurnState[];
+	/** All steps of the conversation. */
 	researchSteps: ResearchStep[];
+	/** The latest answer. */
 	researchAnswer: string | null;
 	progress: ProgressStats | null;
 	error: string | null;
@@ -78,6 +117,7 @@ const initialState: RunState = {
 	rows: [],
 	imageResults: [],
 	linkResults: [],
+	researchTurns: [],
 	researchSteps: [],
 	researchAnswer: null,
 	progress: null,
@@ -126,9 +166,20 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 					(s.controlPending === 'pause' && e.status === 'paused') ||
 					(s.controlPending === 'resume' && e.status !== 'paused') ||
 					(s.controlPending === 'confirm_schema' && e.status === 'running');
+				// A research turn ends with the run; earlier turns keep their own status.
+				const last = s.researchTurns.length - 1;
+				const researchTurns =
+					last >= 0 && TERMINAL.includes(e.status) && s.researchTurns[last].status === 'running'
+						? updateTurn(s.researchTurns, last, (turn) => ({
+								...turn,
+								status: e.status,
+								accounting: s.accounting,
+							}))
+						: s.researchTurns;
 				return {
 					...s,
 					status: e.status,
+					researchTurns,
 					pausedFrom: e.status === 'paused' ? (s.pausedFrom ?? s.status) : null,
 					controlPending: acknowledged ? null : s.controlPending,
 				};
@@ -219,20 +270,38 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 		subscribe(onResearchStep, (e: ResearchStepEvent) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
+				const turnIndex = e.turn_index ?? Math.max(0, s.researchTurns.length - 1);
 				const step: ResearchStep = {
 					id: e.step_id,
+					turn_index: turnIndex,
 					step_index: e.step_index,
 					step_type: e.step_type,
 					content: e.content,
 					url: e.url,
 				};
-				return { ...s, researchSteps: [...s.researchSteps, step] };
+				return {
+					...s,
+					researchSteps: [...s.researchSteps, step],
+					researchTurns: updateTurn(s.researchTurns, turnIndex, (turn) => ({
+						...turn,
+						steps: [...turn.steps, step],
+					})),
+				};
 			});
 		}),
 		subscribe(onResearchAnswer, (e: ResearchAnswerEvent) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
-				return { ...s, researchAnswer: e.markdown };
+				const turnIndex = e.turn_index ?? Math.max(0, s.researchTurns.length - 1);
+				return {
+					...s,
+					researchAnswer: e.markdown,
+					researchTurns: updateTurn(s.researchTurns, turnIndex, (turn) => ({
+						...turn,
+						answer: e.markdown,
+						followUps: e.follow_ups ?? [],
+					})),
+				};
 			});
 		}),
 	]);
@@ -267,6 +336,7 @@ export async function startNewRun(
 		runType,
 		status: 'pending',
 		limits: stopConditions ?? null,
+		researchTurns: runType === 'research' ? [newTurn(0, query)] : [],
 	});
 
 	const earlyEvents: (() => void)[] = [];
@@ -351,6 +421,92 @@ export function resumeCurrentRun() {
 
 export function confirmCurrentSchema(columns: SchemaColumn[]) {
 	return requestControl('confirm_schema', (runId) => apiConfirmSchema(runId, columns));
+}
+
+/** Asks a follow-up question in the open research conversation. */
+export async function askFollowUp(question: string, stopConditions: StopConditions) {
+	const state = get(runState);
+	if (!state.runId || state.runType !== 'research') throw new Error('No research conversation is open.');
+	if (!TERMINAL.includes(state.status))
+		throw new Error('This conversation is still answering a question.');
+	const index = state.researchTurns.length;
+	runState.update((s) => ({
+		...s,
+		status: 'pending',
+		error: null,
+		controlError: null,
+		limits: stopConditions,
+		accounting: null,
+		progress: null,
+		researchTurns: [...s.researchTurns, newTurn(index, question)],
+	}));
+	try {
+		await apiAskFollowUp(state.runId, question, stopConditions);
+		runState.update((s) => (s.status === 'pending' ? { ...s, status: 'running' } : s));
+	} catch (error) {
+		runState.update((s) => ({
+			...s,
+			status: state.status,
+			error: String(error),
+			researchTurns: s.researchTurns.filter((turn) => turn.index !== index),
+		}));
+		throw error;
+	}
+}
+
+/**
+ * Turns of a saved research run. Data saved before conversations becomes one turn.
+ * A turn still marked running after the app was closed has nothing behind it and counts as cancelled.
+ */
+export function researchTurnsFrom(
+	result: ResearchResult,
+	query: string,
+	runStatus: string
+): ResearchTurnState[] {
+	const turns = result.turns?.length
+		? result.turns
+		: [
+				{
+					turn_index: 0,
+					question: query,
+					answer_markdown: result.answer_markdown,
+					follow_ups: [],
+					status: runStatus,
+					limits: {},
+					accounting: null,
+				},
+			];
+	return turns.map((turn) => ({
+		index: turn.turn_index,
+		question: turn.question,
+		answer: turn.answer_markdown,
+		followUps: turn.follow_ups ?? [],
+		status: turn.status === 'running' ? 'cancelled' : turn.status,
+		steps: result.steps.filter((step) => (step.turn_index ?? 0) === turn.turn_index),
+		accounting: turn.accounting ?? null,
+	}));
+}
+
+/** Opens a saved research conversation in the run view, so it can be continued. */
+export async function openConversation(runId: string) {
+	const currentGeneration = ++generation;
+	unsubscribeEvents();
+	const [run, result] = await Promise.all([getRun(runId), getResearchResult(runId)]);
+	if (!run) throw new Error('Run not found');
+	const turns = researchTurnsFrom(result, run.query, run.status);
+	const last = result.turns?.at(-1);
+	runState.set({
+		...initialState,
+		runId,
+		query: run.query,
+		runType: 'research',
+		status: TERMINAL.includes(run.status) ? run.status : 'cancelled',
+		researchTurns: turns,
+		researchSteps: result.steps,
+		researchAnswer: result.answer_markdown,
+		limits: last?.limits && Object.keys(last.limits).length ? last.limits : null,
+	});
+	await subscribeEvents(currentGeneration, []);
 }
 
 export function resetRun() {

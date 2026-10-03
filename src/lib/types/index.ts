@@ -283,20 +283,35 @@ export interface LinkAddedEvent {
 
 export interface ResearchStep {
 	id: string;
+	/** Turn of the conversation the step belongs to; 0 for the first question. */
+	turn_index?: number;
 	step_index: number;
 	step_type: string;
 	content: string;
 	url: string | null;
 }
 
+export interface ResearchTurnInfo {
+	turn_index: number;
+	question: string;
+	answer_markdown: string | null;
+	follow_ups: string[];
+	status: string;
+	limits: { target_row_count?: number; max_budget_usd?: number; max_duration_seconds?: number };
+	accounting: Accounting | null;
+}
+
 export interface ResearchResult {
 	answer_markdown: string | null;
 	steps: ResearchStep[];
+	/** Missing in data from versions before conversations. */
+	turns?: ResearchTurnInfo[];
 }
 
 export interface ResearchStepEvent {
 	run_id: string;
 	step_id: string;
+	turn_index?: number;
 	step_index: number;
 	step_type: string;
 	content: string;
@@ -305,5 +320,7 @@ export interface ResearchStepEvent {
 
 export interface ResearchAnswerEvent {
 	run_id: string;
+	turn_index?: number;
+	follow_ups?: string[];
 	markdown: string;
 }

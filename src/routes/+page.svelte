@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import {
 		runState,
 		startNewRun,
@@ -8,6 +8,7 @@
 		resumeCurrentRun,
 		confirmCurrentSchema,
 		resetRun,
+		askFollowUp,
 	} from '$lib/stores/run';
 	import type { RunInfo, SchemaColumn } from '$lib/types';
 	import { listRuns } from '$lib/api/tauri';
@@ -46,7 +47,7 @@
 	import { RowSelection } from '$lib/utils/rowSelection.svelte';
 	import {
 		DEFAULT_STOP_INPUT,
-		STOP_SETTING_KEYS,
+		stopSettingKeys,
 		formatMinutes,
 		formatUsd,
 		parseStopConditions,
@@ -67,13 +68,22 @@
 
 	// Stop conditions start from the values used last time (stored in settings).
 	let stopInput = $state<StopConditionInput>(
-		$settings.size ? stopInputFromSettings($settings) : { ...DEFAULT_STOP_INPUT }
+		untrack(() =>
+			$settings.size ? stopInputFromSettings($settings, runType) : { ...DEFAULT_STOP_INPUT }
+		)
 	);
 	let stopEdited = $state(false);
 	$effect(() => {
-		if ($settings.size && !stopEdited) stopInput = stopInputFromSettings($settings);
+		if ($settings.size && !stopEdited) stopInput = stopInputFromSettings($settings, runType);
 	});
-	let stopParsed = $derived(parseStopConditions(stopInput));
+	// Research counts steps, the other modes count results: switching modes loads that limit.
+	let stopMode = untrack(() => runType);
+	$effect(() => {
+		if (runType === stopMode) return;
+		stopMode = runType;
+		stopInput = { ...stopInput, target: stopInputFromSettings($settings, runType).target };
+	});
+	let stopParsed = $derived(parseStopConditions(stopInput, runType));
 	let stopErrors = $derived(stopParsed.errors);
 	let stopInvalid = $derived(!stopParsed.conditions);
 	let configProblems = $derived(configurationProblems($settings));
@@ -100,13 +110,14 @@
 	let isResearchRun = $derived($runState.runType === 'research');
 	let columnNames = $derived($runState.schema.map((c) => c.name));
 
-	async function rememberStopConditions(input: StopConditionInput) {
-		const conditions = parseStopConditions(input).conditions;
+	async function rememberStopConditions(input: StopConditionInput, mode: string) {
+		const conditions = parseStopConditions(input, mode).conditions;
 		if (!conditions) return;
+		const keys = stopSettingKeys(mode);
 		const values: [string, string][] = [
-			[STOP_SETTING_KEYS.target, String(conditions.target_row_count)],
-			[STOP_SETTING_KEYS.budget, String(conditions.max_budget_usd)],
-			[STOP_SETTING_KEYS.duration, String(conditions.max_duration_seconds)],
+			[keys.target, String(conditions.target_row_count)],
+			[keys.budget, String(conditions.max_budget_usd)],
+			[keys.duration, String(conditions.max_duration_seconds)],
 		];
 		try {
 			for (const [key, value] of values)
@@ -129,7 +140,7 @@
 		try {
 			await startNewRun(query, runType, conditions);
 			stopEdited = false;
-			void rememberStopConditions(input);
+			void rememberStopConditions(input, runType);
 		} catch (err) {
 			submitError = errorText(err);
 		}
@@ -538,9 +549,11 @@
 				{#if isImageRun}<ImageGallery images={$runState.imageResults} />
 				{:else if isLinkRun}<LinkList links={$runState.linkResults} />
 				{:else if isResearchRun}<ResearchView
-						steps={$runState.researchSteps}
-						answer={$runState.researchAnswer}
+						turns={$runState.researchTurns}
 						running={$runState.status === 'running' || $runState.status === 'pending'}
+						liveAccounting={$runState.accounting}
+						limits={$runState.limits}
+						onask={$runState.runId ? (question, limits) => askFollowUp(question, limits) : undefined}
 					/>
 				{:else}<ResultsTable
 						schema={$runState.schema}
@@ -560,6 +573,7 @@
 	{#if showExport && $runState.runId}<ExportDialog
 			runId={$runState.runId}
 			runType={$runState.runType}
+			turns={$runState.researchTurns}
 			onclose={() => {
 				showExport = false;
 			}}

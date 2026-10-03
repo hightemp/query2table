@@ -256,6 +256,15 @@ export async function getResearchResult(runId: string): Promise<ResearchResult> 
 	return invoke('get_research_result', { runId });
 }
 
+/** Asks a follow-up question in a research conversation. */
+export function askFollowUp(
+	runId: string,
+	question: string,
+	stopConditions: StopConditions
+): Promise<void> {
+	return invoke('ask_follow_up', { runId, question, stopConditions });
+}
+
 export function onResearchStep(cb: (e: ResearchStepEvent) => void): Promise<UnlistenFn> {
 	return listen<ResearchStepEvent>('run:research_step', (event) => cb(event.payload));
 }
@@ -266,6 +275,12 @@ export function onResearchAnswer(cb: (e: ResearchAnswerEvent) => void): Promise<
 
 // --- Export commands ---
 
-export async function exportRun(runId: string, format: string, path: string): Promise<void> {
-	return invoke('export_run', { request: { run_id: runId, format, path } });
+/** `turnIndex` exports one turn of a research conversation instead of all of it. */
+export async function exportRun(
+	runId: string,
+	format: string,
+	path: string,
+	turnIndex: number | null = null
+): Promise<void> {
+	return invoke('export_run', { request: { run_id: runId, format, path, turn_index: turnIndex } });
 }

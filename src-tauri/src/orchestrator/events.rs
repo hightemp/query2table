@@ -214,9 +214,11 @@ impl EventPublisher {
     }
 
     /// Emit a single agent step (search / fetch / think) in research mode.
+    #[allow(clippy::too_many_arguments)]
     pub fn emit_research_step(
         &self,
         step_id: &str,
+        turn_index: i64,
         step_index: u32,
         step_type: &str,
         content: &str,
@@ -225,6 +227,7 @@ impl EventPublisher {
         let payload = ResearchStepEvent {
             run_id: self.run_id.clone(),
             step_id: step_id.to_string(),
+            turn_index,
             step_index,
             step_type: step_type.to_string(),
             content: content.to_string(),
@@ -237,10 +240,12 @@ impl EventPublisher {
     }
 
     /// Emit the final markdown answer in research mode.
-    pub fn emit_research_answer(&self, markdown: &str) {
+    pub fn emit_research_answer(&self, turn_index: i64, markdown: &str, follow_ups: &[String]) {
         let payload = ResearchAnswerEvent {
             run_id: self.run_id.clone(),
+            turn_index,
             markdown: markdown.to_string(),
+            follow_ups: follow_ups.to_vec(),
         };
         if let Err(e) = self.app.emit("run:research_answer", &payload) {
             tracing::error!(error = %e, "Failed to emit research_answer event");
@@ -331,6 +336,7 @@ pub struct LinkAddedEvent {
 pub struct ResearchStepEvent {
     pub run_id: String,
     pub step_id: String,
+    pub turn_index: i64,
     pub step_index: u32,
     pub step_type: String,
     pub content: String,
@@ -340,7 +346,9 @@ pub struct ResearchStepEvent {
 #[derive(Debug, Clone, Serialize)]
 pub struct ResearchAnswerEvent {
     pub run_id: String,
+    pub turn_index: i64,
     pub markdown: String,
+    pub follow_ups: Vec<String>,
 }
 
 /// Title and body of the desktop notification for a run status, if it deserves one.

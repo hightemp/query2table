@@ -79,10 +79,13 @@
 		};
 		const closeQuietly = () => close(false);
 		window.addEventListener('pointerdown', dismiss, true);
-		window.addEventListener('scroll', closeQuietly, true);
+		// Scrolling that was already under way when the menu opened (inertia, scrolling a
+		// target into view) must not close it, so scroll is watched only after it settles.
+		const watchScroll = setTimeout(() => window.addEventListener('scroll', closeQuietly, true), 150);
 		window.addEventListener('resize', closeQuietly);
 		window.addEventListener('blur', closeQuietly);
 		return () => {
+			clearTimeout(watchScroll);
 			window.removeEventListener('pointerdown', dismiss, true);
 			window.removeEventListener('scroll', closeQuietly, true);
 			window.removeEventListener('resize', closeQuietly);

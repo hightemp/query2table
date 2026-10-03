@@ -11,7 +11,7 @@ use crate::providers::search::manager::SearchManager;
 use crate::storage::repository::Repository;
 
 use crate::roles::pdf_parser::PdfParser;
-use crate::roles::research_agent::{AgentAction, ResearchAgent};
+use crate::roles::research_agent::{AgentAction, PriorTurn, ResearchAgent};
 
 use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
@@ -19,7 +19,13 @@ use super::events::{EventPublisher, ProgressStats};
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
 
 /// Maximum number of agent tool-call iterations per research run.
-const DEFAULT_MAX_STEPS: u32 = 16;
+/// Upper bound for the steps of one research turn, whatever the run asks for.
+pub const MAX_RESEARCH_STEPS: u32 = 50;
+
+/// Steps allowed for a turn: the run's "Max steps" stop condition, within 1..=50.
+pub fn max_steps(config: &PipelineConfig) -> u32 {
+    (config.stop.target_row_count as u32).clamp(1, MAX_RESEARCH_STEPS)
+}
 /// Max characters of fetched page markdown to feed back to the agent.
 const FETCH_MARKDOWN_CHAR_LIMIT: usize = 8000;
 
@@ -28,7 +34,11 @@ const FETCH_MARKDOWN_CHAR_LIMIT: usize = 8000;
 /// producing a Markdown answer. Each step is streamed and persisted.
 pub struct ResearchPipeline {
     run_id: String,
+    /// The question of this turn.
     query: String,
+    turn_index: i64,
+    /// Earlier turns of the conversation; empty for a new research run.
+    history: Vec<PriorTurn>,
     config: PipelineConfig,
     repo: Arc<Repository>,
     events: Option<EventPublisher>,
@@ -46,6 +56,31 @@ impl ResearchPipeline {
         repo: Arc<Repository>,
         events: Option<EventPublisher>,
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
+        Self::turn(run_id, query, 0, Vec::new(), config, repo, events)
+    }
+
+    /// A follow-up question in an existing research conversation.
+    pub fn follow_up(
+        run_id: String,
+        question: String,
+        turn_index: i64,
+        history: Vec<PriorTurn>,
+        config: PipelineConfig,
+        repo: Arc<Repository>,
+        events: Option<EventPublisher>,
+    ) -> (Self, mpsc::Sender<PipelineCommand>) {
+        Self::turn(run_id, question, turn_index, history, config, repo, events)
+    }
+
+    fn turn(
+        run_id: String,
+        query: String,
+        turn_index: i64,
+        history: Vec<PriorTurn>,
+        config: PipelineConfig,
+        repo: Arc<Repository>,
+        events: Option<EventPublisher>,
+    ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
         let budget = BudgetTracker::new(config.max_budget_usd);
         let (control, supervisor) =
@@ -55,6 +90,8 @@ impl ResearchPipeline {
         let pipeline = Self {
             run_id,
             query,
+            turn_index,
+            history,
             config,
             repo,
             events,
@@ -70,14 +107,45 @@ impl ResearchPipeline {
     pub async fn run(mut self) -> Result<PipelineState, String> {
         info!(run_id = %self.run_id, query = %self.query, "Research pipeline started");
 
-        let config_json = serde_json::json!({ "mode": "research" });
+        if self.turn_index == 0 {
+            let config_json = serde_json::json!({ "mode": "research" });
+            self.repo
+                .create_run_with_type(&self.run_id, &self.query, &config_json.to_string(), "research")
+                .await
+                .map_err(|e| format!("Storage: {e}"))?;
+        }
+        let limits = serde_json::json!({
+            "target_row_count": max_steps(&self.config),
+            "max_budget_usd": self.config.max_budget_usd,
+            "max_duration_seconds": self.config.stop.max_duration_secs,
+        });
         self.repo
-            .create_run_with_type(&self.run_id, &self.query, &config_json.to_string(), "research")
+            .create_research_turn(&self.run_id, self.turn_index, &self.query, &limits.to_string())
             .await
             .map_err(|e| format!("Storage: {e}"))?;
 
         let supervisor = self.supervisor.take().ok_or_else(|| "Pipeline already started".to_string())?;
-        supervisor.run(self.run_inner()).await
+        let (repo, run_id, turn_index, budget) =
+            (self.repo.clone(), self.run_id.clone(), self.turn_index, self.budget.clone());
+        let result = supervisor.run(self.run_inner()).await;
+
+        // A cancelled or failed turn keeps the steps it collected; earlier turns are untouched.
+        let status = match &result {
+            Ok(PipelineState::Completed) => None,
+            Ok(PipelineState::Cancelled) => Some("cancelled"),
+            _ => Some("failed"),
+        };
+        if let Some(status) = status {
+            if let Err(e) = repo.finish_research_turn(&run_id, turn_index, None, &[], status).await {
+                error!(error = %e, "Failed to record the research turn status");
+            }
+        }
+        if let Ok(snapshot) = serde_json::to_string(&budget.snapshot()) {
+            if let Err(e) = repo.set_research_turn_accounting(&run_id, turn_index, &snapshot).await {
+                error!(error = %e, "Failed to store the research turn cost");
+            }
+        }
+        result
     }
 
     async fn run_inner(self) -> Result<PipelineState, String> {
@@ -116,13 +184,14 @@ impl ResearchPipeline {
             None
         };
 
-        let max_steps = DEFAULT_MAX_STEPS;
+        let max_steps = max_steps(&self.config);
 
-        // Build the running conversation transcript.
-        let mut messages = vec![
-            Message::system(ResearchAgent::system_prompt(max_steps as usize)),
-            Message::user(format!("Research request:\n{}", self.query)),
-        ];
+        // Build the running transcript: earlier turns as context, then this turn's request.
+        let mut messages = vec![Message::system(ResearchAgent::system_prompt(max_steps as usize))];
+        if let Some(context) = ResearchAgent::conversation_context(&self.history) {
+            messages.push(Message::user(context));
+        }
+        messages.push(Message::user(format!("Research request:\n{}", self.query)));
 
         let mut step_index: u32 = 0;
         let mut answered = false;
@@ -188,11 +257,13 @@ impl ResearchPipeline {
                 AgentAction::Fetch { url } => {
                     self.log("INFO", "research", &format!("Fetch: {url}")).await;
                     fetch_count += 1;
+                    let mut title = None;
                     let (observation, failed) = match fetcher.fetch(&url).await {
                         Ok(page) => {
                             let markdown = if page.is_pdf() {
                                 PdfParser::parse(&page.body_bytes, &url, max_pdf_chars).text
                             } else {
+                                title = ResearchAgent::page_title(&page.body);
                                 ResearchAgent::html_to_markdown(&page.body, &url)
                             };
                             let truncated = crate::utils::text::truncate_chars(
@@ -214,10 +285,11 @@ impl ResearchPipeline {
                         )
                         .await;
                     } else {
-                        // The full page text is fed to the model below, but only a
-                        // short summary is shown in the UI step timeline.
+                        // The full page text is fed to the model below; the step timeline
+                        // shows the page title, or the text length when there is none.
                         let chars = observation.chars().count();
-                        let summary = format!("Read page ({chars} characters of content).");
+                        let summary =
+                            title.unwrap_or_else(|| format!("Read page ({chars} characters of content)."));
                         self.record_step(step_index, "fetch", &summary, Some(&url)).await;
                     }
                     messages.push(Message::assistant(
@@ -233,9 +305,9 @@ impl ResearchPipeline {
                     ));
                     messages.push(Message::user("Acknowledged. Continue.".to_string()));
                 }
-                AgentAction::Answer { markdown } => {
+                AgentAction::Answer { markdown, follow_ups } => {
                     self.log("INFO", "research", "Agent produced final answer").await;
-                    self.store_answer(&markdown).await;
+                    self.store_answer(&markdown, &follow_ups).await;
                     answered = true;
                     break;
                 }
@@ -247,7 +319,7 @@ impl ResearchPipeline {
 
         // If the loop ended without an explicit answer, request one final answer.
         if !answered && self.budget.is_exceeded() {
-            self.store_answer("_The run reached its spending limit before a final answer was available. Saved activity remains available._").await;
+            self.store_answer("_The run reached its spending limit before a final answer was available. Saved activity remains available._", &[]).await;
         } else if !answered {
             self.log(
                 "INFO",
@@ -259,8 +331,8 @@ impl ResearchPipeline {
                 "You have reached your step limit. Provide your best final answer now as a JSON answer tool call.".to_string(),
             ));
             match ResearchAgent::decide_next_step(&llm, messages.clone()).await {
-                Ok((AgentAction::Answer { markdown }, _p, _c)) => {
-                    self.store_answer(&markdown).await;
+                Ok((AgentAction::Answer { markdown, follow_ups }, _p, _c)) => {
+                    self.store_answer(&markdown, &follow_ups).await;
                 }
                 _ => {
                     self.record_error(
@@ -269,7 +341,7 @@ impl ResearchPipeline {
                     )
                     .await;
                     let fallback = "_The research agent did not produce a final answer within its limits._";
-                    self.store_answer(fallback).await;
+                    self.store_answer(fallback, &[]).await;
                 }
             }
         }
@@ -289,19 +361,23 @@ impl ResearchPipeline {
         Ok(PipelineState::Completed)
     }
 
-    async fn store_answer(&self, markdown: &str) {
-        if let Err(e) = self.repo.create_research_result(&self.run_id, markdown).await {
+    async fn store_answer(&self, markdown: &str, follow_ups: &[String]) {
+        if let Err(e) = self
+            .repo
+            .finish_research_turn(&self.run_id, self.turn_index, Some(markdown), follow_ups, "completed")
+            .await
+        {
             error!(error = %e, "Failed to store research answer");
         }
         if let Some(ref events) = self.events {
-            events.emit_research_answer(markdown);
+            events.emit_research_answer(self.turn_index, markdown, follow_ups);
         }
     }
 
     async fn record_step(&self, step_index: u32, step_type: &str, content: &str, url: Option<&str>) {
         let step_id = match self
             .repo
-            .create_research_step(&self.run_id, step_index as i64, step_type, content, url)
+            .create_research_step(&self.run_id, self.turn_index, step_index as i64, step_type, content, url)
             .await
         {
             Ok(id) => id,
@@ -311,7 +387,7 @@ impl ResearchPipeline {
             }
         };
         if let Some(ref events) = self.events {
-            events.emit_research_step(&step_id, step_index, step_type, content, url);
+            events.emit_research_step(&step_id, self.turn_index, step_index, step_type, content, url);
         }
     }
 
@@ -375,4 +451,21 @@ fn format_search_results(results: &[crate::providers::search::types::SearchResul
         ));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn the_step_limit_comes_from_the_run_and_stays_within_bounds() {
+        let mut config = PipelineConfig::from_settings(&HashMap::new());
+        config.stop.target_row_count = 8;
+        assert_eq!(max_steps(&config), 8);
+        config.stop.target_row_count = 0;
+        assert_eq!(max_steps(&config), 1);
+        config.stop.target_row_count = 500;
+        assert_eq!(max_steps(&config), MAX_RESEARCH_STEPS);
+    }
 }

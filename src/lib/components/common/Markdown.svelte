@@ -6,19 +6,26 @@
 	import { showContextMenu } from '$lib/stores/contextMenu';
 	import { linkMenuItems } from '$lib/utils/linkMenu';
 	import { webUrl } from '$lib/utils/values';
-	let { content }: { content: string } = $props();
-	const prefix = $props.id();
+	import { plainInline, uniqueSlugger } from '$lib/utils/research';
+	let {
+		content,
+		idPrefix,
+	}: {
+		content: string;
+		/** Prefix of heading ids, so a contents list can link to them: `${idPrefix}-${slug}`. */
+		idPrefix?: string;
+	} = $props();
+	const ownPrefix = $props.id();
+	const prefix = $derived(idPrefix ?? ownPrefix);
 	const html = $derived.by(() => {
 		const renderer = new Renderer();
+		const slug = uniqueSlugger();
 		renderer.table = function (token) {
 			return `<div class="markdown-table">${Renderer.prototype.table.call(this, token)}</div>`;
 		};
-		renderer.heading = function ({ tokens, depth, text }) {
-			const slug = text
-				.toLowerCase()
-				.replace(/[^\p{L}\p{N}]+/gu, '-')
-				.replace(/^-|-$/g, '');
-			return `<h${depth} id="${prefix}-${slug}">${this.parser.parseInline(tokens)}</h${depth}>`;
+		renderer.heading = function ({ tokens, depth }) {
+			const id = `${prefix}-${slug(plainInline(tokens).trim())}`;
+			return `<h${depth} id="${id}">${this.parser.parseInline(tokens)}</h${depth}>`;
 		};
 		return DOMPurify.sanitize(marked.parse(content, { async: false, renderer }) as string);
 	});
@@ -143,6 +150,13 @@
 		padding: 8px 12px;
 		text-align: left;
 		min-width: 100px;
+		/* Cells keep words whole; a wide table scrolls inside .markdown-table instead. */
+		overflow-wrap: normal;
+		word-break: normal;
+	}
+	/* Comfortable line length for running text; tables and code may use the full width. */
+	.markdown > :global(:is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6, hr)) {
+		max-width: 75ch;
 	}
 	.markdown :global(th) {
 		background: var(--app-subtle);

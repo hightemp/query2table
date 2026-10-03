@@ -293,6 +293,45 @@ impl Database {
         .await
         .ok(); // ok() — ignore error if column already exists
 
+        // Research conversations: each question and its answer is a turn of the run.
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS research_turns (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                turn_index INTEGER NOT NULL,
+                question TEXT NOT NULL,
+                answer_markdown TEXT,
+                follow_ups TEXT NOT NULL DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'running',
+                limits TEXT NOT NULL DEFAULT '{}',
+                created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                UNIQUE (run_id, turn_index)
+            )"
+        )
+        .execute(&self.pool)
+        .await?;
+        // Final usage and cost of each turn; the run's own accounting describes the latest turn.
+        sqlx::query("ALTER TABLE research_turns ADD COLUMN accounting TEXT")
+            .execute(&self.pool)
+            .await
+            .ok(); // ok() — ignore error if column already exists
+        sqlx::query("ALTER TABLE research_steps ADD COLUMN turn_index INTEGER NOT NULL DEFAULT 0")
+            .execute(&self.pool)
+            .await
+            .ok(); // ok() — ignore error if column already exists
+        // Research runs saved before conversations become one-turn conversations.
+        sqlx::query(
+            "INSERT INTO research_turns (id, run_id, turn_index, question, answer_markdown, status, created_at)
+             SELECT lower(hex(randomblob(16))), r.id, 0, r.query,
+                    (SELECT rr.answer_markdown FROM research_results rr WHERE rr.run_id = r.id ORDER BY rr.created_at DESC LIMIT 1),
+                    r.status, r.created_at
+             FROM runs r
+             WHERE r.run_type = 'research'
+               AND NOT EXISTS (SELECT 1 FROM research_turns t WHERE t.run_id = r.id)"
+        )
+        .execute(&self.pool)
+        .await?;
+
         // Rename legacy keys before inserting defaults; defaults must not shadow saved values.
         let renames = vec![
             ("default_model", "openrouter_model"),
@@ -464,6 +503,40 @@ fn dirs_next() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn existing_research_runs_become_one_turn_conversations() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        // Tables as written by earlier versions.
+        for sql in [
+            "CREATE TABLE runs (id TEXT PRIMARY KEY, query TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', config TEXT NOT NULL DEFAULT '{}', stats TEXT, error TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, completed_at INTEGER, run_type TEXT NOT NULL DEFAULT 'table')",
+            "CREATE TABLE research_steps (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, step_index INTEGER NOT NULL, step_type TEXT NOT NULL, content TEXT NOT NULL DEFAULT '', url TEXT, created_at INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE research_results (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, answer_markdown TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL DEFAULT 0)",
+            "INSERT INTO runs (id, query, status, run_type, created_at) VALUES ('done', 'Find proxies', 'completed', 'research', 5), ('stuck', 'C++ memory', 'running', 'research', 6), ('table', 'Companies', 'completed', 'table', 7)",
+            "INSERT INTO research_steps (id, run_id, step_index, step_type, content) VALUES ('s1', 'done', 0, 'search', 'q')",
+            "INSERT INTO research_results (id, run_id, answer_markdown) VALUES ('r1', 'done', 'Use Proxy-Seller.')",
+        ] {
+            sqlx::query(sql).execute(&pool).await.unwrap();
+        }
+
+        let db = Database::with_pool(pool).await;
+        db.migrate().await.unwrap();
+        db.migrate().await.unwrap();
+        let repo = crate::storage::repository::Repository::new(db.pool().clone());
+        let done = repo.get_research_turns("done").await.unwrap();
+        assert_eq!(done.len(), 1);
+        assert_eq!(done[0].question, "Find proxies");
+        assert_eq!(done[0].answer_markdown.as_deref(), Some("Use Proxy-Seller."));
+        assert_eq!(done[0].status, "completed");
+        let stuck = repo.get_research_turns("stuck").await.unwrap();
+        assert_eq!((stuck[0].status.as_str(), stuck[0].answer_markdown.clone()), ("running", None));
+        assert!(repo.get_research_turns("table").await.unwrap().is_empty());
+        assert_eq!(repo.get_research_steps("done").await.unwrap()[0].turn_index, 0);
+    }
 
     #[tokio::test]
     async fn link_review_columns_are_added_to_existing_databases() {

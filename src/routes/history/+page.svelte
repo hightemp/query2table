@@ -23,7 +23,10 @@
 		ResearchStep,
 		LlmIssueEvent,
 	} from '$lib/types';
-	import type { RunRow } from '$lib/stores/run';
+	import type { RunRow, ResearchTurnState } from '$lib/stores/run';
+	import { askFollowUp, openConversation, researchTurnsFrom } from '$lib/stores/run';
+	import type { StopConditions } from '$lib/api/tauri';
+	import { goto } from '$app/navigation';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
 	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
@@ -61,6 +64,16 @@
 	let viewLinks = $state<LinkResult[]>([]);
 	let viewResearchSteps = $state<ResearchStep[]>([]);
 	let viewResearchAnswer = $state<string | null>(null);
+	let viewResearchTurns = $state<ResearchTurnState[]>([]);
+	let viewResearchLimits = $state<StopConditions | null>(null);
+
+	/** Continues a saved conversation on the query page, as a live run. */
+	async function continueConversation(question: string, limits: Required<StopConditions>) {
+		if (!viewingRun) return;
+		await openConversation(viewingRun.id);
+		await askFollowUp(question, limits);
+		await goto('/');
+	}
 	let viewLoading = $state(false);
 	let viewIssues = $state<LlmIssueEvent[]>([]);
 	let issueError = $state('');
@@ -142,6 +155,8 @@
 				if (request !== viewRequest) return;
 				viewResearchSteps = res.steps;
 				viewResearchAnswer = res.answer_markdown;
+				viewResearchTurns = researchTurnsFrom(res, run.query, run.status);
+				viewResearchLimits = res.turns?.[0]?.limits ?? null;
 				viewSchema = [];
 				viewRows = [];
 				viewImages = [];
@@ -264,6 +279,7 @@
 			<ExportDialog
 				runId={viewingRun.id}
 				runType={viewingRun.run_type}
+				turns={viewResearchTurns}
 				onclose={() => {
 					showExport = false;
 				}}
@@ -287,7 +303,11 @@
 				{/if}
 			{:else if viewingRun.run_type === 'research'}
 				{#if viewResearchAnswer || viewResearchSteps.length > 0}
-					<ResearchView steps={viewResearchSteps} answer={viewResearchAnswer} />
+					<ResearchView
+						turns={viewResearchTurns}
+						limits={viewResearchLimits}
+						onask={continueConversation}
+					/>
 				{:else}
 					<EmptyState>No research output for this run.</EmptyState>
 				{/if}

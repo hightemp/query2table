@@ -723,6 +723,7 @@ impl Repository {
     pub async fn create_research_step(
         &self,
         run_id: &str,
+        turn_index: i64,
         step_index: i64,
         step_type: &str,
         content: &str,
@@ -730,10 +731,11 @@ impl Repository {
     ) -> Result<String, sqlx::Error> {
         let id = new_id();
         sqlx::query(
-            "INSERT INTO research_steps (id, run_id, step_index, step_type, content, url, created_at) VALUES (?, ?, ?, ?, ?, ?, unixepoch())"
+            "INSERT INTO research_steps (id, run_id, turn_index, step_index, step_type, content, url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch())"
         )
         .bind(&id)
         .bind(run_id)
+        .bind(turn_index)
         .bind(step_index)
         .bind(step_type)
         .bind(content)
@@ -745,12 +747,91 @@ impl Repository {
 
     pub async fn get_research_steps(&self, run_id: &str) -> Result<Vec<ResearchStepRow>, sqlx::Error> {
         let rows = sqlx::query_as::<_, ResearchStepRow>(
-            "SELECT id, run_id, step_index, step_type, content, url, created_at FROM research_steps WHERE run_id = ? ORDER BY step_index"
+            "SELECT id, run_id, turn_index, step_index, step_type, content, url, created_at FROM research_steps WHERE run_id = ? ORDER BY turn_index, step_index"
         )
         .bind(run_id)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
+    }
+
+    /// Starts a turn of a research conversation. `limits` is the turn's stop conditions as JSON.
+    pub async fn create_research_turn(
+        &self,
+        run_id: &str,
+        turn_index: i64,
+        question: &str,
+        limits: &str,
+    ) -> Result<String, sqlx::Error> {
+        let id = new_id();
+        sqlx::query(
+            "INSERT INTO research_turns (id, run_id, turn_index, question, limits, status, created_at) VALUES (?, ?, ?, ?, ?, 'running', unixepoch())"
+        )
+        .bind(&id)
+        .bind(run_id)
+        .bind(turn_index)
+        .bind(question)
+        .bind(limits)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    /// Records how a turn ended: its answer (if any), suggested follow-ups and status.
+    pub async fn finish_research_turn(
+        &self,
+        run_id: &str,
+        turn_index: i64,
+        answer_markdown: Option<&str>,
+        follow_ups: &[String],
+        status: &str,
+    ) -> Result<(), sqlx::Error> {
+        let follow_ups = serde_json::to_string(follow_ups).unwrap_or_else(|_| "[]".into());
+        sqlx::query(
+            "UPDATE research_turns SET answer_markdown = COALESCE(?, answer_markdown), follow_ups = ?, status = ? WHERE run_id = ? AND turn_index = ?"
+        )
+        .bind(answer_markdown)
+        .bind(follow_ups)
+        .bind(status)
+        .bind(run_id)
+        .bind(turn_index)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_research_turns(&self, run_id: &str) -> Result<Vec<ResearchTurnRow>, sqlx::Error> {
+        sqlx::query_as::<_, ResearchTurnRow>(
+            "SELECT id, run_id, turn_index, question, answer_markdown, follow_ups, status, limits, accounting, created_at FROM research_turns WHERE run_id = ? ORDER BY turn_index"
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    /// Stores a turn's final usage and cost snapshot (JSON).
+    pub async fn set_research_turn_accounting(
+        &self,
+        run_id: &str,
+        turn_index: i64,
+        accounting: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE research_turns SET accounting = ? WHERE run_id = ? AND turn_index = ?")
+            .bind(accounting)
+            .bind(run_id)
+            .bind(turn_index)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn next_research_turn_index(&self, run_id: &str) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COALESCE(MAX(turn_index) + 1, 0) FROM research_turns WHERE run_id = ?"
+        )
+        .bind(run_id)
+        .fetch_one(&self.pool)
+        .await
     }
 
     pub async fn create_research_result(
@@ -914,10 +995,28 @@ pub struct LinkResultRow {
 pub struct ResearchStepRow {
     pub id: String,
     pub run_id: String,
+    pub turn_index: i64,
     pub step_index: i64,
     pub step_type: String,
     pub content: String,
     pub url: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ResearchTurnRow {
+    pub id: String,
+    pub run_id: String,
+    pub turn_index: i64,
+    pub question: String,
+    pub answer_markdown: Option<String>,
+    /// JSON array of suggested follow-up questions.
+    pub follow_ups: String,
+    pub status: String,
+    /// JSON stop conditions the turn ran with.
+    pub limits: String,
+    /// JSON usage and cost snapshot when the turn ended.
+    pub accounting: Option<String>,
     pub created_at: i64,
 }
 
@@ -1230,6 +1329,34 @@ mod tests {
         let sources = repo.get_row_sources(&row_id).await.unwrap();
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].url, "https://example.com");
+    }
+
+    #[tokio::test]
+    async fn research_turns_keep_questions_answers_and_their_steps() {
+        let (repo, _db) = test_repo().await;
+        repo.create_run("run-1", "Find proxies", "{}").await.unwrap();
+        assert_eq!(repo.next_research_turn_index("run-1").await.unwrap(), 0);
+        repo.create_research_turn("run-1", 0, "Find proxies", r#"{"target_row_count":16}"#).await.unwrap();
+        repo.create_research_step("run-1", 0, 0, "search", "proxies", None).await.unwrap();
+        repo.finish_research_turn("run-1", 0, Some("Use Proxy-Seller."), &["Cheapest?".to_string()], "completed")
+            .await
+            .unwrap();
+        assert_eq!(repo.next_research_turn_index("run-1").await.unwrap(), 1);
+        repo.create_research_turn("run-1", 1, "Which are cheapest?", "{}").await.unwrap();
+        repo.create_research_step("run-1", 1, 0, "fetch", "Prices", Some("https://p.example")).await.unwrap();
+        repo.finish_research_turn("run-1", 1, None, &[], "cancelled").await.unwrap();
+
+        let turns = repo.get_research_turns("run-1").await.unwrap();
+        assert_eq!(turns.len(), 2);
+        assert_eq!(turns[0].question, "Find proxies");
+        assert_eq!(turns[0].answer_markdown.as_deref(), Some("Use Proxy-Seller."));
+        assert_eq!(turns[0].follow_ups, r#"["Cheapest?"]"#);
+        assert_eq!(turns[0].status, "completed");
+        assert_eq!(turns[0].limits, r#"{"target_row_count":16}"#);
+        assert_eq!((turns[1].status.as_str(), turns[1].answer_markdown.clone()), ("cancelled", None));
+
+        let steps = repo.get_research_steps("run-1").await.unwrap();
+        assert_eq!(steps.iter().map(|s| (s.turn_index, s.step_index)).collect::<Vec<_>>(), vec![(0, 0), (1, 0)]);
     }
 
     #[tokio::test]

@@ -193,13 +193,13 @@ test('Live table keeps scroll, filter and sorting when results arrive; logs do n
 	await expect(page.getByText('Expanding searches', { exact: true })).toBeVisible();
 });
 
-test('Research answer precedes collapsed activity and contains safe readable Markdown', async ({
+test('Research answer is shown first and contains safe readable Markdown', async ({
 	page,
 }) => {
 	await page.setViewportSize({ width: 900, height: 600 });
 	await viewRun(page, 3);
 	await expect(page.getByRole('region', { name: 'Research answer' })).toBeVisible();
-	expect(await page.locator('.activity').getAttribute('open')).toBeNull();
+	await expect(page.getByRole('tab', { name: 'Answer' })).toHaveAttribute('aria-selected', 'true');
 	expect(
 		await page
 			.locator('.markdown ul')
@@ -208,11 +208,10 @@ test('Research answer precedes collapsed activity and contains safe readable Mar
 	).toBe('disc');
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(900);
 	expect(await page.evaluate(() => (window as any).unsafe)).toBeUndefined();
-	await page.locator('.activity > summary').click();
-	await page.locator('.activity li summary').first().click();
-	await expect(page.locator('.step-content').first()).toContainText(
-		'A full research step. '.repeat(30)
-	);
+	await page.getByRole('tab', { name: /Activity/ }).click();
+	const first = page.locator('.step').first();
+	await first.getByRole('button', { name: 'Show more' }).click();
+	await expect(first.locator('.summary')).toContainText('A full research step. '.repeat(30).trim());
 });
 
 test('Image preview ignores obsolete responses and displays decode failures', async ({ page }) => {

@@ -5,9 +5,33 @@ import { svelteTesting } from "@testing-library/svelte/vite";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+/**
+ * vite-plugin-svelte only has a component's CSS after compiling the component. When the
+ * dev server is asked for the CSS first, it serves the raw .svelte source as CSS and caches
+ * it, so rules like `label {…}` apply globally. Compile the component before its CSS loads.
+ * @returns {import('vite').Plugin}
+ */
+function compileSvelteBeforeCss() {
+  return {
+    name: "compile-svelte-before-css",
+    apply: "serve",
+    enforce: "pre",
+    load: {
+      filter: { id: /\.svelte\?svelte&type=style/ },
+      async handler(id) {
+        const file = id.slice(0, id.indexOf("?"));
+        if (!this.getModuleInfo(file)?.meta?.svelte?.css)
+          // @ts-expect-error transformRequest exists on the dev environment
+          await this.environment.transformRequest?.(file);
+        return null;
+      },
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [sveltekit(), svelteTesting()],
+  plugins: [compileSvelteBeforeCss(), sveltekit(), svelteTesting()],
   test: {
     include: ['src/**/*.test.{js,ts}'],
     environment: 'jsdom',

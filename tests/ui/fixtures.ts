@@ -200,6 +200,8 @@ export const test = base.extend({
 							return;
 						case 'plugin:dialog|save':
 							return '/tmp/query2table-fixture.csv';
+						case 'get_run':
+							return fixture.runs.find((run: any) => run.id === args.runId) ?? null;
 						case 'export_run':
 							return fixture.delayExport
 								? new Promise<void>((resolve) => (fixture.finishExport = resolve))

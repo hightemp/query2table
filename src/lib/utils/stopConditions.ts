@@ -16,17 +16,32 @@ export const STOP_SETTING_KEYS = {
 	duration: 'max_duration_seconds',
 } as const;
 
+/** Research counts agent steps, so its limit is remembered separately from result counts. */
+export function stopSettingKeys(mode: string) {
+	return mode === 'research'
+		? { ...STOP_SETTING_KEYS, target: 'research_max_steps' as const }
+		: STOP_SETTING_KEYS;
+}
+
+const RESEARCH_DEFAULT_STEPS = '16';
+const RESEARCH_MAX_STEPS = 50;
+
 export const DEFAULT_STOP_INPUT: StopConditionInput = { target: '50', budget: '1.00', duration: '10' };
 
 const MAX_TARGET = 10_000;
 const MAX_MINUTES = 24 * 60;
 
-export function stopInputFromSettings(settings: Map<string, string>): StopConditionInput {
-	const target = Number(settings.get(STOP_SETTING_KEYS.target));
+export function stopInputFromSettings(
+	settings: Map<string, string>,
+	mode = 'table'
+): StopConditionInput {
+	const keys = stopSettingKeys(mode);
+	const target = Number(settings.get(keys.target));
+	const defaultTarget = mode === 'research' ? RESEARCH_DEFAULT_STEPS : DEFAULT_STOP_INPUT.target;
 	const budget = Number(settings.get(STOP_SETTING_KEYS.budget));
 	const seconds = Number(settings.get(STOP_SETTING_KEYS.duration));
 	return {
-		target: Number.isInteger(target) && target > 0 ? String(target) : DEFAULT_STOP_INPUT.target,
+		target: Number.isInteger(target) && target > 0 ? String(target) : defaultTarget,
 		budget: Number.isFinite(budget) && budget > 0 ? budget.toFixed(2) : DEFAULT_STOP_INPUT.budget,
 		duration:
 			Number.isFinite(seconds) && seconds > 0
@@ -35,14 +50,18 @@ export function stopInputFromSettings(settings: Map<string, string>): StopCondit
 	};
 }
 
-export function parseStopConditions(input: StopConditionInput): {
+export function parseStopConditions(
+	input: StopConditionInput,
+	mode = 'table'
+): {
 	conditions: Required<StopConditions> | null;
 	errors: StopConditionErrors;
 } {
 	const errors: StopConditionErrors = {};
+	const maxTarget = mode === 'research' ? RESEARCH_MAX_STEPS : MAX_TARGET;
 	const target = Number(input.target.trim());
-	if (!input.target.trim() || !Number.isInteger(target) || target < 1 || target > MAX_TARGET)
-		errors.target = `Enter a whole number from 1 to ${MAX_TARGET.toLocaleString('en-US')}.`;
+	if (!input.target.trim() || !Number.isInteger(target) || target < 1 || target > maxTarget)
+		errors.target = `Enter a whole number from 1 to ${maxTarget.toLocaleString('en-US')}.`;
 	const budget = Number(input.budget.trim());
 	if (!input.budget.trim() || !Number.isFinite(budget) || budget < 0.01)
 		errors.budget = 'Enter an amount of at least $0.01.';

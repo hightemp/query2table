@@ -13,9 +13,22 @@ pub enum AgentAction {
     Fetch { url: String },
     /// Record an internal reasoning step.
     Think { thought: String },
-    /// Produce the final markdown answer and finish.
-    Answer { markdown: String },
+    /// Produce the final markdown answer and finish, with up to three suggested follow-up questions.
+    Answer { markdown: String, follow_ups: Vec<String> },
 }
+
+/// An earlier question of the conversation, given to the agent as context.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PriorTurn {
+    pub question: String,
+    pub answer: String,
+    /// Pages read for that turn: (url, title).
+    pub sources: Vec<(String, String)>,
+}
+
+/// Upper bound for the conversation history passed to the agent, in characters.
+pub const CONTEXT_CHAR_LIMIT: usize = 12_000;
+const MAX_FOLLOW_UPS: usize = 3;
 
 /// The research agent decides the next tool call given the conversation so far.
 pub struct ResearchAgent;
@@ -46,6 +59,11 @@ Rules:
 - Cite sources in the final answer as Markdown links where appropriate.
 - You have at most {max_steps} steps. When you have enough information, call "answer".
 - The "answer" markdown must directly and completely address the user's request.
+- Do not end the answer with offers of further help ("If you want, I can also…");
+  instead put 2-3 short follow-up questions the user may ask next, written in the user's
+  language, in the "follow_ups" field: {{"action": "answer", "markdown": "...", "follow_ups": ["...", "..."]}}
+- If earlier questions of the conversation are given, answer the new request in their
+  context. You may reuse their sources, and search or read pages again whenever needed.
 - Respond with ONLY the JSON object for the chosen tool. Do not wrap it in code fences."#
         )
     }
@@ -91,6 +109,67 @@ Rules:
         // No complete JSON object (likely truncated) — attempt salvage.
         salvage_action(raw)
             .ok_or_else(|| format!("No JSON object found in model reply: {raw}"))
+    }
+
+    /// Earlier turns as one context message, or `None` for the first question.
+    /// Page text is not repeated; when the history is too long, older answers are shortened first.
+    pub fn conversation_context(turns: &[PriorTurn]) -> Option<String> {
+        if turns.is_empty() {
+            return None;
+        }
+        let render = |answer_limits: &[usize]| {
+            let mut out = String::from("Earlier in this conversation:\n");
+            for (i, turn) in turns.iter().enumerate() {
+                let limit = answer_limits[i];
+                let answer = if turn.answer.chars().count() > limit {
+                    format!("{} [answer shortened]", turn.answer.chars().take(limit).collect::<String>())
+                } else {
+                    turn.answer.clone()
+                };
+                out.push_str(&format!("\nQuestion {}: {}\nAnswer {}:\n{}\n", i + 1, turn.question, i + 1, answer));
+                if !turn.sources.is_empty() {
+                    out.push_str("Sources read:\n");
+                    for (url, title) in &turn.sources {
+                        out.push_str(&format!("- {title} — {url}\n"));
+                    }
+                }
+            }
+            out
+        };
+        let mut limits: Vec<usize> = turns.iter().map(|t| t.answer.chars().count()).collect();
+        let mut text = render(&limits);
+        // Shorten the oldest answers first, keeping at least a short summary of each.
+        for i in 0..turns.len() {
+            if text.chars().count() <= CONTEXT_CHAR_LIMIT {
+                break;
+            }
+            let excess = text.chars().count() - CONTEXT_CHAR_LIMIT;
+            limits[i] = limits[i].saturating_sub(excess).max(400.min(limits[i]));
+            text = render(&limits);
+        }
+        Some(text)
+    }
+
+    /// The `<title>` of an HTML page, cleaned up and capped at 160 characters.
+    pub fn page_title(html: &str) -> Option<String> {
+        let lower = html.to_lowercase();
+        let start = lower.find("<title")?;
+        let open_end = lower[start..].find('>')? + start + 1;
+        let close = lower[open_end..].find("</title>")? + open_end;
+        let raw = &html[open_end..close];
+        let decoded = raw
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&nbsp;", " ");
+        let title = decoded.split_whitespace().collect::<Vec<_>>().join(" ");
+        if title.is_empty() {
+            None
+        } else {
+            Some(title.chars().take(160).collect())
+        }
     }
 
     /// Convert fetched HTML into Markdown. Falls back to plain text extraction
@@ -157,6 +236,8 @@ fn parse_json_action(json_str: &str) -> Result<AgentAction, String> {
         thought: Option<String>,
         #[serde(default)]
         markdown: Option<String>,
+        #[serde(default)]
+        follow_ups: Option<Vec<String>>,
     }
 
     let parsed: RawAction = serde_json::from_str(json_str)
@@ -186,7 +267,15 @@ fn parse_json_action(json_str: &str) -> Result<AgentAction, String> {
                 .markdown
                 .filter(|m| !m.trim().is_empty())
                 .ok_or_else(|| "answer action missing 'markdown'".to_string())?;
-            Ok(AgentAction::Answer { markdown })
+            let follow_ups = parsed
+                .follow_ups
+                .unwrap_or_default()
+                .into_iter()
+                .map(|q| q.trim().to_string())
+                .filter(|q| !q.is_empty())
+                .take(MAX_FOLLOW_UPS)
+                .collect();
+            Ok(AgentAction::Answer { markdown, follow_ups })
         }
         other => Err(format!("Unknown agent action: {other}")),
     }
@@ -206,7 +295,7 @@ fn salvage_action(raw: &str) -> Option<AgentAction> {
                 None
             } else {
                 debug!(len = markdown.len(), "Salvaged truncated answer");
-                Some(AgentAction::Answer { markdown })
+                Some(AgentAction::Answer { markdown, follow_ups: vec![] })
             }
         }
         "think" => Some(AgentAction::Think {
@@ -293,6 +382,72 @@ mod tests {
     use super::*;
 
     #[test]
+    fn answers_carry_up_to_three_follow_up_suggestions() {
+        let raw = r#"{"action":"answer","markdown":"Done","follow_ups":["Cheapest?", "  ", "Mobile only?", "Free lists?", "Fourth"]}"#;
+        assert_eq!(
+            ResearchAgent::parse_action(raw).unwrap(),
+            AgentAction::Answer {
+                markdown: "Done".to_string(),
+                follow_ups: vec!["Cheapest?".into(), "Mobile only?".into(), "Free lists?".into()],
+            }
+        );
+        let plain = r#"{"action":"answer","markdown":"Done"}"#;
+        assert_eq!(
+            ResearchAgent::parse_action(plain).unwrap(),
+            AgentAction::Answer { markdown: "Done".to_string(), follow_ups: vec![] }
+        );
+    }
+
+    #[test]
+    fn the_prompt_asks_for_suggestions_instead_of_offers_in_the_answer() {
+        let prompt = ResearchAgent::system_prompt(16);
+        assert!(prompt.contains("\"follow_ups\""));
+        assert!(prompt.contains("at most 16 steps"));
+        assert!(prompt.contains("Do not end the answer with offers"));
+    }
+
+    #[test]
+    fn earlier_turns_become_context_without_page_text() {
+        assert_eq!(ResearchAgent::conversation_context(&[]), None);
+        let turns = vec![
+            PriorTurn {
+                question: "Find Malaysian proxies".into(),
+                answer: "Use Proxy-Seller.".into(),
+                sources: vec![("https://proxy-seller.me/my".into(), "Proxy-Seller".into())],
+            },
+            PriorTurn { question: "Which are cheapest?".into(), answer: "Proxy5.".into(), sources: vec![] },
+        ];
+        let context = ResearchAgent::conversation_context(&turns).unwrap();
+        assert!(context.contains("Question 1: Find Malaysian proxies"));
+        assert!(context.contains("Answer 1:\nUse Proxy-Seller."));
+        assert!(context.contains("- Proxy-Seller — https://proxy-seller.me/my"));
+        assert!(context.contains("Question 2: Which are cheapest?"));
+    }
+
+    #[test]
+    fn long_history_shortens_older_answers_first() {
+        let long = "x".repeat(20_000);
+        let turns = vec![
+            PriorTurn { question: "Old".into(), answer: long.clone(), sources: vec![] },
+            PriorTurn { question: "Recent".into(), answer: "Short recent answer".into(), sources: vec![] },
+        ];
+        let context = ResearchAgent::conversation_context(&turns).unwrap();
+        assert!(context.chars().count() < CONTEXT_CHAR_LIMIT + 500);
+        assert!(context.contains("[answer shortened]"));
+        assert!(context.contains("Short recent answer"));
+    }
+
+    #[test]
+    fn page_titles_come_from_the_html_title() {
+        assert_eq!(
+            ResearchAgent::page_title("<html><head><title>\n  Malaysia &amp; proxies  | Proxy-Seller\n</title></head></html>"),
+            Some("Malaysia & proxies | Proxy-Seller".to_string())
+        );
+        assert_eq!(ResearchAgent::page_title("<html><body>No title</body></html>"), None);
+        assert_eq!(ResearchAgent::page_title(&format!("<title>{}</title>", "a".repeat(400))).unwrap().chars().count(), 160);
+    }
+
+    #[test]
     fn test_parse_search_action() {
         let raw = r#"{"action": "search", "query": "rust async runtime"}"#;
         let action = ResearchAgent::parse_action(raw).unwrap();
@@ -328,7 +483,7 @@ mod tests {
         let raw = r#"{"action":"answer","markdown":"Result heading and body"}"#;
         let action = ResearchAgent::parse_action(raw).unwrap();
         match action {
-            AgentAction::Answer { markdown } => assert!(markdown.contains("Result heading")),
+            AgentAction::Answer { markdown, .. } => assert!(markdown.contains("Result heading")),
             _ => panic!("expected answer"),
         }
     }
@@ -350,7 +505,7 @@ mod tests {
         let raw = r#"{"action":"answer","markdown":"Use {curly} braces { nested }"}"#;
         let action = ResearchAgent::parse_action(raw).unwrap();
         match action {
-            AgentAction::Answer { markdown } => assert!(markdown.contains("{curly}")),
+            AgentAction::Answer { markdown, .. } => assert!(markdown.contains("{curly}")),
             _ => panic!("expected answer"),
         }
     }
@@ -381,7 +536,7 @@ mod tests {
         let raw = r##"{"action":"answer","markdown":"# Heading\n\nSome long content that was cut off mid-sen"##;
         let action = ResearchAgent::parse_action(raw).unwrap();
         match action {
-            AgentAction::Answer { markdown } => {
+            AgentAction::Answer { markdown, .. } => {
                 assert!(markdown.contains("# Heading"));
                 assert!(markdown.contains("cut off mid-sen"));
                 assert!(markdown.contains('\n'));
@@ -396,7 +551,7 @@ mod tests {
         let raw = "{\"action\":\"answer\",\"markdown\":\"Line one\\nLine two\\";
         let action = ResearchAgent::parse_action(raw).unwrap();
         match action {
-            AgentAction::Answer { markdown } => {
+            AgentAction::Answer { markdown, .. } => {
                 assert!(markdown.contains("Line one"));
                 assert!(markdown.contains("Line two"));
             }

@@ -10,8 +10,16 @@
 	let {
 		runId,
 		runType = 'table',
+		turns = [],
 		onclose,
-	}: { runId: string; runType?: string; onclose: () => void } = $props();
+	}: {
+		runId: string;
+		runType?: string;
+		/** Research turns, to export one of them instead of the whole conversation. */
+		turns?: { index: number; question: string }[];
+		onclose: () => void;
+	} = $props();
+	let turnChoice = $state('all');
 	let format = $state<'csv' | 'json' | 'xlsx' | 'md'>(
 		untrack(() => (runType === 'research' ? 'md' : 'csv'))
 	);
@@ -43,7 +51,7 @@
 				filters: [{ name: option.label, extensions: [format] }],
 			});
 			if (!path) return;
-			await exportRun(runId, format, path);
+			await exportRun(runId, format, path, turnChoice === 'all' ? null : Number(turnChoice));
 			savedPath = path;
 			debugUi('export_finished');
 		} catch (reason) {
@@ -67,7 +75,17 @@
 						><strong>{option.label}</strong><small>{option.description}</small></span
 					></label
 				>{/each}
-		</fieldset>{/if}
+		</fieldset>
+		{#if runType === 'research'}
+			<label class="turn-choice"
+				>Export<select class="input" bind:value={turnChoice} disabled={exporting}>
+					<option value="all">Whole conversation</option>
+					{#each turns as turn (turn.index)}<option value={String(turn.index)}
+							>Question {turn.index + 1}: {turn.question}</option
+						>{/each}
+				</select></label
+			>
+		{/if}{/if}
 	{#if error}<ErrorNotice {error} context="export" />{/if}
 	{#snippet footer()}
 		{#if savedPath}<button class="button primary" onclick={onclose}>Done</button>{:else}<button
@@ -112,6 +130,18 @@
 	small {
 		color: var(--app-muted);
 		margin-top: 3px;
+	}
+	.turn-choice {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 4px;
+		margin-top: 12px;
+		padding: 0;
+		border: 0;
+		cursor: default;
+		font-size: var(--app-text-md);
+		color: var(--app-muted);
 	}
 	.saved-path {
 		background: var(--app-subtle);
