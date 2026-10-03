@@ -9,6 +9,7 @@ use crate::storage::repository::Repository;
 
 use crate::roles::image_searcher::ImageSearcher;
 use crate::roles::image_ranker::ImageRanker;
+use crate::providers::search::types::ImageSearchResult;
 
 use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
@@ -148,12 +149,22 @@ impl ImagePipeline {
             return Ok(PipelineState::Completed);
         }
 
-        // Optional LLM ranking
-        let ranking_skipped = llm.is_none() || self.budget.is_exceeded();
+        // Optional LLM ranking. Unranked images are saved without a relevance score.
+        let unranked = |results: Vec<ImageSearchResult>| {
+            results
+                .into_iter()
+                .map(|r| crate::roles::image_ranker::RankedImageResult {
+                    result: r,
+                    relevance_score: 0.5,
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut ranking_skipped = llm.is_none() || self.budget.is_exceeded();
         let ranked_results = if let Some(ref llm_mgr) = llm.filter(|_| !self.budget.is_exceeded()) {
             self.log("INFO", "image_ranker", "Ranking images with LLM...")
                 .await;
-            match ImageRanker::rank(&self.query, collected.results, llm_mgr, 0.7).await {
+            // Keep the search results so a ranking failure does not discard them.
+            match ImageRanker::rank(&self.query, collected.results.clone(), llm_mgr, 0.7).await {
                 Ok(ranked) => {
                     self.log(
                         "INFO",
@@ -166,8 +177,8 @@ impl ImagePipeline {
                 Err(e) => {
                     warn!(error = %e, "LLM ranking failed, using unranked results");
                     self.log("WARN", "image_ranker", &format!("Ranking failed: {e}, using unranked results")).await;
-                    // Cannot recover results after move — return empty
-                    vec![]
+                    ranking_skipped = true;
+                    unranked(collected.results)
                 }
             }
         } else {
@@ -177,14 +188,7 @@ impl ImagePipeline {
                 "Ranking skipped; saving retrieved images without relevance scores",
             )
             .await;
-            collected
-                .results
-                .into_iter()
-                .map(|r| crate::roles::image_ranker::RankedImageResult {
-                    result: r,
-                    relevance_score: 0.5,
-                })
-                .collect()
+            unranked(collected.results)
         };
 
         // Apply target limit ("Max Images" stop condition)

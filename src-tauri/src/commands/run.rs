@@ -509,50 +509,6 @@ pub async fn get_research_result(
     })
 }
 
-/// Proxy-fetch an image URL through the backend to avoid hotlink protection.
-/// Returns a data URL (data:image/...;base64,...).
-#[tauri::command]
-pub async fn proxy_image(url: String) -> Result<String, String> {
-    use reqwest::Client;
-    use base64::Engine;
-
-    let builder = Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-    let client = crate::providers::http::apply_proxy(builder)
-        .build()
-        .map_err(|e| format!("HTTP client error: {e}"))?;
-
-    let resp = client.get(&url).send().await
-        .map_err(|e| format!("Fetch error: {e}"))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-
-    let content_type = resp.headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("image/jpeg")
-        .to_string();
-
-    // Only allow image content types
-    if !content_type.starts_with("image/") {
-        return Err(format!("Not an image: {content_type}"));
-    }
-
-    let bytes = resp.bytes().await
-        .map_err(|e| format!("Read error: {e}"))?;
-
-    // Limit to 10MB
-    if bytes.len() > 10 * 1024 * 1024 {
-        return Err("Image too large (>10MB)".to_string());
-    }
-
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(format!("data:{content_type};base64,{b64}"))
-}
-
 #[cfg(test)]
 mod control_tests {
     use super::*;

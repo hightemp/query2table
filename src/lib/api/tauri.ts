@@ -215,6 +215,23 @@ export async function proxyImage(url: string): Promise<string> {
 	return invoke('proxy_image', { url });
 }
 
+/** Saves one image (or its fallback, usually the thumbnail) and returns the written path. */
+export function saveImage(url: string, fallbackUrl: string | null, path: string): Promise<string> {
+	return invoke('save_image', { url, fallbackUrl, path });
+}
+
+export interface SaveImagesResult {
+	saved: string[];
+	failed: [string, string][];
+}
+
+export function saveImages(
+	items: { url: string; fallback_url: string | null; name: string }[],
+	directory: string
+): Promise<SaveImagesResult> {
+	return invoke('save_images', { items, directory });
+}
+
 export function onImageAdded(cb: (e: ImageAddedEvent) => void): Promise<UnlistenFn> {
 	return listen<ImageAddedEvent>('run:image_added', (event) => cb(event.payload));
 }

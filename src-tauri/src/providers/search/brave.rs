@@ -34,11 +34,12 @@ struct BraveImageResponse {
     results: Option<Vec<BraveImageResult>>,
 }
 
+/// Brave image result: `url` is the page that shows the image, `source` is that page's
+/// domain, and `properties.url` is the image file itself.
 #[derive(Debug, Deserialize)]
 struct BraveImageResult {
     title: String,
     url: String,
-    source: Option<String>,
     thumbnail: Option<BraveThumbnail>,
     properties: Option<BraveImageProperties>,
 }
@@ -50,6 +51,7 @@ struct BraveThumbnail {
 
 #[derive(Debug, Deserialize)]
 struct BraveImageProperties {
+    url: Option<String>,
     width: Option<u32>,
     height: Option<u32>,
 }
@@ -234,13 +236,23 @@ impl ImageSearchProvider for BraveSearchProvider {
             .results
             .unwrap_or_default()
             .into_iter()
-            .map(|r| ImageSearchResult {
-                image_url: r.url.clone(),
-                thumbnail_url: r.thumbnail.and_then(|t| t.src).unwrap_or_else(|| r.url),
-                title: r.title,
-                source_url: r.source.unwrap_or_default(),
-                width: r.properties.as_ref().and_then(|p| p.width),
-                height: r.properties.as_ref().and_then(|p| p.height),
+            .filter_map(|r| {
+                let image_url = r
+                    .properties
+                    .as_ref()
+                    .and_then(|p| p.url.clone())
+                    .or_else(|| r.thumbnail.as_ref().and_then(|t| t.src.clone()))?;
+                Some(ImageSearchResult {
+                    thumbnail_url: r
+                        .thumbnail
+                        .and_then(|t| t.src)
+                        .unwrap_or_else(|| image_url.clone()),
+                    image_url,
+                    title: r.title,
+                    source_url: r.url,
+                    width: r.properties.as_ref().and_then(|p| p.width),
+                    height: r.properties.as_ref().and_then(|p| p.height),
+                })
             })
             .collect();
 
@@ -276,6 +288,35 @@ mod tests {
             provider.search_images(SearchQuery::new(&query, requested)).await.unwrap();
         }
         assert_eq!(server.received_requests().await.unwrap().len(), cases.len() * 2);
+    }
+
+    #[tokio::test]
+    async fn image_results_link_the_image_file_and_the_page_showing_it() {
+        use wiremock::{matchers::{method, path}, Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        let mut provider = BraveSearchProvider::new("test-key").with_base_url(server.uri());
+        provider.client = Client::builder().no_proxy().build().unwrap();
+        Mock::given(method("GET")).and(path("/images/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"results": [
+                {
+                    "title": "Tower",
+                    "url": "https://news.example/article",
+                    "source": "news.example",
+                    "thumbnail": {"src": "https://imgs.search.brave.com/thumb"},
+                    "properties": {"url": "https://cdn.example/tower.jpg", "width": 1600, "height": 900}
+                },
+                {"title": "Thumbnail only", "url": "https://other.example/", "thumbnail": {"src": "https://imgs.search.brave.com/t2"}},
+                {"title": "Nothing to show", "url": "https://empty.example/"}
+            ]}))).mount(&server).await;
+
+        let results = provider.search_images(SearchQuery::new("tower", 3)).await.unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].image_url, "https://cdn.example/tower.jpg");
+        assert_eq!(results[0].source_url, "https://news.example/article");
+        assert_eq!(results[0].thumbnail_url, "https://imgs.search.brave.com/thumb");
+        assert_eq!((results[0].width, results[0].height), (Some(1600), Some(900)));
+        assert_eq!(results[1].image_url, "https://imgs.search.brave.com/t2");
+        assert_eq!(results[1].source_url, "https://other.example/");
     }
 
     #[test]

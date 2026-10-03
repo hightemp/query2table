@@ -121,7 +121,9 @@ pub fn run() {
             commands::run::get_image_results,
             commands::run::get_link_results,
             commands::run::get_research_result,
-            commands::run::proxy_image,
+            commands::images::proxy_image,
+            commands::images::save_image,
+            commands::images::save_images,
             commands::export::export_run,
         ])
         .run(tauri::generate_context!())

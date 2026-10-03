@@ -28,9 +28,9 @@
 		<span
 			>{units[runType] ?? 'Results'} <strong>{stats.rows_found}</strong>{#if target && runType !== 'research'}{` / ${target}`}{/if}</span
 		>
-		<span
-			>Pages <strong>{stats.pages_fetched}</strong>{#if stats.pages_total > 0}{` / ${stats.pages_total}`}{/if}</span
-		>
+		{#if runType !== 'images'}<span
+				>Pages <strong>{stats.pages_fetched}</strong>{#if stats.pages_total > 0}{` / ${stats.pages_total}`}{/if}</span
+			>{/if}
 		<span
 			>{runType === 'research' ? 'Steps' : 'Queries'}
 			<strong>{stats.queries_executed}</strong>{#if stats.queries_total > 0}{` / ${stats.queries_total}`}{/if}</span
