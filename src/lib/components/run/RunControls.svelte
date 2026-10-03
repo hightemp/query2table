@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { PauseIcon, PlayIcon, XCircleIcon, RotateCcwIcon, DownloadIcon } from '@lucide/svelte';
+	import {
+		PauseIcon,
+		PlayIcon,
+		XCircleIcon,
+		RotateCcwIcon,
+		DownloadIcon,
+		PencilIcon,
+	} from '@lucide/svelte';
 	import type { RunControl } from '$lib/stores/run';
 	import Badge from '$lib/components/common/Badge.svelte';
 	import { statusLabel, statusTone } from '$lib/utils/status';
@@ -11,6 +18,7 @@
 		onresume: () => void;
 		oncancel: () => void;
 		onreset: () => void;
+		onedit?: () => void;
 		onexport?: () => void;
 		showExport?: boolean;
 	}
@@ -22,6 +30,7 @@
 		onresume,
 		oncancel,
 		onreset,
+		onedit,
 		onexport,
 		showExport = false,
 	}: Props = $props();
@@ -64,6 +73,12 @@
 	{/if}
 
 	{#if isFinished}
+		{#if onedit}
+			<button class="button sm" onclick={onedit} title="Change the query and run it again">
+				<PencilIcon size={16} />
+				Edit query
+			</button>
+		{/if}
 		<button class="button sm" onclick={onreset} aria-label="New query">
 			<RotateCcwIcon size={16} />
 			New Query

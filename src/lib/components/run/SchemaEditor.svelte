@@ -5,12 +5,10 @@
 	let {
 		columns: initialColumns,
 		onconfirm,
-		oncancel,
 		pending = false,
 	}: {
 		columns: SchemaColumn[];
 		onconfirm: (columns: SchemaColumn[]) => void;
-		oncancel: () => void;
 		pending?: boolean;
 	} = $props();
 	let columns = $state<SchemaColumn[]>(
@@ -101,7 +99,7 @@
 			}}><PlusIcon size={16} />Add Column</button
 		>
 		<div>
-			<button class="button danger" onclick={oncancel}>Cancel Run</button><button
+			<button
 				class="button primary"
 				disabled={!!validation || pending}
 				onclick={confirm}

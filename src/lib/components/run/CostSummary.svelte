@@ -3,7 +3,8 @@
 	let {
 		accounting = null,
 		legacy = null,
-	}: { accounting?: Accounting | null; legacy?: number | null } = $props();
+		inline = false,
+	}: { accounting?: Accounting | null; legacy?: number | null; inline?: boolean } = $props();
 	const usd = (amount: number) =>
 		amount > 0 && amount < 0.000001
 			? '< $0.000001'
@@ -19,27 +20,9 @@
 			return `Partial cost ${usd(accounting.spent_usd)}`;
 		return `${accounting.estimated_calls ? 'Estimated' : 'Reported'} cost ${usd(accounting.spent_usd)}`;
 	});
-	let unknownProviders = $derived.by(() => {
-		const totals = new Map<string, number>();
-		for (const line of accounting?.breakdown ?? []) {
-			if (line.unpriced_calls > 0)
-				totals.set(line.provider, (totals.get(line.provider) ?? 0) + line.unpriced_calls);
-		}
-		const names: Record<string, string> = {
-			brave: 'Brave Search',
-			serper: 'Serper',
-			openrouter: 'OpenRouter',
-			ollama: 'Ollama',
-			ollama_cloud: 'Ollama Cloud',
-			openai_compatible: 'OpenAI-compatible',
-		};
-		return [...totals]
-			.map(([provider, count]) => `${names[provider] ?? provider}: ${count}`)
-			.join(' · ');
-	});
 </script>
 
-<details class="cost-summary">
+<details class="cost-summary" class:inline>
 	<summary>{title}<span>Usage &amp; cost</span></summary>
 	<div class="cost-details">
 		{#if accounting}
@@ -105,22 +88,10 @@
 			</p>{/if}
 	</div>
 </details>
-{#if accounting && accounting.spent_usd >= accounting.max_budget_usd - accounting.max_budget_usd * 1e-12}<p
-		class="cost-warning"
-		role="status"
-	>
-		Spending limit reached. New provider requests have stopped; requests already in flight may still
-		incur charges.
-	</p>{/if}
-{#if accounting && accounting.unpriced_calls > 0}<p class="cost-warning" role="status">
-		Request attempts with unknown cost: {accounting.unpriced_calls}.
-		{#if unknownProviders}<span>{unknownProviders}.</span>{/if}
-		These charges are excluded from the total and spending limit. Expand Usage &amp; cost for details
-		or review <a href="/settings">pricing in Settings</a> for new runs.
-	</p>{/if}
 
 <style>
 	.cost-summary {
+		position: relative;
 		color: var(--app-muted);
 		font-size: var(--app-text-sm);
 		min-width: 0;
@@ -134,12 +105,33 @@
 		font-weight: 400;
 	}
 	.cost-details {
-		max-height: 160px;
+		position: absolute;
+		top: calc(100% + 6px);
+		right: 0;
+		z-index: 20;
+		width: min(560px, 80vw);
+		max-height: min(360px, 50vh);
 		overflow: auto;
-		border-left: 2px solid var(--app-border);
-		padding: 4px 12px;
-		margin-top: 8px;
+		padding: 8px 14px;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius);
+		background: var(--app-panel);
+		box-shadow: var(--app-shadow-popover);
+		color: var(--app-text);
 		overflow-wrap: anywhere;
+	}
+	/* In page flow (history), open below the summary instead of over the results. */
+	.cost-summary.inline .cost-details {
+		position: static;
+		width: auto;
+		max-height: 160px;
+		margin-top: 8px;
+		border: 0;
+		border-left: 2px solid var(--app-border);
+		border-radius: 0;
+		background: transparent;
+		box-shadow: none;
+		color: inherit;
 	}
 	p {
 		margin: 5px 0;
@@ -149,15 +141,5 @@
 		flex-direction: column;
 		margin: 8px 0;
 		gap: 3px;
-	}
-	.cost-warning {
-		color: var(--app-warning);
-		font-size: var(--app-text-sm);
-		margin: 4px 0;
-		overflow-wrap: anywhere;
-	}
-	.cost-warning a {
-		color: inherit;
-		text-decoration: underline;
 	}
 </style>

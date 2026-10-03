@@ -63,6 +63,8 @@ export interface RunState {
 	llmIssues: LlmIssueEvent[];
 	activity: LogEntryEvent[];
 	accounting: Accounting | null;
+	/** Stop conditions requested for this run, when known. */
+	limits: import('$lib/api/tauri').StopConditions | null;
 }
 
 const initialState: RunState = {
@@ -84,6 +86,7 @@ const initialState: RunState = {
 	llmIssues: [],
 	activity: [],
 	accounting: null,
+	limits: null,
 };
 
 export const runState = writable<RunState>({ ...initialState });
@@ -254,6 +257,7 @@ export async function startNewRun(
 		query,
 		runType,
 		status: 'pending',
+		limits: stopConditions ?? null,
 	});
 
 	const earlyEvents: (() => void)[] = [];

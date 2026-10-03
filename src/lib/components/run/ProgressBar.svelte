@@ -4,7 +4,13 @@
 		stats,
 		status,
 		runType = 'table',
-	}: { stats: ProgressStats | null; status: string; runType?: string } = $props();
+		target = null,
+	}: {
+		stats: ProgressStats | null;
+		status: string;
+		runType?: string;
+		target?: number | null;
+	} = $props();
 	const units: Record<string, string> = {
 		table: 'Rows',
 		images: 'Images',
@@ -19,15 +25,15 @@
 
 <div class="progress-stats" aria-label="Run statistics">
 	{#if stats}
-		<span>{units[runType] ?? 'Results'} <strong>{stats.rows_found}</strong></span>
 		<span
-			>Pages <strong>{stats.pages_fetched}</strong>{#if stats.pages_total > 0}
-				/ {stats.pages_total}{/if}</span
+			>{units[runType] ?? 'Results'} <strong>{stats.rows_found}</strong>{#if target && runType !== 'research'}{` / ${target}`}{/if}</span
+		>
+		<span
+			>Pages <strong>{stats.pages_fetched}</strong>{#if stats.pages_total > 0}{` / ${stats.pages_total}`}{/if}</span
 		>
 		<span
 			>{runType === 'research' ? 'Steps' : 'Queries'}
-			<strong>{stats.queries_executed}</strong>{#if stats.queries_total > 0}
-				/ {stats.queries_total}{/if}</span
+			<strong>{stats.queries_executed}</strong>{#if stats.queries_total > 0}{` / ${stats.queries_total}`}{/if}</span
 		>
 		<span>{elapsed(stats.elapsed_secs)}</span>
 	{:else if ['pending', 'running'].includes(status)}<span>Waiting for the first results…</span>{/if}

@@ -12,6 +12,8 @@ export const test = base.extend({
 				llm_provider: 'ollama_cloud',
 				ollama_cloud_url: 'https://ollama.com',
 				ollama_cloud_model: 'deepseek-test',
+				ollama_cloud_api_key: 'fixture-key',
+				brave_api_key: 'fixture-key',
 				llm_reasoning_effort: 'auto',
 				llm_temperature: '0.2',
 				llm_max_tokens: '4096',

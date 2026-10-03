@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import CostSummary from '$lib/components/run/CostSummary.svelte';
+	import CostWarnings from '$lib/components/run/CostWarnings.svelte';
 	import { storedCosts } from '$lib/utils/costs';
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import { debugUi } from '$lib/utils/diagnostics';
@@ -246,7 +247,8 @@
 			</div>
 		</div>
 
-		<CostSummary accounting={costs.accounting} legacy={costs.legacy} />
+		<CostSummary accounting={costs.accounting} legacy={costs.legacy} inline />
+		<CostWarnings accounting={costs.accounting} />
 		<div class="history-notices">
 			{#if error}<ErrorNotice {error} context="history" />{/if}
 			{#if viewingRun.error}<ErrorNotice error={viewingRun.error} />{/if}

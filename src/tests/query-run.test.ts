@@ -43,6 +43,7 @@ describe('query page run feedback', () => {
 		render(QueryPage);
 		vi.mocked(invoke).mockRejectedValueOnce('Run is not active');
 		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Cancel run' }));
 		expect(await screen.findByRole('alert')).toHaveTextContent(
 			'This run can no longer receive commands'
 		);
@@ -91,7 +92,7 @@ describe('query page run feedback', () => {
 		await fireEvent.input(screen.getByLabelText('What would you like to find?'), {
 			target: { value: 'Find robot channels' },
 		});
-		await fireEvent.click(screen.getByRole('button', { name: 'Start Research' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Build Table' }));
 		expect(await screen.findByRole('alert')).toHaveTextContent('Provider connection failed');
 		expect(screen.getByRole('button', { name: 'New query' })).toBeInTheDocument();
 	});

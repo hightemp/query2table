@@ -13,6 +13,11 @@ test('Saved theme is applied by a blocking script before the app renders', async
 	expect(themeScript).toBeLessThan(html.indexOf('/_app/'));
 
 	await page.goto('/');
+	// Let the app finish applying the saved theme so it cannot race the checks below.
+	await expect(page.getByRole('button', { name: 'Dark', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
 	await page.emulateMedia({ colorScheme: 'dark' });
 	const appliedFor = (saved: string | null) =>
 		page.evaluate(async (saved) => {

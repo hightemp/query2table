@@ -54,12 +54,12 @@
 	let running = $derived(status === 'running' || status === 'pending');
 </script>
 
-<div class="current-operation" role="status">
-	<span class="activity-dot" class:running></span><span>{label}</span>
+<div class="current-operation">
+	<span class="activity-dot" class:running></span><span role="status">{label}</span>
 	{#if activity.length}<details>
 			<summary>Activity</summary>
 			<div class="activity-popover">
-				{#each activity.slice(-5) as entry}<p>{entry.message}</p>{/each}
+				{#each activity.slice(-8) as entry}<p>{entry.message}</p>{/each}
 			</div>
 		</details>{/if}
 </div>
@@ -86,18 +86,27 @@
 		animation: pulse 1.6s ease-in-out infinite;
 	}
 	details {
-		width: 100%;
+		position: relative;
 	}
 	summary {
 		cursor: pointer;
 		font-size: var(--app-text-sm);
 	}
 	.activity-popover {
-		max-height: 100px;
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 20;
+		width: min(560px, 70vw);
+		max-height: 220px;
 		overflow: auto;
-		border-left: 2px solid var(--app-border);
-		padding-left: 12px;
-		margin: 8px 0;
+		padding: 8px 12px;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius);
+		background: var(--app-panel);
+		box-shadow: var(--app-shadow-popover);
+		color: var(--app-text);
+		font-size: var(--app-text-sm);
 		overflow-wrap: anywhere;
 	}
 	p {

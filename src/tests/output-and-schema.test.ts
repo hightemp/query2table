@@ -8,7 +8,7 @@ afterEach(cleanup);
 const column = { name: 'Name', type: 'text', description: '', required: true };
 describe('schema draft and structured values', () => {
 	it('does not restore a deliberately removed final column', async () => {
-		render(SchemaEditor, { columns: [column], onconfirm: vi.fn(), oncancel: vi.fn() });
+		render(SchemaEditor, { columns: [column], onconfirm: vi.fn() });
 		await fireEvent.click(screen.getByRole('button', { name: 'Remove column 1' }));
 		expect(screen.queryByPlaceholderText('Column name')).not.toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Confirm Schema' })).toBeDisabled();
@@ -20,7 +20,6 @@ describe('schema draft and structured values', () => {
 		const page = render(SchemaEditor, {
 			columns: [column, { ...column, name: ' name ' }],
 			onconfirm: confirm,
-			oncancel: vi.fn(),
 		});
 		expect(screen.getByText('Column names must be unique.')).toBeInTheDocument();
 		await fireEvent.input(screen.getByLabelText('Column 2 name'), { target: { value: 'URL' } });

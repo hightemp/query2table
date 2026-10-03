@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import CostSummary from '$lib/components/run/CostSummary.svelte';
+import CostWarnings from '$lib/components/run/CostWarnings.svelte';
 import ModelPricing from '$lib/components/settings/ModelPricing.svelte';
 import { storedCosts } from '$lib/utils/costs';
 import { pricingScope, validPricingOverrides } from '$lib/utils/pricing';
@@ -39,31 +40,33 @@ describe('honest cost display and model-scoped rates', () => {
 			completion_tokens: 0,
 			pricing: null,
 		});
-		const view = render(CostSummary, {
-			accounting: {
-				...accounting,
-				unpriced_calls: 50,
-				search_calls: 48,
-				breakdown: [
-					line('brave', 27),
-					line('serper', 21),
-					line('openrouter', 1),
-					line('openrouter', 1),
-				],
-			},
-		});
+		const unknown = {
+			...accounting,
+			unpriced_calls: 50,
+			search_calls: 48,
+			breakdown: [
+				line('brave', 27),
+				line('serper', 21),
+				line('openrouter', 1),
+				line('openrouter', 1),
+			],
+		};
+		const view = render(CostWarnings, { accounting: unknown });
 		expect(screen.getByRole('status')).toHaveTextContent(
-			'Brave Search: 27 · Serper: 21 · OpenRouter: 2'
+			'50 requests with unknown cost, not counted toward the limit (Brave Search: 27 · Serper: 21 · OpenRouter: 2)'
 		);
-		expect(screen.getByRole('link', { name: 'pricing in Settings' })).toHaveAttribute(
+		// Unknown model rates are set in the LLM section, search prices in Search.
+		expect(screen.getByRole('link', { name: 'Set prices' })).toHaveAttribute(
 			'href',
-			'/settings'
+			'/settings#settings-llm'
 		);
+		await view.rerender({ accounting: { ...accounting, search_calls: 48, estimated_calls: 48 } });
+		expect(screen.queryByRole('status')).not.toBeInTheDocument();
+		cleanup();
+		render(CostSummary, { accounting: unknown });
 		expect(
 			screen.getByText(/A saved rate or provider billing response is missing/)
 		).toHaveTextContent('Settings changes apply to new runs');
-		await view.rerender({ accounting: { ...accounting, search_calls: 48, estimated_calls: 48 } });
-		expect(screen.queryByRole('status')).not.toBeInTheDocument();
 	});
 	it('distinguishes reported, estimated, partial and unknown totals', async () => {
 		const view = render(CostSummary, { accounting });
@@ -72,7 +75,8 @@ describe('honest cost display and model-scoped rates', () => {
 		expect(screen.getByText('Estimated cost $0.2500')).toBeInTheDocument();
 		await view.rerender({ accounting: { ...accounting, unpriced_calls: 1 } });
 		expect(screen.getByText('Partial cost $0.2500')).toBeInTheDocument();
-		expect(screen.getByRole('status')).toHaveTextContent('unknown cost');
+		render(CostWarnings, { accounting: { ...accounting, unpriced_calls: 1 } });
+		expect(screen.getByRole('status')).toHaveTextContent('1 request with unknown cost');
 		await view.rerender({
 			accounting: {
 				...accounting,

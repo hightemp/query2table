@@ -138,7 +138,7 @@ test('Live table keeps scroll, filter and sorting when results arrive; logs do n
 }) => {
 	await page.goto('/');
 	await page.getByLabel('What would you like to find?').fill('Find robots');
-	await page.getByRole('button', { name: 'Start Research' }).click();
+	await page.getByRole('button', { name: 'Build Table' }).click();
 	await page.evaluate(() => {
 		const f = (window as any).__uiFixture;
 		f.emit('run:schema_proposed', { run_id: 'live', columns: f.schema });
@@ -287,7 +287,7 @@ test('Long schema scrolls independently, keeps actions accessible and preserves 
 	await page.setViewportSize({ width: 900, height: 600 });
 	await page.goto('/');
 	await page.getByLabel('What would you like to find?').fill('Find robots');
-	await page.getByRole('button', { name: 'Start Research' }).click();
+	await page.getByRole('button', { name: 'Build Table' }).click();
 	const columns = Array.from({ length: 20 }, (_, i) => ({
 		name: `Column ${i}`,
 		type: 'text',
@@ -335,7 +335,7 @@ test('Canonical live rows refresh an open detail panel and remove merged duplica
 }) => {
 	await page.goto('/');
 	await page.getByLabel('What would you like to find?').fill('Find companies');
-	await page.getByRole('button', { name: 'Start Research' }).click();
+	await page.getByRole('button', { name: 'Build Table' }).click();
 	await emit(page, 'run:schema_proposed', {
 		run_id: 'live',
 		columns: [{ name: 'Name', type: 'text', description: '', required: true }],
@@ -405,7 +405,7 @@ test('Actual accounting updates are shown even before results and distinguish pa
 }) => {
 	await page.goto('/');
 	await page.getByLabel('What would you like to find?').fill('Find companies');
-	await page.getByRole('button', { name: 'Start Research' }).click();
+	await page.getByRole('button', { name: 'Build Table' }).click();
 	const accounting = {
 		spent_usd: 0.25,
 		max_budget_usd: 1,

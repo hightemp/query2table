@@ -544,6 +544,8 @@
 		if (navigation.to?.url) leaveAction = () => goto(navigation.to!.url.href);
 	});
 	onMount(() => {
+		// Links such as /settings#settings-search open the matching section.
+		if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
 		let disposed = false;
 		let unlisten: (() => void) | undefined;
 		// Browser fixtures have no native window metadata. Register only in the desktop shell.
