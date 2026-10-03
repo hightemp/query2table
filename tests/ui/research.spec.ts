@@ -154,6 +154,70 @@ test('Long answers have a contents list, readable lines and a back-to-top button
 	await expect(page.getByRole('button', { name: 'Back to top' })).toHaveCount(0);
 });
 
+test('Switching tabs further down shows the tab from its start', async ({ page }) => {
+	await openResearch(page, 1400, 700);
+	const view = page.locator('.research-view');
+	const tabBar = page.locator('.tab-bar');
+	const expectTabsAtTop = async () => {
+		const top = await view.evaluate((v) => v.getBoundingClientRect().top);
+		await expect
+			.poll(async () => Math.abs((await tabBar.boundingBox())!.y - top))
+			.toBeLessThanOrEqual(2);
+		const panel = (await page.getByRole('tabpanel').boundingBox())!;
+		const bar = (await tabBar.boundingBox())!;
+		expect(Math.abs(panel.y - (bar.y + bar.height))).toBeLessThanOrEqual(2);
+	};
+	for (const name of [/Sources/, /Activity/, /Answer/]) {
+		await view.evaluate((v) => (v.scrollTop = v.scrollHeight));
+		await page.getByRole('tab', { name }).click();
+		await expectTabsAtTop();
+	}
+	// Above the tabs, switching keeps the reader where they are.
+	await view.evaluate((v) => (v.scrollTop = 0));
+	await page.getByRole('tab', { name: /Sources/ }).click();
+	expect(await view.evaluate((v) => v.scrollTop)).toBe(0);
+});
+
+test('A short tab of the last answer still opens under the tabs at the top', async ({ page }) => {
+	await page.addInitScript(
+		({ answer, steps }) => {
+			const internals = (window as any).__TAURI_INTERNALS__;
+			const original = internals.invoke;
+			const turn = (turn_index: number, question: string, answer_markdown: string) => ({
+				turn_index,
+				question,
+				answer_markdown,
+				follow_ups: [],
+				status: 'completed',
+				limits: {},
+				accounting: null,
+			});
+			internals.invoke = async (command: string, args: any = {}) => {
+				if (command === 'get_research_result')
+					return {
+						answer_markdown: answer,
+						steps: steps.map((s: any) => ({ ...s, turn_index: 1 })),
+						turns: [turn(0, 'Первый вопрос', answer), turn(1, 'Перескажи кратко', answer)],
+					};
+				return original(command, args);
+			};
+		},
+		{ answer, steps }
+	);
+	await page.setViewportSize({ width: 1400, height: 800 });
+	await viewRun(page, 3);
+	const view = page.locator('.research-view');
+	const last = page.locator('[data-turn="1"]');
+	const tabBar = last.locator('.tab-bar');
+	await view.evaluate((v) => (v.scrollTop = v.scrollHeight));
+	await last.getByRole('tab', { name: /Sources/ }).click();
+	const top = await view.evaluate((v) => v.getBoundingClientRect().top);
+	await expect.poll(async () => Math.abs((await tabBar.boundingBox())!.y - top)).toBeLessThanOrEqual(2);
+	await expect(last.getByRole('tabpanel')).toContainText('proxy-seller.me');
+	// The earlier answer's tabs are out of sight, not peeking over the top.
+	await expect(page.locator('[data-turn="0"] .tab-bar')).not.toBeInViewport();
+});
+
 test('Narrow windows get a contents menu and tables keep words whole', async ({ page }) => {
 	await openResearch(page, 900, 600);
 	await expect(page.getByRole('navigation', { name: 'Contents' })).toHaveCount(0);

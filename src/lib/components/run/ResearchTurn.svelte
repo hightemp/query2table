@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { ResearchStep } from '$lib/types';
 	import { CopyIcon, FileTextIcon, ListIcon, ChevronDownIcon, LinkIcon } from '@lucide/svelte';
 	import Markdown from '$lib/components/common/Markdown.svelte';
@@ -58,9 +59,28 @@
 	function count(value: Tab) {
 		return value === 'activity' ? steps.length : value === 'sources' ? sources.length : null;
 	}
+	let tabBar = $state<HTMLDivElement>();
+	let panel = $state<HTMLDivElement>();
 	function select(value: Tab) {
 		if (value === 'answer' && !answer) return;
 		chosen = value;
+		void showFromStart();
+	}
+	/** Keeps a short tab tall enough for its tabs to stay at the top of the view. */
+	let panelMinHeight = $state<number | null>(null);
+	// A reader already past the tabs sees the new tab from its start, right under the tabs.
+	async function showFromStart() {
+		const element = tabBar?.closest<HTMLElement>('.research-view');
+		if (!element || !tabBar) return;
+		const viewTop = element.getBoundingClientRect().top;
+		if (tabBar.getBoundingClientRect().top > viewTop + 1) {
+			panelMinHeight = null;
+			return;
+		}
+		panelMinHeight = element.clientHeight - tabBar.offsetHeight;
+		await tick();
+		if (!panel) return;
+		element.scrollTop += panel.getBoundingClientRect().top - viewTop - tabBar.offsetHeight;
 	}
 	function handleTabKey(event: KeyboardEvent) {
 		if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -140,7 +160,7 @@
 				: 'This question could not be answered. See Activity for what went wrong.'}
 		</p>
 	{/if}
-	<div class="tab-bar">
+	<div class="tab-bar" bind:this={tabBar}>
 		<div class="tabs" role="tablist" aria-label="Research results" tabindex="-1" onkeydown={handleTabKey}>
 			{#each tabs as item (item.value)}
 				{@const n = count(item.value)}
@@ -172,6 +192,8 @@
 
 	<div
 		class="panel"
+		bind:this={panel}
+		style:min-height={panelMinHeight ? `${panelMinHeight}px` : null}
 		role="tabpanel"
 		id={`${id}-panel-${tab}`}
 		aria-labelledby={`${id}-tab-${tab}`}
