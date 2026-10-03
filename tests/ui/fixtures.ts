@@ -83,6 +83,7 @@ export const test = base.extend({
 				calls: [] as { command: string; args: any }[],
 				failSave: false,
 				failDelete: false,
+				failCopy: false,
 				delayImage: false,
 				delayExport: false,
 				emit(event: string, payload: any) {
@@ -191,6 +192,9 @@ export const test = base.extend({
 							return;
 						case 'start_run':
 							return { run_id: 'live' };
+						case 'copy_text':
+							if (fixture.failCopy) throw new Error('clipboard unavailable');
+							return;
 						case 'plugin:dialog|save':
 							return '/tmp/query2table-fixture.csv';
 						case 'export_run':

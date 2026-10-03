@@ -10,6 +10,7 @@
 	import AppFiles from '$lib/components/settings/AppFiles.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { errorText } from '$lib/utils/errors';
+	import { hasMod, modKey } from '$lib/utils/shortcuts';
 	import type { SettingGroup, SettingDef } from '$lib/types';
 	import { EyeIcon, EyeOffIcon, SaveIcon, TrashIcon, PlusIcon } from '@lucide/svelte';
 
@@ -26,10 +27,20 @@
 		'Execution',
 		'Quality',
 		'Content',
+		'Application',
 		'Network',
 		'Application files',
 	];
-	const sectionIds = ['llm', 'search', 'execution', 'quality', 'content', 'network', 'files'];
+	const sectionIds = [
+		'llm',
+		'search',
+		'execution',
+		'quality',
+		'content',
+		'app',
+		'network',
+		'files',
+	];
 	let saveError = $state('');
 	let showPasswords = $state(new Set<string>());
 
@@ -341,12 +352,31 @@
 				},
 			],
 		},
+		{
+			label: 'Application',
+			description: 'Desktop behavior',
+			settings: [
+				{
+					key: 'notifications_enabled',
+					label: 'Run notifications',
+					description:
+						'Show a system notification when a run completes or fails while Query2Table is in the background. Applies to new runs after Save.',
+					type: 'select',
+					options: [
+						{ label: 'Enabled', value: 'true' },
+						{ label: 'Disabled', value: 'false' },
+					],
+				},
+			],
+		},
 	];
 
 	function getValue(key: string): string {
 		return (
 			settingsMap.get(key) ??
-			(key === 'llm_reasoning_effort' ? 'auto' : key === 'search_fallback_enabled' ? 'true' : '')
+			(key === 'llm_reasoning_effort' ? 'auto' : ['search_fallback_enabled', 'notifications_enabled'].includes(key)
+				? 'true'
+				: '')
 		);
 	}
 
@@ -541,6 +571,14 @@
 	});
 </script>
 
+<svelte:window
+	onkeydown={(event) => {
+		if (hasMod(event) && !event.shiftKey && event.key.toLowerCase() === 's') {
+			event.preventDefault();
+			if (dirty.size) void saveAll();
+		}
+	}}
+/>
 <div class="settings-page">
 	<header class="page-header settings-header">
 		<div>
@@ -561,6 +599,8 @@
 			<button
 				class="button primary"
 				onclick={() => saveAll()}
+				title={`Save (${modKey}+S)`}
+				aria-keyshortcuts={modKey === '⌘' ? 'Meta+S' : 'Control+S'}
 				disabled={saving || invalidReasoning || invalidPricing || !dirty.size}
 				><SaveIcon size={16} />{saving ? 'Saving…' : 'Save'}</button
 			>

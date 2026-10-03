@@ -33,6 +33,7 @@
 		BrainIcon,
 	} from '@lucide/svelte';
 	import { settings } from '$lib/stores/settings';
+	import { hasMod, modKey } from '$lib/utils/shortcuts';
 
 	let query = $state('');
 	let runType = $state<'table' | 'images' | 'links' | 'research'>('table');
@@ -178,7 +179,13 @@
 					class="input query-input"
 					bind:value={query}
 					placeholder="e.g. Find YouTube channels about building robots, with their language, focus and website…"
-					rows={5}></textarea>
+					rows={5}
+					onkeydown={(event) => {
+						if (event.key === 'Enter' && hasMod(event)) {
+							event.preventDefault();
+							event.currentTarget.form?.requestSubmit();
+						}
+					}}></textarea>
 				<div class="connection-summary">
 					<span>{providerNames[provider] ?? provider}</span><span class="model-name" title={model}
 						>{model}</span
@@ -245,7 +252,10 @@
 				{/if}
 				{#if submitError}<ErrorNotice error={submitError} />{/if}
 				<div class="query-actions">
-					<button type="submit" class="button primary" disabled={!query.trim()}
+					<span class="shortcut-hint" aria-hidden="true"><kbd>{modKey}</kbd>+<kbd>Enter</kbd></span>
+					<button
+						type="submit"
+						aria-keyshortcuts={modKey === '⌘' ? 'Meta+Enter' : 'Control+Enter'} class="button primary" disabled={!query.trim()}
 						>{runType === 'images'
 							? 'Search Images'
 							: runType === 'links'
@@ -478,7 +488,20 @@
 	.query-actions {
 		display: flex;
 		justify-content: flex-end;
+		align-items: center;
+		gap: 12px;
 		margin-top: 16px;
+	}
+	.shortcut-hint {
+		color: var(--app-muted);
+		font-size: var(--app-text-sm);
+	}
+	kbd {
+		padding: 1px 5px;
+		border: 1px solid var(--app-border);
+		border-bottom-width: 2px;
+		border-radius: var(--app-radius-sm);
+		font-family: inherit;
 	}
 	.run-header {
 		display: flex;

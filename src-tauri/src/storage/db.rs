@@ -304,6 +304,7 @@ impl Database {
         // Keys must match what backend reads in providers/ and orchestrator/
         let defaults = vec![
             ("theme", "system"),
+            ("notifications_enabled", "true"),
             // LLM
             ("llm_provider", "openrouter"),
             ("openrouter_model", "openai/gpt-4.1-mini"),
@@ -555,7 +556,7 @@ mod tests {
             "theme", "llm_provider", "openrouter_model", "search_provider",
             "target_row_count", "max_budget_usd", "max_duration_seconds",
             "ollama_url", "llm_temperature", "llm_max_tokens", "ollama_model",
-            "llm_reasoning_effort",
+            "llm_reasoning_effort", "notifications_enabled",
             "search_results_per_query", "max_pages_per_query",
         ];
         for key in expected_keys {

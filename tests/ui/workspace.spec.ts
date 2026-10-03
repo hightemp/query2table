@@ -9,7 +9,7 @@ for (const [width, height] of [
 		test(`Settings scroll boundaries ${width}x${height} ${theme}`, async ({ page }) => {
 			await page.setViewportSize({ width, height });
 			await page.goto('/settings');
-			if (theme === 'light') await page.getByRole('button', { name: 'Toggle theme' }).click();
+			if (theme === 'light') await page.getByRole('button', { name: 'Light', exact: true }).click();
 			for (const collapsed of [false, true]) {
 				if (collapsed) await page.getByRole('button', { name: 'Toggle sidebar' }).click();
 				for (const logs of [false, true]) {
@@ -277,7 +277,7 @@ test('Long links stay within the workspace in a small window', async ({ page }) 
 	);
 	await page.getByRole('button', { name: 'Copy link URL' }).click();
 	await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible();
-	await page.getByRole('button', { name: 'Toggle theme' }).click();
+	await page.getByRole('button', { name: 'Light', exact: true }).click();
 	await expect(page.locator('html')).not.toHaveClass('dark');
 });
 

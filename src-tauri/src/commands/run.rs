@@ -90,7 +90,14 @@ pub async fn start_run(
         }
     }
     let repo = Arc::new(Repository::new(state.db.pool().clone()));
-    let events = Some(EventPublisher::new(app.clone(), run_id.clone()));
+    let notifications_enabled = settings
+        .get("notifications_enabled")
+        .map_or(true, |value| value != "false");
+    let events = Some(EventPublisher::new(
+        app.clone(),
+        run_id.clone(),
+        notifications_enabled,
+    ));
 
     let rid = run_id.clone();
     let controller_handle = controller.active.clone();

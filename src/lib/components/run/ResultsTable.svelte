@@ -20,6 +20,7 @@
 	import type { RunRow } from '$lib/stores/run';
 	import { formatValue, webUrl, urlLabel } from '$lib/utils/values';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
+	import { hasMod, modKey } from '$lib/utils/shortcuts';
 	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	let {
 		schema,
@@ -28,6 +29,7 @@
 	}: { schema: SchemaColumn[]; rows: RunRow[]; onrowclick: (row: RunRow) => void } = $props();
 	let sorting = $state<SortingState>([]);
 	let filter = $state('');
+	let searchInput = $state<HTMLInputElement>();
 	let scrollElement = $state<HTMLDivElement>();
 	let focusedRowId = $state<string | null>(null);
 	let filteredRows = $derived(
@@ -111,13 +113,24 @@
 	}
 </script>
 
+<svelte:window
+	onkeydown={(event) => {
+		// Native find does not search the virtualized rows, so the shortcut focuses the table search.
+		if (hasMod(event) && !event.shiftKey && event.key.toLowerCase() === 'f' && searchInput) {
+			event.preventDefault();
+			searchInput.focus();
+			searchInput.select();
+		}
+	}}
+/>
 <div class="results-table-wrap">
 	<div class="table-toolbar">
 		<label
 			><SearchIcon size={16} /><input
 				type="search"
 				aria-label="Search results"
-				placeholder="Search results…"
+				placeholder={`Search results… (${modKey}+F)`}
+				bind:this={searchInput}
 				bind:value={filter}
 			/></label
 		><span

@@ -2,9 +2,9 @@
 	import { marked, Renderer } from 'marked';
 	import DOMPurify from 'dompurify';
 	import { openExternal } from '$lib/utils/links';
+	import { toast } from '$lib/stores/toasts';
 	let { content }: { content: string } = $props();
 	const prefix = $props.id();
-	let linkError = $state(false);
 	const html = $derived.by(() => {
 		const renderer = new Renderer();
 		renderer.table = function (token) {
@@ -25,7 +25,6 @@
 		const href = anchor.getAttribute('href');
 		if (!href) return;
 		event.preventDefault();
-		linkError = false;
 		if (href.startsWith('#')) {
 			document.getElementById(`${prefix}-${href.slice(1)}`)?.scrollIntoView({ block: 'start' });
 			return;
@@ -33,15 +32,12 @@
 		try {
 			await openExternal(href);
 		} catch {
-			linkError = true;
+			toast('Could not open the link. Copy its address and open it in your browser.', 'error');
 		}
 	}
 </script>
 
 <div class="markdown" onclick={open} role="presentation">{@html html}</div>
-{#if linkError}<p role="alert">
-		Could not open the link. Copy its address and open it in your browser.
-	</p>{/if}
 
 <style>
 	.markdown {

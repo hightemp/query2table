@@ -40,3 +40,20 @@ describe('logs store', () => {
 		expect(get(logFilter)).toBe('ALL');
 	});
 });
+
+describe('log formatting', () => {
+	it('shows local wall-clock time and tolerates malformed timestamps', async () => {
+		const { logTime } = await import('$lib/stores/logs');
+		const date = new Date(2024, 0, 1, 7, 5, 9);
+		expect(logTime(date.toISOString())).toMatch(/07:05:09/);
+		expect(logTime('')).toBe('');
+		expect(logTime('not a date at all')).toBe('not a date at all');
+	});
+
+	it('copies entries as plain lines', async () => {
+		const { formatLogs } = await import('$lib/stores/logs');
+		expect(
+			formatLogs([{ timestamp: '2024-01-01T00:00:00Z', level: 'WARN', message: 'Slow page' }])
+		).toBe('2024-01-01T00:00:00Z WARN Slow page');
+	});
+});

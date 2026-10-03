@@ -8,18 +8,39 @@
 		PanelLeftOpenIcon,
 		SunIcon,
 		MoonIcon,
+		MonitorIcon,
 	} from '@lucide/svelte';
-	import { sidebarCollapsed, currentTheme, toggleTheme } from '$lib/stores/ui';
-	let themeError = $state(false);
+	import {
+		sidebarCollapsed,
+		themePreference,
+		setTheme,
+		nextTheme,
+		type ThemePreference,
+	} from '$lib/stores/ui';
+	import { toast } from '$lib/stores/toasts';
+	import { modKey } from '$lib/utils/shortcuts';
+
+	const nav = [
+		{ href: '/', label: 'Query', icon: SearchIcon },
+		{ href: '/history', label: 'History', icon: HistoryIcon },
+		{ href: '/settings', label: 'Settings', icon: SettingsIcon },
+	];
+	const themes: { value: ThemePreference; label: string; icon: typeof SunIcon }[] = [
+		{ value: 'light', label: 'Light', icon: SunIcon },
+		{ value: 'dark', label: 'Dark', icon: MoonIcon },
+		{ value: 'system', label: 'System', icon: MonitorIcon },
+	];
 	let savingTheme = $state(false);
-	async function changeTheme() {
+	let current = $derived(themes.find((theme) => theme.value === $themePreference) ?? themes[2]);
+	let upcoming = $derived(themes.find((theme) => theme.value === nextTheme($themePreference))!);
+
+	async function changeTheme(next: ThemePreference) {
 		if (savingTheme) return;
 		savingTheme = true;
-		themeError = false;
 		try {
-			await toggleTheme();
+			await setTheme(next);
 		} catch {
-			themeError = true;
+			toast('Could not save the theme. Try again.', 'error');
 		} finally {
 			savingTheme = false;
 		}
@@ -35,7 +56,13 @@
 		{#if !$sidebarCollapsed}
 			<span class="sidebar-title">Query2Table</span>
 		{/if}
-		<button class="icon-button ghost" onclick={toggleSidebar} aria-label="Toggle sidebar">
+		<button
+			class="icon-button ghost"
+			onclick={toggleSidebar}
+			aria-label="Toggle sidebar"
+			aria-expanded={!$sidebarCollapsed}
+			title={`${$sidebarCollapsed ? 'Expand' : 'Collapse'} sidebar (${modKey}+B)`}
+		>
 			{#if $sidebarCollapsed}
 				<PanelLeftOpenIcon size={20} />
 			{:else}
@@ -45,66 +72,51 @@
 	</div>
 
 	<nav class="sidebar-nav">
-		<a
-			href="/"
-			aria-label="Query"
-			title="Query"
-			aria-current={$page.url.pathname === '/' ? 'page' : undefined}
-			class="nav-item"
-			class:active={$page.url.pathname === '/'}
-		>
-			<SearchIcon size={20} />
-			{#if !$sidebarCollapsed}<span>Query</span>{/if}
-		</a>
-		<a
-			href="/history"
-			aria-label="History"
-			title="History"
-			aria-current={$page.url.pathname === '/history' ? 'page' : undefined}
-			class="nav-item"
-			class:active={$page.url.pathname === '/history'}
-		>
-			<HistoryIcon size={20} />
-			{#if !$sidebarCollapsed}<span>History</span>{/if}
-		</a>
-		<a
-			href="/settings"
-			aria-label="Settings"
-			title="Settings"
-			aria-current={$page.url.pathname === '/settings' ? 'page' : undefined}
-			class="nav-item"
-			class:active={$page.url.pathname === '/settings'}
-		>
-			<SettingsIcon size={20} />
-			{#if !$sidebarCollapsed}<span>Settings</span>{/if}
-		</a>
+		{#each nav as item (item.href)}
+			{@const active = $page.url.pathname === item.href}
+			<a
+				href={item.href}
+				aria-label={item.label}
+				title={$sidebarCollapsed ? item.label : undefined}
+				aria-current={active ? 'page' : undefined}
+				class="nav-item"
+				class:active
+			>
+				<item.icon size={20} />
+				{#if !$sidebarCollapsed}<span>{item.label}</span>{/if}
+			</a>
+		{/each}
 	</nav>
 
 	<div class="sidebar-footer">
-		<button class="icon-button ghost" onclick={changeTheme} disabled={savingTheme} aria-label="Toggle theme">
-			{#if $currentTheme === 'dark'}
-				<SunIcon size={20} />
-			{:else}
-				<MoonIcon size={20} />
-			{/if}
-		</button>
-		{#if !$sidebarCollapsed}
-			<span class="theme-label">{$currentTheme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+		{#if $sidebarCollapsed}
+			<button
+				class="icon-button ghost"
+				onclick={() => changeTheme(upcoming.value)}
+				disabled={savingTheme}
+				aria-label={`Theme: ${current.label}. Switch to ${upcoming.label}`}
+				title={`Theme: ${current.label}. Click for ${upcoming.label}`}
+			>
+				<current.icon size={20} />
+			</button>
+		{:else}
+			<div class="theme-switch" role="group" aria-label="Theme">
+				{#each themes as theme (theme.value)}
+					<button
+						class:active={$themePreference === theme.value}
+						aria-pressed={$themePreference === theme.value}
+						disabled={savingTheme}
+						title={theme.value === 'system' ? 'Follow the system theme' : `${theme.label} theme`}
+						onclick={() => changeTheme(theme.value)}
+						><theme.icon size={15} /><span>{theme.label}</span></button
+					>
+				{/each}
+			</div>
 		{/if}
 	</div>
-	{#if themeError}<p class="theme-error" role="alert">
-			Could not save the theme. Try the theme button again.
-		</p>{/if}
 </aside>
 
 <style>
-	.theme-error {
-		margin: 0;
-		padding: 8px;
-		color: var(--app-danger);
-		overflow-wrap: anywhere;
-		font-size: var(--app-text-sm);
-	}
 	.sidebar {
 		display: flex;
 		flex-direction: column;
@@ -142,7 +154,6 @@
 		white-space: nowrap;
 		overflow: hidden;
 	}
-
 
 	.sidebar-nav {
 		display: flex;
@@ -186,13 +197,49 @@
 		margin-top: auto;
 		display: flex;
 		align-items: center;
-		gap: 10px;
 		padding: 12px;
 	}
 
-	.theme-label {
-		font-size: var(--app-text-md);
-		white-space: nowrap;
+	.collapsed .sidebar-footer {
+		justify-content: center;
+	}
+
+	.theme-switch {
+		display: flex;
+		width: 100%;
+		padding: 3px;
+		gap: 2px;
+		border-radius: var(--app-radius);
+		background: var(--app-subtle);
+	}
+
+	.theme-switch button {
+		flex: 1;
+		min-width: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		min-height: 28px;
+		padding: 4px 2px;
+		border-radius: var(--app-radius-sm);
 		color: var(--app-muted);
+		font-size: var(--app-text-sm);
+	}
+
+	.theme-switch button:hover:not(.active) {
+		color: var(--app-text);
+	}
+
+	.theme-switch button.active {
+		background: var(--app-panel);
+		color: var(--app-text);
+		font-weight: 600;
+		box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
+	}
+
+	.theme-switch button:disabled {
+		opacity: 1;
+		cursor: wait;
 	}
 </style>

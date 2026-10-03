@@ -5,8 +5,10 @@
 	import { settings } from '$lib/stores/settings';
 	import { onMount } from 'svelte';
 	import { onLogEvent, onRunLogEntry } from '$lib/api/tauri';
-	import { addLog } from '$lib/stores/logs';
-	import { currentTheme, loadTheme } from '$lib/stores/ui';
+	import { addLog, logPanelOpen } from '$lib/stores/logs';
+	import { currentTheme, loadTheme, sidebarCollapsed } from '$lib/stores/ui';
+	import Toaster from '$lib/components/layout/Toaster.svelte';
+	import { hasMod } from '$lib/utils/shortcuts';
 	import type { LogEntry } from '$lib/types';
 	import type { Snippet } from 'svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
@@ -26,13 +28,20 @@
 	}
 
 	$effect(() => {
-		const theme = $currentTheme;
-		if (theme === 'dark') {
-			document.documentElement.classList.add('dark');
-		} else {
-			document.documentElement.classList.remove('dark');
-		}
+		document.documentElement.classList.toggle('dark', $currentTheme === 'dark');
 	});
+
+	function handleShortcut(event: KeyboardEvent) {
+		if (!hasMod(event) || event.shiftKey) return;
+		const key = event.key.toLowerCase();
+		if (key === 'b') {
+			event.preventDefault();
+			sidebarCollapsed.update((value) => !value);
+		} else if (key === 'j') {
+			event.preventDefault();
+			logPanelOpen.update((value) => !value);
+		}
+	}
 
 	onMount(() => {
 		void loadSettings();
@@ -75,6 +84,7 @@
 	});
 </script>
 
+<svelte:window onkeydown={handleShortcut} />
 <div class="app-shell">
 	<Sidebar />
 	<div class="app-main">
@@ -91,6 +101,7 @@
 		<LogPanel />
 	</div>
 </div>
+<Toaster />
 
 <style>
 	.app-alerts {

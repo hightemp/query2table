@@ -1,6 +1,6 @@
 use crate::providers::llm::types::LlmIssue;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tracing::debug;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +15,7 @@ pub struct LlmIssueEvent {
 pub struct EventPublisher {
     app: AppHandle,
     run_id: String,
+    notifications_enabled: bool,
 }
 
 impl EventPublisher {
@@ -38,8 +39,12 @@ impl EventPublisher {
             tracing::error!(%error, "Failed to publish canonical rows");
         }
     }
-    pub fn new(app: AppHandle, run_id: String) -> Self {
-        Self { app, run_id }
+    pub fn new(app: AppHandle, run_id: String, notifications_enabled: bool) -> Self {
+        Self {
+            app,
+            run_id,
+            notifications_enabled,
+        }
     }
 
     pub fn emit_llm_issue(&self, issue: &LlmIssue) {
@@ -62,20 +67,20 @@ impl EventPublisher {
         }
         debug!(run_id = %self.run_id, status, "Emitted status_changed");
 
-        // Send desktop notification on terminal states
-        match status {
-            "completed" => self.send_notification(
-                "Research Complete",
-                "Your query has finished and results are ready.",
-            ),
-            "failed" => {
-                self.send_notification("Research Failed", "Your query encountered an error.")
+        // Notify about finished runs only while the user is looking elsewhere.
+        // Cancellation is always user-initiated, so it never needs a notification.
+        if let Some((title, body)) = notification_for(status) {
+            if self.notifications_enabled && !self.main_window_focused() {
+                self.send_notification(title, body);
             }
-            "cancelled" => {
-                self.send_notification("Research Cancelled", "Your query was cancelled.")
-            }
-            _ => {}
         }
+    }
+
+    fn main_window_focused(&self) -> bool {
+        self.app
+            .get_webview_window("main")
+            .and_then(|window| window.is_focused().ok())
+            .unwrap_or(false)
     }
 
     fn send_notification(&self, title: &str, body: &str) {
@@ -326,9 +331,30 @@ pub struct ResearchAnswerEvent {
     pub markdown: String,
 }
 
+/// Title and body of the desktop notification for a run status, if it deserves one.
+fn notification_for(status: &str) -> Option<(&'static str, &'static str)> {
+    match status {
+        "completed" => Some((
+            "Research Complete",
+            "Your query has finished and results are ready.",
+        )),
+        "failed" => Some(("Research Failed", "Your query encountered an error.")),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notifies_only_about_runs_that_finished_on_their_own() {
+        assert!(notification_for("completed").is_some());
+        assert!(notification_for("failed").is_some());
+        for status in ["cancelled", "running", "paused", "pending", "schema_review"] {
+            assert!(notification_for(status).is_none(), "{status}");
+        }
+    }
 
     #[test]
     fn llm_issue_event_keeps_flat_frontend_contract() {

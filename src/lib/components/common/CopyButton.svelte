@@ -1,21 +1,23 @@
 <script lang="ts">
 	import { copyText } from '$lib/api/tauri';
+	import { toast } from '$lib/stores/toasts';
 	import { CopyIcon, CheckIcon } from '@lucide/svelte';
 	let { text, label = 'Copy value' }: { text: string; label?: string } = $props();
 	let copied = $state(false);
-	let failed = $state(false);
+	let timer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
 		void text;
 		copied = false;
-		failed = false;
+		return () => clearTimeout(timer);
 	});
 	async function copy() {
-		failed = false;
 		try {
 			await copyText(text);
 			copied = true;
+			clearTimeout(timer);
+			timer = setTimeout(() => (copied = false), 2000);
 		} catch {
-			failed = true;
+			toast('Could not copy. Select the text and copy it manually.', 'error');
 		}
 	}
 </script>
@@ -27,12 +29,3 @@
 	onclick={copy}
 	>{#if copied}<CheckIcon size={15} />{:else}<CopyIcon size={15} />{/if}</button
 >
-{#if failed}<span role="alert">Could not copy. Select the text and copy it manually.</span>{/if}
-
-<style>
-	span {
-		display: block;
-		font-size: var(--app-text-sm);
-		color: var(--app-danger);
-	}
-</style>
