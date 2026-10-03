@@ -20,7 +20,7 @@ A fully local desktop application that accepts natural-language research queries
 - **Desktop Shell:** Tauri v2
 - **Backend Language:** Rust
 - **Frontend Framework:** Svelte (SvelteKit in SPA mode)
-- **Frontend Styling:** Plain CSS + Skeleton UI design system
+- **Frontend Styling:** Plain CSS with design tokens (`--app-*` in `src/app.css`)
 - **Database:** SQLite (via sqlx)
 - **Async Runtime:** Tokio
 - **HTTP Client:** reqwest

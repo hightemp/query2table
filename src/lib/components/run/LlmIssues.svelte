@@ -95,14 +95,14 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 4px 12px;
-		color: var(--color-warning-500);
+		color: var(--app-warning);
 	}
 	summary span {
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 	}
 	.latest-action {
-		font-size: 13px;
+		font-size: var(--app-text-md);
 		margin: 8px 0;
 	}
 	.llm-issues {
@@ -112,9 +112,9 @@
 	}
 
 	.intro {
-		font-size: 0.82rem;
+		font-size: var(--app-text-sm);
 		margin: 0;
-		color: var(--color-surface-600-400);
+		color: var(--app-muted);
 	}
 	.issue-list {
 		max-height: 220px;
@@ -136,8 +136,8 @@
 		flex-direction: column;
 	}
 	dt {
-		color: var(--color-surface-600-400);
-		font-size: 0.78rem;
+		color: var(--app-muted);
+		font-size: var(--app-text-xs);
 	}
 	dd {
 		margin: 0;

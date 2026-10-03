@@ -39,7 +39,7 @@
 		flex-wrap: wrap;
 		gap: 4px 16px;
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 	}
 	strong {
 		color: var(--app-text);

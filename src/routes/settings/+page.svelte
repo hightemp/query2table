@@ -576,7 +576,7 @@
 			>{/each}
 	</nav>
 	<div class="settings-scroll" tabindex="-1">
-		{#if invalidPricing}<p role="alert">
+		{#if invalidPricing}<p class="form-warning" role="alert">
 				Enter non-negative prices. Each custom model needs both input and output rates; leave
 				unknown search prices blank.
 			</p>{/if}
@@ -616,6 +616,7 @@
 								{:else if setting.type === 'select'}
 									<select
 										id={setting.key}
+										class="input"
 										value={getValue(setting.key)}
 										onchange={(e) =>
 											handleChange(setting.key, (e.target as HTMLSelectElement).value)}
@@ -650,6 +651,7 @@
 									<div class="password-field">
 										<input
 											id={setting.key}
+											class="input"
 											type={showPasswords.has(setting.key) ? 'text' : 'password'}
 											value={getValue(setting.key)}
 											placeholder={setting.placeholder}
@@ -672,6 +674,7 @@
 								{:else if setting.type === 'number'}
 									<input
 										id={setting.key}
+										class="input"
 										type="number"
 										step={setting.key.endsWith('_price_per_1000') ? 'any' : undefined}
 										min={setting.key.endsWith('_price_per_1000')
@@ -685,6 +688,7 @@
 								{:else}
 									<input
 										id={setting.key}
+										class="input"
 										type="text"
 										value={getValue(setting.key)}
 										placeholder={setting.placeholder}
@@ -736,7 +740,7 @@
 							aria-label="Use this proxy"
 						/>
 						<input
-							class="proxy-name"
+							class="input proxy-name"
 							aria-label="Proxy name"
 							type="text"
 							placeholder="Name (optional)"
@@ -744,7 +748,7 @@
 							oninput={(e) => updateProxy(i, 'name', (e.target as HTMLInputElement).value)}
 						/>
 						<input
-							class="proxy-url"
+							class="input proxy-url"
 							aria-label="Proxy URL"
 							type="text"
 							placeholder="http://user:pass@host:port"
@@ -752,7 +756,7 @@
 							oninput={(e) => updateProxy(i, 'url', (e.target as HTMLInputElement).value)}
 						/>
 						<button
-							class="btn-remove-proxy"
+							class="icon-button ghost danger"
 							type="button"
 							onclick={() => removeProxy(i)}
 							aria-label="Remove proxy"
@@ -762,7 +766,7 @@
 					</div>
 				{/each}
 
-				<button class="btn-add-proxy" type="button" onclick={addProxy}>
+				<button class="button dashed add-proxy" type="button" onclick={addProxy}>
 					<PlusIcon size={16} />
 					Add proxy
 				</button>
@@ -818,7 +822,7 @@
 	}
 	.save-actions span {
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		flex-basis: 100%;
 		text-align: right;
 	}
@@ -831,9 +835,9 @@
 	}
 	.section-nav a {
 		padding: 5px 9px;
-		border-radius: 6px;
+		border-radius: var(--app-radius-sm);
 		color: var(--app-muted);
-		font-size: 13px;
+		font-size: var(--app-text-md);
 		text-decoration: none;
 	}
 	.section-nav a:hover {
@@ -842,10 +846,6 @@
 	}
 	.setting-control {
 		min-width: 0;
-	}
-	.setting-control > input,
-	.setting-control > select {
-		width: 100%;
 	}
 	.settings-section,
 	#settings-files {
@@ -859,7 +859,7 @@
 	}
 
 	.reasoning-help {
-		font-size: 0.8rem;
+		font-size: var(--app-text-sm);
 		line-height: 1.45;
 		color: var(--app-muted);
 		margin: 6px 0 0;
@@ -876,35 +876,27 @@
 	}
 
 	.settings-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		margin-bottom: 24px;
+		padding-bottom: 12px;
 	}
 
-	h1 {
-		font-size: 1.8rem;
-		font-weight: 700;
-		margin-bottom: 4px;
-	}
 
 	.settings-section {
 		margin-bottom: 32px;
 		padding: 20px;
 		border: 1px solid var(--app-border);
-		border-radius: 12px;
+		border-radius: var(--app-radius-lg);
 		background: var(--app-panel);
 	}
 
 	h2 {
-		font-size: 1.2rem;
+		font-size: var(--app-text-xl);
 		font-weight: 600;
 		margin-bottom: 4px;
 	}
 
 	.section-description {
 		color: var(--app-muted);
-		font-size: 0.9rem;
+		font-size: var(--app-text-md);
 		margin-bottom: 16px;
 	}
 
@@ -931,25 +923,11 @@
 	}
 
 	.setting-description {
-		font-size: 0.82rem;
+		font-size: var(--app-text-sm);
 		color: var(--app-muted);
 	}
 
-	.setting-item input,
-	.setting-item select {
-		padding: 8px 12px;
-		border: 1px solid var(--app-border);
-		border-radius: 6px;
-		background: var(--app-subtle);
-		color: inherit;
-		font-size: 0.95rem;
-	}
 
-	.setting-item input:focus,
-	.setting-item select:focus {
-		outline: none;
-		border-color: var(--color-primary-500);
-	}
 
 	.password-field {
 		position: relative;
@@ -971,6 +949,10 @@
 		cursor: pointer;
 		color: var(--app-muted);
 		padding: 4px;
+		border-radius: var(--app-radius-sm);
+	}
+	.btn-toggle-pw:hover {
+		color: var(--app-text);
 	}
 
 	.proxy-list {
@@ -987,7 +969,7 @@
 	}
 
 	.proxy-radio-label {
-		font-size: 0.9rem;
+		font-size: var(--app-text-md);
 	}
 
 	.proxy-row {
@@ -996,19 +978,7 @@
 		gap: 8px;
 	}
 
-	.proxy-row input[type='text'] {
-		padding: 8px 12px;
-		border: 1px solid var(--app-border);
-		border-radius: 6px;
-		background: var(--app-subtle);
-		color: inherit;
-		font-size: 0.9rem;
-	}
 
-	.proxy-row input:focus {
-		outline: none;
-		border-color: var(--color-primary-500);
-	}
 
 	.proxy-name {
 		flex: 0 0 30%;
@@ -1018,39 +988,21 @@
 		flex: 1;
 	}
 
-	.btn-remove-proxy {
-		border: none;
-		background: transparent;
-		cursor: pointer;
-		color: var(--color-error-500);
-		padding: 6px;
-		display: flex;
-		align-items: center;
-	}
 
-	.btn-add-proxy {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
+	.add-proxy {
 		align-self: flex-start;
-		padding: 8px 14px;
-		border: 1px dashed var(--app-border);
-		border-radius: 6px;
-		background: transparent;
-		color: inherit;
-		cursor: pointer;
-		font-size: 0.9rem;
+	}
+	.form-warning {
+		margin-bottom: 12px;
+		color: var(--app-warning);
+		font-size: var(--app-text-md);
 	}
 
-	.btn-add-proxy:hover {
-		border-color: var(--color-primary-500);
-		color: var(--color-primary-500);
-	}
 
 	.section-description code {
 		background: var(--app-subtle);
 		padding: 1px 5px;
-		border-radius: 4px;
+		border-radius: var(--app-radius-sm);
 		font-size: 0.85em;
 	}
 </style>

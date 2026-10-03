@@ -11,11 +11,11 @@ Query2Table is a local-first desktop application (Tauri v2 + Rust + Svelte) that
 ## Tech Stack
 - **Desktop Shell:** Tauri v2
 - **Backend:** Rust (Tokio async runtime)
-- **Frontend:** Svelte 5 (SvelteKit SPA) + Skeleton UI
+- **Frontend:** Svelte 5 (SvelteKit SPA)
 - **Database:** SQLite (sqlx, WAL mode)
 - **LLM:** OpenRouter (OpenAI-compatible) + Ollama (local)
 - **Search:** Brave Search API + Serper API
-- **Styling:** Plain CSS + Skeleton UI design system
+- **Styling:** Plain CSS with design tokens in `src/app.css` (`--app-*`), shared `.button`/`.input` classes and `Badge`/`EmptyState` components
 
 ## Project Structure
 ```
@@ -73,6 +73,7 @@ query2table/
 | README | README.md | Project landing page and branding |
 | TASKS.md | TASKS.md | Full technical implementation plan with 55 subtasks |
 | AGENTS.md | AGENTS.md | This file — project structure map |
+| UI-IMPROVEMENTS.md | UI-IMPROVEMENTS.md | UI audit and prioritized improvement plan |
 
 ## AI Context Files
 | File | Purpose |

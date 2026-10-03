@@ -85,9 +85,9 @@
 		justify-content: space-between;
 		gap: 12px;
 		padding: 12px;
-		border-radius: 8px;
+		border-radius: var(--app-radius);
 		background: var(--app-subtle);
-		font-size: 13px;
+		font-size: var(--app-text-md);
 	}
 	dl {
 		margin: 16px 0 24px;
@@ -102,7 +102,7 @@
 		gap: 12px;
 		align-items: center;
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		font-weight: 600;
 	}
 	dd {
@@ -115,7 +115,7 @@
 		margin: 0;
 	}
 	h3 {
-		font-size: 16px;
+		font-size: var(--app-text-lg);
 		font-weight: 650;
 		margin-bottom: 8px;
 	}
@@ -123,7 +123,7 @@
 		margin: 12px 0;
 		padding: 12px;
 		border: 1px solid var(--app-border);
-		border-radius: 8px;
+		border-radius: var(--app-radius);
 	}
 	.source-heading {
 		display: flex;
@@ -132,7 +132,7 @@
 		gap: 8px;
 	}
 	.source-url {
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		color: var(--app-muted);
 		overflow-wrap: anywhere;
 	}
@@ -140,7 +140,7 @@
 		margin: 10px 0 0;
 		padding-left: 10px;
 		border-left: 2px solid var(--app-border);
-		font-size: 13px;
+		font-size: var(--app-text-md);
 		white-space: pre-wrap;
 	}
 </style>

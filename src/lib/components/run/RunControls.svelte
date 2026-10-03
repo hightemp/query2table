@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { PauseIcon, PlayIcon, XCircleIcon, RotateCcwIcon, DownloadIcon } from '@lucide/svelte';
 	import type { RunControl } from '$lib/stores/run';
+	import Badge from '$lib/components/common/Badge.svelte';
+	import { statusLabel, statusTone } from '$lib/utils/status';
 
 	interface Props {
 		status: string;
@@ -36,31 +38,22 @@
 </script>
 
 <div class="run-controls">
-	<span
-		class="status-badge"
-		class:running={status === 'running'}
-		class:paused={status === 'paused'}
-		class:completed={status === 'completed'}
-		class:failed={status === 'failed'}
-		class:cancelled={status === 'cancelled'}
-	>
-		{status.replaceAll('_', ' ')}
-	</span>
+	<Badge tone={statusTone(status)}>{statusLabel(status)}</Badge>
 
 	{#if isActive}
 		{#if status === 'running' || status === 'pending' || status === 'schema_review'}
-			<button class="ctrl-btn" onclick={onpause} aria-label="Pause" disabled={!!pending}>
+			<button class="button sm" onclick={onpause} aria-label="Pause" disabled={!!pending}>
 				<PauseIcon size={16} />
 				{pending === 'pause' ? 'Pausing…' : 'Pause'}
 			</button>
 		{:else if status === 'paused'}
-			<button class="ctrl-btn" onclick={onresume} aria-label="Resume" disabled={!!pending}>
+			<button class="button sm" onclick={onresume} aria-label="Resume" disabled={!!pending}>
 				<PlayIcon size={16} />
 				{pending === 'resume' ? 'Resuming…' : 'Resume'}
 			</button>
 		{/if}
 		<button
-			class="ctrl-btn ctrl-cancel"
+			class="button sm danger outline"
 			onclick={oncancel}
 			aria-label="Cancel"
 			disabled={pending === 'cancel'}
@@ -71,12 +64,12 @@
 	{/if}
 
 	{#if isFinished}
-		<button class="ctrl-btn" onclick={onreset} aria-label="New query">
+		<button class="button sm" onclick={onreset} aria-label="New query">
 			<RotateCcwIcon size={16} />
 			New Query
 		</button>
 		{#if showExport && onexport}
-			<button class="ctrl-btn ctrl-export" onclick={onexport} aria-label="Export">
+			<button class="button sm accent" onclick={onexport} aria-label="Export">
 				<DownloadIcon size={16} />
 				Export
 			</button>
@@ -91,79 +84,7 @@
 		flex-wrap: wrap;
 		gap: 8px;
 	}
-
-	.status-badge {
-		padding: 4px 10px;
-		border-radius: 12px;
-		font-size: 0.8rem;
-		font-weight: 600;
-		text-transform: capitalize;
-		background: var(--app-subtle);
-		color: var(--app-muted);
-	}
-
-	.status-badge.running {
-		background: color-mix(in srgb, var(--app-accent) 15%, transparent);
-		color: var(--color-primary-500);
-	}
-
-	.status-badge.paused {
-		background: color-mix(in srgb, var(--color-warning-500) 15%, transparent);
-		color: var(--color-warning-500);
-	}
-
-	.status-badge.completed {
-		background: rgba(34, 197, 94, 0.15);
-		color: var(--color-success-500, #22c55e);
-	}
-
-	.status-badge.failed {
-		background: rgba(239, 68, 68, 0.15);
-		color: var(--color-error-500);
-	}
-
-	.status-badge.cancelled {
-		background: var(--app-subtle);
-		color: var(--app-muted);
-	}
-
-	.ctrl-btn {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		padding: 6px 12px;
-		border: 1px solid var(--app-border);
-		border-radius: 6px;
-		background: var(--app-panel);
-		cursor: pointer;
-		font-size: 0.85rem;
-		color: inherit;
-	}
-
-	.ctrl-btn:hover {
-		background: var(--app-subtle);
-	}
-
-	.ctrl-btn:disabled {
-		opacity: 0.6;
+	.button:disabled {
 		cursor: wait;
-	}
-
-	.ctrl-cancel {
-		color: var(--color-error-500);
-		border-color: var(--color-error-500);
-	}
-
-	.ctrl-cancel:hover {
-		background: rgba(239, 68, 68, 0.1);
-	}
-
-	.ctrl-export {
-		color: var(--color-primary-500);
-		border-color: var(--color-primary-500);
-	}
-
-	.ctrl-export:hover {
-		background: var(--app-subtle);
 	}
 </style>

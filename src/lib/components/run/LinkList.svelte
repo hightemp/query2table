@@ -1,12 +1,13 @@
 <script lang="ts">
 	import type { LinkResult } from '$lib/types';
 	import LinkCard from './LinkCard.svelte';
+	import EmptyState from '$lib/components/common/EmptyState.svelte';
 
 	let { links }: { links: LinkResult[] } = $props();
 </script>
 
 {#if links.length === 0}
-	<div class="link-empty">No relevant links yet.</div>
+	<EmptyState>No relevant links yet.</EmptyState>
 {:else}
 	<div class="link-list">
 		<div class="link-count">{links.length} relevant {links.length === 1 ? 'link' : 'links'}</div>
@@ -30,16 +31,8 @@
 	}
 
 	.link-count {
-		font-size: 0.85rem;
-		font-weight: 600;
-		color: var(--color-surface-600-400);
+		font-size: var(--app-text-md);
+		color: var(--app-muted);
 		margin-bottom: 2px;
-	}
-
-	.link-empty {
-		padding: 24px;
-		text-align: center;
-		color: var(--color-surface-500);
-		font-size: 0.9rem;
 	}
 </style>

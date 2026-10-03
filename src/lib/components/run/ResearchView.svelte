@@ -3,6 +3,7 @@
 	import Markdown from '$lib/components/common/Markdown.svelte';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
+	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	let {
 		steps,
 		answer,
@@ -47,7 +48,7 @@
 					Research is in progress. New activity will appear here.
 				</p>{/if}
 		</details>
-	{:else if !answer}<div class="empty-state">No research output yet.</div>{/if}
+	{:else if !answer}<EmptyState>No research output yet.</EmptyState>{/if}
 </div>
 
 <style>
@@ -63,12 +64,13 @@
 	.activity {
 		border: 1px solid var(--app-border);
 		background: var(--app-panel);
-		border-radius: 12px;
+		border-radius: var(--app-radius-lg);
 		padding: 20px;
 		margin-bottom: 16px;
 	}
 	h2 {
-		font-size: 12px;
+		font-size: var(--app-text-sm);
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		color: var(--app-muted);
@@ -81,7 +83,7 @@
 	}
 	summary span {
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		font-weight: 400;
 		margin-left: 8px;
 	}
@@ -97,12 +99,12 @@
 	.step-content {
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
-		font-size: 13px;
+		font-size: var(--app-text-md);
 		margin: 10px 0;
 	}
 	.working {
 		color: var(--app-muted);
 		margin-top: 12px;
-		font-size: 13px;
+		font-size: var(--app-text-md);
 	}
 </style>

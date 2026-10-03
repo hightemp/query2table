@@ -46,6 +46,7 @@
 			<div class="column-row">
 				<label
 					>Name<input
+						class="input"
 						bind:value={column.name}
 						placeholder="Column name"
 						aria-label={`Column ${i + 1} name`}
@@ -54,6 +55,7 @@
 				>
 				<label
 					>Type<select
+						class="input"
 						bind:value={column.type}
 						aria-label={`Column ${i + 1} type`}
 						disabled={pending}
@@ -64,6 +66,7 @@
 				>
 				<label class="description"
 					>Description<input
+						class="input"
 						bind:value={column.description}
 						placeholder="Description"
 						aria-label={`Column ${i + 1} description`}
@@ -78,7 +81,7 @@
 					/>Required</label
 				>
 				<button
-					class="icon-button"
+					class="icon-button danger"
 					onclick={() => {
 						columns = columns.filter((_, index) => index !== i);
 					}}
@@ -116,7 +119,7 @@
 		min-height: 0;
 		background: var(--app-panel);
 		border: 1px solid var(--app-border);
-		border-radius: 12px;
+		border-radius: var(--app-radius-lg);
 		overflow: hidden;
 	}
 	header {
@@ -125,13 +128,13 @@
 		border-bottom: 1px solid var(--app-border);
 	}
 	h2 {
-		font-size: 17px;
+		font-size: var(--app-text-xl);
 		font-weight: 650;
 	}
 	p {
 		color: var(--app-muted);
 		margin-top: 4px;
-		font-size: 13px;
+		font-size: var(--app-text-md);
 	}
 	.columns-list {
 		min-height: 0;
@@ -155,7 +158,7 @@
 		flex-direction: column;
 		flex: 1 1 110px;
 		min-width: 0;
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		gap: 4px;
 		color: var(--app-muted);
 	}
@@ -167,16 +170,6 @@
 		flex-direction: row;
 		align-items: center;
 		height: 36px;
-	}
-	input:not([type='checkbox']),
-	select {
-		width: 100%;
-		height: 36px;
-		padding: 7px 10px;
-		border: 1px solid var(--app-border);
-		border-radius: 8px;
-		background: var(--app-bg);
-		color: var(--app-text);
 	}
 	footer {
 		padding: 12px 16px;
@@ -193,6 +186,6 @@
 		flex-wrap: wrap;
 	}
 	.validation {
-		color: var(--color-warning-500);
+		color: var(--app-warning);
 	}
 </style>

@@ -23,6 +23,7 @@
 	import ResearchView from '$lib/components/run/ResearchView.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import LlmIssues from '$lib/components/run/LlmIssues.svelte';
+	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	import {
 		ChevronDownIcon,
 		ChevronUpIcon,
@@ -174,7 +175,7 @@
 				<label class="query-label" for="research-query">What would you like to find?</label>
 				<textarea
 					id="research-query"
-					class="query-input"
+					class="input query-input"
 					bind:value={query}
 					placeholder="e.g. Find YouTube channels about building robots, with their language, focus and website…"
 					rows={5}></textarea>
@@ -215,6 +216,7 @@
 										? 'Max Steps'
 										: 'Target Rows'}<input
 								id="targetRows"
+								class="input"
 								type="number"
 								min="1"
 								bind:value={targetRows}
@@ -223,6 +225,7 @@
 						<label for="maxBudget"
 							>Max Cost ($)<input
 								id="maxBudget"
+								class="input"
 								type="number"
 								min="0.01"
 								step="0.01"
@@ -232,6 +235,7 @@
 						<label for="maxDuration"
 							>Max Duration (s)<input
 								id="maxDuration"
+								class="input"
 								type="number"
 								min="10"
 								bind:value={maxDuration}
@@ -316,9 +320,9 @@
 					oncancel={handleSchemaCancel}
 				/>
 			</div>
-			{#if isSchemaPaused}<div class="empty-state">
-					Schema review is paused. Resume to continue editing.
-				</div>{/if}
+			{#if isSchemaPaused}<EmptyState role="status"
+					>Schema review is paused. Resume to continue editing.</EmptyState
+				>{/if}
 		{:else}
 			<div class="result-workspace">
 				{#if isImageRun}<ImageGallery images={$runState.imageResults} />
@@ -357,7 +361,7 @@
 <style>
 	.budget-help {
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		margin: 4px 0 8px;
 	}
 	.query-page {
@@ -379,7 +383,7 @@
 		background: var(--app-panel);
 		border: 1px solid var(--app-border);
 		padding: 24px;
-		border-radius: 12px;
+		border-radius: var(--app-radius-lg);
 	}
 	.mode-toggle {
 		display: flex;
@@ -395,9 +399,13 @@
 		min-width: 100px;
 		padding: 10px 12px;
 		border: 1px solid var(--app-border);
-		border-radius: 8px;
+		border-radius: var(--app-radius);
 		background: var(--app-bg);
 		color: var(--app-muted);
+	}
+	.mode-btn:hover:not(.active) {
+		color: var(--app-text);
+		background: var(--app-subtle);
 	}
 	.mode-btn.active {
 		color: var(--app-accent);
@@ -408,7 +416,7 @@
 	.mode-description {
 		color: var(--app-muted);
 		margin: 12px 0 24px;
-		font-size: 13px;
+		font-size: var(--app-text-md);
 	}
 	.query-label {
 		font-weight: 600;
@@ -416,16 +424,8 @@
 		margin-bottom: 8px;
 	}
 	.query-input {
-		display: block;
-		width: 100%;
-		resize: vertical;
 		min-height: 120px;
 		padding: 14px 16px;
-		border: 1px solid var(--app-border);
-		border-radius: 8px;
-		background: var(--app-bg);
-		color: var(--app-text);
-		line-height: 1.6;
 	}
 	.connection-summary {
 		display: flex;
@@ -433,7 +433,7 @@
 		flex-wrap: wrap;
 		gap: 6px 12px;
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		padding: 12px 0 20px;
 	}
 	.model-name {
@@ -459,7 +459,7 @@
 	}
 	.stop-toggle span {
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 	}
 	.stop-conditions {
 		display: flex;
@@ -469,18 +469,11 @@
 	}
 	.stop-conditions label {
 		flex: 1 1 130px;
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		color: var(--app-muted);
 	}
 	.stop-conditions input {
-		display: block;
-		width: 100%;
 		margin-top: 4px;
-		padding: 7px 10px;
-		color: var(--app-text);
-		background: var(--app-bg);
-		border: 1px solid var(--app-border);
-		border-radius: 8px;
 	}
 	.query-actions {
 		display: flex;
@@ -502,12 +495,12 @@
 	}
 	.eyebrow {
 		color: var(--app-muted);
-		font-size: 11px;
+		font-size: var(--app-text-xs);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 	}
 	h2 {
-		font-size: 19px;
+		font-size: var(--app-text-2xl);
 		font-weight: 650;
 		line-height: 1.35;
 		overflow-wrap: anywhere;
@@ -524,7 +517,7 @@
 		overflow: auto;
 	}
 	.query-expand {
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		color: var(--app-accent);
 		background: transparent;
 		padding: 4px 0;

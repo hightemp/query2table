@@ -1,29 +1,62 @@
-@import 'tailwindcss';
-
-@import '@skeletonlabs/skeleton';
-@import '@skeletonlabs/skeleton-svelte';
-@import '@skeletonlabs/skeleton/themes/cerberus';
-
-@custom-variant dark (&:where(.dark, .dark *));
-
+/* ---------------------------------------------------------------------------
+   Design tokens. Every component reads colors, radii and type sizes from here.
+   --------------------------------------------------------------------------- */
 :root {
-	font-family:
-		Inter,
-		ui-sans-serif,
-		system-ui,
-		-apple-system,
-		BlinkMacSystemFont,
-		'Segoe UI',
-		sans-serif;
-	font-size: 14px;
+	--app-font-sans:
+		ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif,
+		'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji';
+	--app-font-mono:
+		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+		monospace;
+
+	/* Type scale */
+	--app-text-xs: 11px;
+	--app-text-sm: 12px;
+	--app-text-md: 13px;
+	--app-text-base: 14px;
+	--app-text-lg: 15px;
+	--app-text-xl: 17px;
+	--app-text-2xl: 20px;
+	--app-text-3xl: 24px;
+
+	/* Radii */
+	--app-radius-sm: 6px;
+	--app-radius: 8px;
+	--app-radius-lg: 12px;
+	--app-radius-pill: 999px;
+
+	/* Surfaces and text */
 	--app-bg: #f5f7fa;
 	--app-panel: #ffffff;
 	--app-subtle: #eef1f6;
 	--app-border: #dce2eb;
 	--app-text: #182338;
 	--app-muted: #56657b;
+	--app-input-bg: var(--app-bg);
+
+	/* Accent: text/links use --app-accent, filled controls use --app-accent-solid */
 	--app-accent: #1764d8;
+	--app-accent-solid: #1764d8;
+	--app-accent-solid-hover: #1255bb;
+	--app-on-accent: #ffffff;
+
+	/* Status colors, readable as text on --app-panel and --app-bg */
+	--app-success: #12804a;
+	--app-warning: #925400;
+	--app-danger: #c4231b;
+
+	--app-shadow-popover: 0 4px 12px rgb(0 0 0 / 15%);
+	--app-shadow-dialog: 0 24px 80px rgb(0 0 0 / 33%);
+	--app-backdrop: rgb(11 18 32 / 50%);
+
+	font-family: var(--app-font-sans);
+	font-size: var(--app-text-base);
+	line-height: 1.5;
 	color-scheme: light;
+	scrollbar-color: var(--app-border) transparent;
+	scrollbar-width: thin;
+	-webkit-text-size-adjust: 100%;
+	tab-size: 4;
 }
 :root.dark {
 	--app-bg: #11151c;
@@ -33,46 +66,112 @@
 	--app-text: #e6ebf3;
 	--app-muted: #a0aec2;
 	--app-accent: #79afff;
+	--app-accent-solid: #2f6fd6;
+	--app-accent-solid-hover: #3d7ce3;
+	--app-success: #4ac38a;
+	--app-warning: #e3b341;
+	--app-danger: #ff7b72;
+	--app-shadow-popover: 0 4px 16px rgb(0 0 0 / 40%);
+	--app-shadow-dialog: 0 24px 80px rgb(0 0 0 / 55%);
 	color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+   Reset. Components are written against zero default margins, padding and
+   borders, with headings and links inheriting their surrounding text styles.
+   --------------------------------------------------------------------------- */
+*,
+::before,
+::after,
+::backdrop {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+	border: 0 solid;
 }
 html,
 body {
 	height: 100%;
-	margin: 0;
 	overflow: hidden;
 }
 body {
 	background: var(--app-bg);
 	color: var(--app-text);
-	line-height: 1.5;
-}
-* {
-	box-sizing: border-box;
-}
-button,
-input,
-select,
-textarea {
-	font: inherit;
-}
-button,
-a,
-input,
-select,
-textarea,
-summary {
 	-webkit-tap-highlight-color: transparent;
 }
-button {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	font-size: inherit;
+	font-weight: inherit;
+}
+a {
+	color: inherit;
+	text-decoration: inherit;
+}
+b,
+strong {
+	font-weight: bolder;
+}
+code,
+kbd,
+samp,
+pre {
+	font-family: var(--app-font-mono);
+	font-size: 1em;
+}
+small {
+	font-size: 80%;
+}
+ol,
+ul,
+menu {
+	list-style: none;
+}
+img,
+svg,
+video,
+canvas,
+iframe {
+	display: block;
+	vertical-align: middle;
+}
+img,
+video {
+	max-width: 100%;
+	height: auto;
+}
+table {
+	border-collapse: collapse;
+	border-color: inherit;
+	text-indent: 0;
+}
+summary {
+	display: list-item;
+}
+hr {
+	height: 0;
+	color: inherit;
+	border-top-width: 1px;
+}
+button,
+input,
+select,
+optgroup,
+textarea {
+	font: inherit;
+	letter-spacing: inherit;
+	color: inherit;
+	border-radius: 0;
+	background-color: transparent;
+}
+button,
+input:where([type='button'], [type='reset'], [type='submit']) {
+	appearance: button;
 	cursor: pointer;
-}
-button:disabled {
-	cursor: not-allowed;
-	opacity: 0.5;
-}
-:focus-visible {
-	outline: 2px solid var(--app-accent) !important;
-	outline-offset: 3px;
 }
 input,
 select,
@@ -80,10 +179,50 @@ textarea {
 	min-width: 0;
 	max-width: 100%;
 }
+input[type='checkbox'],
+input[type='radio'] {
+	accent-color: var(--app-accent-solid);
+}
+textarea {
+	resize: vertical;
+}
+::placeholder {
+	opacity: 1;
+	color: color-mix(in srgb, var(--app-muted) 80%, transparent);
+}
+::-webkit-search-decoration {
+	-webkit-appearance: none;
+}
+::-webkit-inner-spin-button,
+::-webkit-outer-spin-button {
+	height: auto;
+}
+[hidden]:where(:not([hidden='until-found'])) {
+	display: none !important;
+}
+::selection {
+	background: color-mix(in srgb, var(--app-accent) 35%, transparent);
+}
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+:focus-visible {
+	outline: 2px solid var(--app-accent);
+	outline-offset: 3px;
+}
 button svg,
 a svg {
 	flex-shrink: 0;
 }
+
+/* ---------------------------------------------------------------------------
+   Buttons. `.button` for labelled buttons, `.icon-button` for icon-only ones.
+   Modifiers: primary, accent, danger, ghost, dashed, sm.
+   --------------------------------------------------------------------------- */
 .button,
 .icon-button {
 	display: inline-flex;
@@ -93,11 +232,14 @@ a svg {
 	min-height: 36px;
 	padding: 7px 12px;
 	border: 1px solid var(--app-border);
-	border-radius: 8px;
+	border-radius: var(--app-radius);
 	background: var(--app-panel);
 	color: var(--app-text);
+	font-size: var(--app-text-base);
 	font-weight: 550;
+	line-height: 1.25;
 	text-decoration: none;
+	white-space: nowrap;
 }
 .icon-button {
 	width: 36px;
@@ -109,16 +251,97 @@ a svg {
 	background: var(--app-subtle);
 }
 .button.primary {
-	background: #1764d8;
-	border-color: #1764d8;
-	color: #fff;
+	background: var(--app-accent-solid);
+	border-color: var(--app-accent-solid);
+	color: var(--app-on-accent);
 }
 .button.primary:hover:not(:disabled) {
-	background: #1255bb;
+	background: var(--app-accent-solid-hover);
+	border-color: var(--app-accent-solid-hover);
 }
-.button.danger {
-	color: var(--color-error-500);
+.button.accent {
+	color: var(--app-accent);
+	border-color: color-mix(in srgb, var(--app-accent) 50%, var(--app-border));
 }
+.button.danger,
+.icon-button.danger {
+	color: var(--app-danger);
+}
+.button.danger.outline {
+	border-color: color-mix(in srgb, var(--app-danger) 55%, var(--app-border));
+}
+.button.danger:hover:not(:disabled),
+.icon-button.danger:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--app-danger) 9%, var(--app-panel));
+}
+.button.ghost,
+.icon-button.ghost {
+	border-color: transparent;
+	background: transparent;
+}
+.button.dashed {
+	border-style: dashed;
+	background: transparent;
+}
+.button.dashed:hover:not(:disabled) {
+	border-color: var(--app-accent);
+	color: var(--app-accent);
+	background: transparent;
+}
+.button.sm {
+	min-height: 30px;
+	padding: 4px 10px;
+	gap: 6px;
+	font-size: var(--app-text-md);
+}
+.icon-button.sm {
+	width: 28px;
+	min-height: 28px;
+	padding: 5px;
+}
+.button[aria-pressed='true'],
+.icon-button[aria-pressed='true'] {
+	color: var(--app-accent);
+	border-color: var(--app-accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Form controls. Add `.input` to text inputs, selects and textareas.
+   --------------------------------------------------------------------------- */
+.input {
+	display: block;
+	width: 100%;
+	min-height: 36px;
+	padding: 7px 10px;
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius);
+	background: var(--app-input-bg);
+	color: var(--app-text);
+	font-size: var(--app-text-base);
+	line-height: 1.4;
+}
+.input:focus {
+	border-color: var(--app-accent);
+}
+.input:focus:not(:focus-visible) {
+	outline: none;
+}
+.input[readonly] {
+	background: var(--app-subtle);
+}
+.input.sm {
+	min-height: 28px;
+	padding: 3px 8px;
+	font-size: var(--app-text-sm);
+	border-radius: var(--app-radius-sm);
+}
+textarea.input {
+	line-height: 1.6;
+}
+
+/* ---------------------------------------------------------------------------
+   Layout helpers shared by pages.
+   --------------------------------------------------------------------------- */
 .page-header {
 	display: flex;
 	justify-content: space-between;
@@ -128,7 +351,7 @@ a svg {
 	flex-shrink: 0;
 }
 .page-header h1 {
-	font-size: 24px;
+	font-size: var(--app-text-3xl);
 	font-weight: 650;
 	line-height: 1.25;
 	margin: 0 0 6px;
@@ -138,11 +361,6 @@ a svg {
 	margin: 0;
 }
 .muted {
-	color: var(--app-muted);
-}
-.empty-state {
-	padding: 32px 20px;
-	text-align: center;
 	color: var(--app-muted);
 }
 .sr-only {

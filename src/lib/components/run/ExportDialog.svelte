@@ -88,7 +88,7 @@
 	}
 	legend {
 		font-weight: 600;
-		font-size: 13px;
+		font-size: var(--app-text-md);
 		margin-bottom: 8px;
 	}
 	label {
@@ -98,7 +98,7 @@
 		border: 1px solid var(--app-border);
 		padding: 12px;
 		margin-bottom: 8px;
-		border-radius: 8px;
+		border-radius: var(--app-radius);
 		cursor: pointer;
 	}
 	label.selected {
@@ -116,7 +116,7 @@
 	.saved-path {
 		background: var(--app-subtle);
 		padding: 12px;
-		border-radius: 8px;
+		border-radius: var(--app-radius);
 		margin-top: 12px;
 		overflow-wrap: anywhere;
 	}

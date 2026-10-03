@@ -23,7 +23,7 @@
 	.link-card {
 		padding: 16px;
 		border: 1px solid var(--app-border);
-		border-radius: 10px;
+		border-radius: var(--app-radius-lg);
 		background: var(--app-panel);
 		min-width: 0;
 		overflow-wrap: anywhere;
@@ -36,7 +36,7 @@
 	}
 	h3 {
 		min-width: 0;
-		font-size: 15px;
+		font-size: var(--app-text-lg);
 		font-weight: 600;
 		margin: 0;
 	}
@@ -45,7 +45,7 @@
 		flex-wrap: wrap;
 		gap: 4px 16px;
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		margin: 4px 0 8px;
 	}
 	p {

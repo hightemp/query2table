@@ -59,13 +59,13 @@
 		scroll-margin-top: 12px;
 	}
 	.markdown :global(h1) {
-		font-size: 24px;
+		font-size: var(--app-text-3xl);
 	}
 	.markdown :global(h2) {
-		font-size: 20px;
+		font-size: var(--app-text-2xl);
 	}
 	.markdown :global(h3) {
-		font-size: 17px;
+		font-size: var(--app-text-xl);
 	}
 	.markdown :global(> :first-child) {
 		margin-top: 0;
@@ -98,15 +98,13 @@
 		background: var(--app-bg);
 		border: 1px solid var(--app-border);
 		padding: 12px;
-		border-radius: 8px;
+		border-radius: var(--app-radius);
 	}
 	.markdown :global(code) {
-		font:
-			0.9em/1.6 ui-monospace,
-			monospace;
+		font: 0.9em/1.6 var(--app-font-mono);
 		padding: 2px 4px;
 		background: var(--app-subtle);
-		border-radius: 4px;
+		border-radius: var(--app-radius-sm);
 	}
 	.markdown :global(pre code) {
 		padding: 0;
@@ -116,7 +114,7 @@
 	.markdown :global(img) {
 		max-width: 100%;
 		height: auto;
-		border-radius: 8px;
+		border-radius: var(--app-radius);
 	}
 	.markdown :global(.markdown-table) {
 		max-width: 100%;

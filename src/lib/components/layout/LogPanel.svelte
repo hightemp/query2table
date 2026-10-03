@@ -5,7 +5,9 @@
 
 	const levels: (LogLevel | 'ALL')[] = ['ALL', 'DEBUG', 'INFO', 'WARN', 'ERROR'];
 
-	$: filteredLogs = $logFilter === 'ALL' ? $logs : $logs.filter((l) => l.level === $logFilter);
+	let filteredLogs = $derived(
+		$logFilter === 'ALL' ? $logs : $logs.filter((l) => l.level === $logFilter)
+	);
 
 	function togglePanel() {
 		logPanelOpen.update((v) => !v);
@@ -14,13 +16,13 @@
 	function levelColor(level: string): string {
 		switch (level) {
 			case 'ERROR':
-				return 'var(--color-error-500)';
+				return 'var(--app-danger)';
 			case 'WARN':
-				return 'var(--color-warning-500)';
+				return 'var(--app-warning)';
 			case 'INFO':
-				return 'var(--color-primary-500)';
+				return 'var(--app-accent)';
 			case 'DEBUG':
-				return 'var(--color-surface-600-400)';
+				return 'var(--app-muted)';
 			default:
 				return 'inherit';
 		}
@@ -45,12 +47,12 @@
 
 		{#if $logPanelOpen}
 			<div class="log-controls">
-				<select aria-label="Log level" bind:value={$logFilter} class="log-filter">
+				<select aria-label="Log level" bind:value={$logFilter} class="input sm log-filter">
 					{#each levels as level}
 						<option value={level}>{level}</option>
 					{/each}
 				</select>
-				<button class="btn-icon-sm" onclick={clearLogs} aria-label="Clear logs">
+				<button class="icon-button ghost sm" onclick={clearLogs} aria-label="Clear logs">
 					<TrashIcon size={14} />
 				</button>
 			</div>
@@ -100,7 +102,7 @@
 		border: none;
 		background: transparent;
 		cursor: pointer;
-		font-size: 0.85rem;
+		font-size: var(--app-text-md);
 		font-weight: 600;
 		color: inherit;
 	}
@@ -112,28 +114,7 @@
 	}
 
 	.log-filter {
-		font-size: 0.8rem;
-		padding: 2px 6px;
-		border: 1px solid var(--app-border);
-		border-radius: 4px;
-		background: var(--app-bg);
-		color: inherit;
-	}
-
-	.btn-icon-sm {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 4px;
-		border: none;
-		background: transparent;
-		border-radius: 4px;
-		cursor: pointer;
-		color: inherit;
-	}
-
-	.btn-icon-sm:hover {
-		background: var(--app-subtle);
+		width: auto;
 	}
 
 	.log-body {
@@ -142,8 +123,8 @@
 		scrollbar-gutter: stable;
 		overflow-y: auto;
 		padding: 4px 12px;
-		font-family: monospace;
-		font-size: 0.8rem;
+		font-family: var(--app-font-mono);
+		font-size: var(--app-text-sm);
 	}
 
 	.log-entry {
@@ -154,7 +135,7 @@
 	}
 
 	.log-time {
-		color: var(--color-surface-600-400);
+		color: var(--app-muted);
 		flex-shrink: 0;
 	}
 
@@ -169,7 +150,7 @@
 	}
 
 	.log-empty {
-		color: var(--color-surface-400-600);
+		color: var(--app-muted);
 		text-align: center;
 		padding: 20px;
 	}

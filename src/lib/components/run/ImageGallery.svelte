@@ -6,6 +6,7 @@
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
 	import { debugUi } from '$lib/utils/diagnostics';
+	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	let { images }: { images: ImageResult[] } = $props();
 	let viewMode = $state<'grid' | 'list'>('grid');
 	let previewIndex = $state<number | null>(null);
@@ -88,7 +89,7 @@
 		</div>
 	</header>
 	<div class="gallery-scroll">
-		{#if !images.length}<div class="empty-state">No images found yet.</div>{:else}<div
+		{#if !images.length}<EmptyState>No images found yet.</EmptyState>{:else}<div
 				class:grid={viewMode === 'grid'}
 				class:list={viewMode === 'list'}
 			>
@@ -111,18 +112,15 @@
 		}}
 	>
 		<div class="preview-body">
-			{#if loading}<p role="status">Loading image…</p>{:else if failed}<div
-					class="empty-state"
-					role="status"
-				>
-					<p>This image could not be displayed. Try again or open the original.</p>
-					<button
-						class="button"
-						onclick={() => {
-							retry++;
-						}}>Retry image</button
-					>
-				</div>{:else}<img
+			{#if loading}<p role="status">Loading image…</p>{:else if failed}<EmptyState role="status">
+					This image could not be displayed. Try again or open the original.
+					{#snippet action()}<button
+							class="button"
+							onclick={() => {
+								retry++;
+							}}>Retry image</button
+						>{/snippet}
+				</EmptyState>{:else}<img
 					src={source}
 					alt={previewImage.title || 'Preview'}
 					onerror={() => {
@@ -171,16 +169,12 @@
 		align-items: center;
 		padding-bottom: 12px;
 		color: var(--app-muted);
-		font-size: 13px;
+		font-size: var(--app-text-md);
 		flex-shrink: 0;
 	}
 	header div {
 		display: flex;
 		gap: 4px;
-	}
-	[aria-pressed='true'] {
-		color: var(--app-accent);
-		border-color: var(--app-accent);
 	}
 	.gallery-scroll {
 		flex: 1;
@@ -205,7 +199,7 @@
 		justify-content: center;
 		min-height: 180px;
 		background: var(--app-bg);
-		border-radius: 8px;
+		border-radius: var(--app-radius);
 	}
 	.preview-body img {
 		max-width: 100%;
@@ -217,6 +211,6 @@
 		display: flex;
 		gap: 12px;
 		flex-wrap: wrap;
-		font-size: 13px;
+		font-size: var(--app-text-md);
 	}
 </style>

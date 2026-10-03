@@ -64,6 +64,7 @@
 		<div class="rate-fields">
 			<label
 				>Input USD / 1M tokens<input
+					class="input"
 					required
 					type="number"
 					min="0"
@@ -74,6 +75,7 @@
 			>
 			<label
 				>Output USD / 1M tokens<input
+					class="input"
 					required
 					type="number"
 					min="0"
@@ -84,6 +86,7 @@
 			>
 			<label
 				>Cached input USD / 1M tokens (optional)<input
+					class="input"
 					type="number"
 					min="0"
 					step="any"
@@ -106,12 +109,12 @@
 		margin-top: 20px;
 	}
 	h3 {
-		font-size: 14px;
+		font-size: var(--app-text-base);
 		font-weight: 600;
 	}
 	p {
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		margin: 6px 0 10px;
 	}
 	.pricing-toggle {
@@ -130,17 +133,10 @@
 		justify-content: space-between;
 		flex: 1 1 180px;
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 	}
 	.rate-fields input {
-		display: block;
-		width: 100%;
 		margin-top: 5px;
-		padding: 8px;
-		color: var(--app-text);
-		background: var(--app-subtle);
-		border: 1px solid var(--app-border);
-		border-radius: 8px;
 	}
 	.scope {
 		overflow-wrap: anywhere;

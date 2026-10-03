@@ -42,16 +42,17 @@
 		min-width: 0;
 		margin: 8px 0;
 		padding: 12px 14px;
-		border: 1px solid var(--color-error-500);
-		border-radius: 8px;
-		background: color-mix(in srgb, var(--color-error-500) 5%, var(--app-panel));
-		font-size: 0.86rem;
+		border: 1px solid color-mix(in srgb, var(--app-danger) 60%, var(--app-border));
+		border-radius: var(--app-radius);
+		background: color-mix(in srgb, var(--app-danger) 5%, var(--app-panel));
+		font-size: var(--app-text-md);
 		overflow-wrap: anywhere;
 	}
 	h3 {
 		margin: 0 0 5px;
-		font-size: 0.95rem;
-		color: var(--color-error-500);
+		font-size: var(--app-text-base);
+		font-weight: 650;
+		color: var(--app-danger);
 	}
 	p {
 		margin: 5px 0;
@@ -63,7 +64,7 @@
 	a {
 		display: inline-block;
 		margin-top: 4px;
-		color: var(--color-primary-500);
+		color: var(--app-accent);
 		text-decoration: underline;
 	}
 	details {
@@ -78,6 +79,6 @@
 		overflow: auto;
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
-		font: 0.78rem/1.4 monospace;
+		font: var(--app-text-xs) / 1.4 var(--app-font-mono);
 	}
 </style>

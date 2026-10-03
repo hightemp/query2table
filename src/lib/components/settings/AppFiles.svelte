@@ -94,6 +94,7 @@
 				<div class="path-controls">
 					<input
 						id={`app-path-${item.location}`}
+						class="input path"
 						type="text"
 						readonly
 						value={paths[item.key]}
@@ -101,6 +102,7 @@
 					/>
 					<button
 						type="button"
+						class="button"
 						disabled={busy !== null}
 						aria-label={`Copy ${item.label} path`}
 						onclick={() => act(item.location, item.label, 'copy')}
@@ -109,6 +111,7 @@
 					</button>
 					<button
 						type="button"
+						class="button"
 						disabled={busy !== null}
 						aria-label={`Open ${item.label} folder`}
 						onclick={() => act(item.location, item.label, 'open')}
@@ -122,7 +125,9 @@
 	{#if feedback}<p role="status">{feedback}</p>{/if}
 	{#if error}
 		<ErrorNotice {error} context="app_files" />
-		{#if !paths && !loading}<button type="button" onclick={load}>Retry loading paths</button>{/if}
+		{#if !paths && !loading}<button type="button" class="button" onclick={load}
+				>Retry loading paths</button
+			>{/if}
 	{/if}
 </section>
 
@@ -131,18 +136,18 @@
 		margin-bottom: 32px;
 		padding: 20px;
 		border: 1px solid var(--app-border);
-		border-radius: 12px;
+		border-radius: var(--app-radius-lg);
 		background: var(--app-panel);
 	}
 	h2 {
 		margin: 0 0 4px;
-		font-size: 1.2rem;
+		font-size: var(--app-text-xl);
 		font-weight: 600;
 	}
 	p {
 		margin: 4px 0 12px;
 		color: var(--app-muted);
-		font-size: 0.9rem;
+		font-size: var(--app-text-md);
 	}
 	.file-location {
 		margin-top: 16px;
@@ -151,7 +156,7 @@
 		font-weight: 500;
 	}
 	.description {
-		font-size: 0.82rem;
+		font-size: var(--app-text-sm);
 		margin-bottom: 6px;
 	}
 	.path-controls {
@@ -159,29 +164,14 @@
 		flex-wrap: wrap;
 		gap: 8px;
 	}
-	input {
+	.path {
 		flex: 1 1 250px;
-		min-width: 0;
-		font-family: monospace;
+		width: auto;
+		font-family: var(--app-font-mono);
+		font-size: var(--app-text-md);
+		text-overflow: ellipsis;
 	}
-	input,
-	button {
-		padding: 8px 12px;
-		border: 1px solid var(--app-border);
-		border-radius: 6px;
-		background: var(--app-subtle);
-		color: inherit;
-	}
-	button {
-		cursor: pointer;
-	}
-	button:disabled {
-		opacity: 0.5;
+	.button:disabled {
 		cursor: wait;
-	}
-	input:focus,
-	button:focus-visible {
-		outline: 2px solid var(--color-primary-500);
-		outline-offset: 2px;
 	}
 </style>

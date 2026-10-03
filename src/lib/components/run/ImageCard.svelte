@@ -46,7 +46,7 @@
 		min-width: 0;
 		background: var(--app-panel);
 		border: 1px solid var(--app-border);
-		border-radius: 10px;
+		border-radius: var(--app-radius-lg);
 		overflow: hidden;
 	}
 	.preview-button {
@@ -64,7 +64,7 @@
 	}
 	.placeholder {
 		color: var(--app-muted);
-		font-size: 13px;
+		font-size: var(--app-text-md);
 	}
 	.image-info {
 		padding: 12px;
@@ -85,7 +85,7 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 4px 12px;
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		margin-top: 8px;
 		color: var(--app-muted);
 	}

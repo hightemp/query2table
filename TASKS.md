@@ -1583,7 +1583,7 @@ cd src-tauri && cargo test --features e2e -- --ignored
 | OQ6 | Optimal parallel extraction count vs cost? | 3 workers | Too few = slow; too many = cost spike |
 | OQ7 | Should we support OpenAI API directly (not via OpenRouter)? | Yes — configurable OpenAI-compatible API, including llama.cpp | Requires a base URL and model ID; API key depends on server |
 | OQ8 | How to handle sites that return soft 200 with "access denied" body? | Best-effort detection via content analysis | May waste LLM tokens on useless pages |
-| OQ9 | Skeleton UI vs alternative Svelte component library? | Skeleton UI | May need to evaluate alternatives if bundle size is concern |
+| OQ9 | Skeleton UI vs alternative Svelte component library? | Plain CSS with own design tokens (Skeleton UI and Tailwind removed in the UI design-system pass, see UI-IMPROVEMENTS.md) | Only CSS variables and the reset were used; components never adopted Skeleton |
 | OQ10 | Tauri v2 plugin ecosystem maturity for auto-updater? | Mature enough for production | May need workarounds |
 
 ---

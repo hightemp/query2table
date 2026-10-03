@@ -26,6 +26,6 @@ describe('run control buttons', () => {
 		await page.rerender({ pending: 'cancel' });
 		expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
 		expect(screen.getByText('Cancelling…')).toBeInTheDocument();
-		expect(screen.getByText('running')).toBeInTheDocument();
+		expect(screen.getByText('Running')).toBeInTheDocument();
 	});
 });

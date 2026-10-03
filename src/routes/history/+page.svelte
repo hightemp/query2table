@@ -32,6 +32,9 @@
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import LlmIssues from '$lib/components/run/LlmIssues.svelte';
 	import { errorText, presentError } from '$lib/utils/errors';
+	import { statusLabel, statusTone } from '$lib/utils/status';
+	import Badge from '$lib/components/common/Badge.svelte';
+	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	import {
 		TrashIcon,
 		ExternalLinkIcon,
@@ -205,27 +208,18 @@
 		return new Date(ts * 1000).toLocaleString();
 	}
 
-	function statusClass(status: string): string {
-		if (status === 'completed') return 'badge-success';
-		if (status === 'failed') return 'badge-error';
-		if (status === 'running') return 'badge-running';
-		if (status === 'cancelled') return 'badge-cancelled';
-		return '';
-	}
 </script>
 
 <div class="history-page">
 	{#if viewingRun}
 		<div class="view-header">
-			<button class="btn-back" onclick={handleBack}>
+			<button class="button sm" onclick={handleBack}>
 				<ArrowLeftIcon size={16} />
 				Back to History
 			</button>
 			<div class="view-title">
 				<h1>{viewingRun.query}</h1>
-				<span class="badge {statusClass(viewingRun.status)}"
-					>{viewingRun.status.replaceAll('_', ' ')}</span
-				>
+				<Badge tone={statusTone(viewingRun.status)}>{statusLabel(viewingRun.status)}</Badge>
 			</div>
 			<div class="view-meta">
 				<span>{formatDate(viewingRun.created_at)}</span>
@@ -240,7 +234,7 @@
 				>
 				{#if viewRows.length > 0 || viewImages.length > 0 || viewLinks.length > 0 || viewResearchAnswer}
 					<button
-						class="btn-export"
+						class="button sm accent btn-export"
 						onclick={() => {
 							showExport = true;
 						}}
@@ -273,24 +267,24 @@
 
 		<div class="history-result">
 			{#if viewLoading}
-				<div class="empty-state">Loading run results…</div>
+				<EmptyState role="status">Loading run results…</EmptyState>
 			{:else if viewingRun.run_type === 'images'}
 				{#if viewImages.length > 0}
 					<ImageGallery images={viewImages} />
 				{:else}
-					<div class="empty-state">No images found for this run.</div>
+					<EmptyState>No images found for this run.</EmptyState>
 				{/if}
 			{:else if viewingRun.run_type === 'links'}
 				{#if viewLinks.length > 0}
 					<LinkList links={viewLinks} />
 				{:else}
-					<div class="empty-state">No links found for this run.</div>
+					<EmptyState>No links found for this run.</EmptyState>
 				{/if}
 			{:else if viewingRun.run_type === 'research'}
 				{#if viewResearchAnswer || viewResearchSteps.length > 0}
 					<ResearchView steps={viewResearchSteps} answer={viewResearchAnswer} />
 				{:else}
-					<div class="empty-state">No research output for this run.</div>
+					<EmptyState>No research output for this run.</EmptyState>
 				{/if}
 			{:else if viewSchema.length > 0 && viewRows.length > 0}
 				<ResultsTable
@@ -301,7 +295,7 @@
 					}}
 				/>
 			{:else}
-				<div class="empty-state">No results found for this run.</div>
+				<EmptyState>No results found for this run.</EmptyState>
 			{/if}
 		</div>
 		{#if selectedRow}
@@ -327,11 +321,9 @@
 		{/if}
 
 		{#if loading}
-			<div class="empty-state">Loading...</div>
+			<EmptyState role="status">Loading…</EmptyState>
 		{:else if runs.length === 0}
-			<div class="empty-state">
-				<p>No runs yet. Start a new query to see results here.</p>
-			</div>
+			<EmptyState>No runs yet. Start a new query to see results here.</EmptyState>
 		{:else}
 			<div class="runs-list">
 				{#each runs as run}
@@ -340,17 +332,15 @@
 							<span class="run-query">{run.query}</span>
 							<div class="header-badges">
 								{#if run.run_type === 'images'}
-									<span class="badge badge-type"><ImageIcon size={12} /> Images</span>
+									<Badge><ImageIcon size={12} /> Images</Badge>
 								{:else if run.run_type === 'links'}
-									<span class="badge badge-type"><LinkIcon size={12} /> Links</span>
+									<Badge><LinkIcon size={12} /> Links</Badge>
 								{:else if run.run_type === 'research'}
-									<span class="badge badge-type"><BrainIcon size={12} /> Research</span>
+									<Badge><BrainIcon size={12} /> Research</Badge>
 								{:else}
-									<span class="badge badge-type"><TableIcon size={12} /> Table</span>
+									<Badge><TableIcon size={12} /> Table</Badge>
 								{/if}
-								<span class="badge {statusClass(run.status)}"
-									>{run.status.replaceAll('_', ' ')}</span
-								>
+								<Badge tone={statusTone(run.status)}>{statusLabel(run.status)}</Badge>
 							</div>
 						</div>
 						<div class="run-card-meta">
@@ -360,12 +350,12 @@
 							{/if}
 						</div>
 						<div class="run-card-actions">
-							<button class="action-link" onclick={() => handleView(run)} disabled={viewLoading}>
+							<button class="button sm accent" onclick={() => handleView(run)} disabled={viewLoading}>
 								<ExternalLinkIcon size={14} />
 								View
 							</button>
 							<button
-								class="action-btn danger"
+								class="button sm danger"
 								onclick={() => {
 									deleteTarget = run;
 									deleteError = '';
@@ -439,7 +429,7 @@
 		padding: 16px 20px;
 		margin-bottom: 12px;
 		border: 1px solid var(--app-border);
-		border-radius: 12px;
+		border-radius: var(--app-radius-lg);
 		background: var(--app-panel);
 	}
 	.run-card-header {
@@ -450,7 +440,7 @@
 	}
 	.run-query {
 		font-weight: 600;
-		font-size: 15px;
+		font-size: var(--app-text-lg);
 		overflow-wrap: anywhere;
 		flex: 1 1 260px;
 	}
@@ -460,68 +450,20 @@
 		gap: 6px;
 		flex-wrap: wrap;
 	}
-	.badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		padding: 3px 8px;
-		border-radius: 20px;
-		background: var(--app-subtle);
-		color: var(--app-muted);
-		font-size: 11px;
-		text-transform: capitalize;
-		white-space: nowrap;
-	}
-	.badge-success {
-		color: var(--color-success-500);
-		background: color-mix(in srgb, var(--color-success-500) 10%, transparent);
-	}
-	.badge-error {
-		color: var(--color-error-500);
-		background: color-mix(in srgb, var(--color-error-500) 10%, transparent);
-	}
-	.badge-running {
-		color: var(--app-accent);
-		background: color-mix(in srgb, var(--app-accent) 10%, transparent);
-	}
 	.run-card-meta {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px 16px;
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		color: var(--app-muted);
 		margin: 8px 0 12px;
 	}
 	.run-error {
-		color: var(--color-error-500);
+		color: var(--app-danger);
 	}
 	.run-card-actions {
 		display: flex;
 		gap: 8px;
-	}
-	.action-link,
-	.action-btn,
-	.btn-back,
-	.btn-export {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		padding: 7px 12px;
-		border-radius: 8px;
-		border: 1px solid var(--app-border);
-		background: var(--app-panel);
-		color: var(--app-text);
-		font-size: 13px;
-	}
-	.action-link {
-		color: var(--app-accent);
-	}
-	.danger {
-		color: var(--color-error-500);
-	}
-	button:hover:not(:disabled) {
-		background: var(--app-subtle);
 	}
 	.view-header {
 		flex-shrink: 0;
@@ -534,7 +476,7 @@
 		margin: 12px 0 8px;
 	}
 	.view-title h1 {
-		font-size: 20px;
+		font-size: var(--app-text-2xl);
 		line-height: 1.35;
 		font-weight: 650;
 		overflow-wrap: anywhere;
@@ -547,7 +489,7 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 8px 16px;
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		color: var(--app-muted);
 	}
 	.btn-export {

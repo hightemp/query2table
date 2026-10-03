@@ -35,7 +35,7 @@
 		{#if !$sidebarCollapsed}
 			<span class="sidebar-title">Query2Table</span>
 		{/if}
-		<button class="btn-icon" onclick={toggleSidebar} aria-label="Toggle sidebar">
+		<button class="icon-button ghost" onclick={toggleSidebar} aria-label="Toggle sidebar">
 			{#if $sidebarCollapsed}
 				<PanelLeftOpenIcon size={20} />
 			{:else}
@@ -81,7 +81,7 @@
 	</nav>
 
 	<div class="sidebar-footer">
-		<button class="btn-icon" onclick={changeTheme} disabled={savingTheme} aria-label="Toggle theme">
+		<button class="icon-button ghost" onclick={changeTheme} disabled={savingTheme} aria-label="Toggle theme">
 			{#if $currentTheme === 'dark'}
 				<SunIcon size={20} />
 			{:else}
@@ -101,9 +101,9 @@
 	.theme-error {
 		margin: 0;
 		padding: 8px;
-		color: var(--color-error-500);
+		color: var(--app-danger);
 		overflow-wrap: anywhere;
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 	}
 	.sidebar {
 		display: flex;
@@ -115,6 +115,13 @@
 		border-right: 1px solid var(--app-border);
 		transition: width 0.2s ease;
 		flex-shrink: 0;
+	}
+
+	/* Fits the 32px content box of the collapsed sidebar. */
+	.icon-button {
+		width: 32px;
+		min-height: 32px;
+		padding: 6px;
 	}
 
 	.sidebar.collapsed {
@@ -131,26 +138,11 @@
 
 	.sidebar-title {
 		font-weight: 700;
-		font-size: 1.1rem;
+		font-size: var(--app-text-lg);
 		white-space: nowrap;
 		overflow: hidden;
 	}
 
-	.btn-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 6px;
-		border: none;
-		background: transparent;
-		border-radius: 6px;
-		cursor: pointer;
-		color: inherit;
-	}
-
-	.btn-icon:hover {
-		background: var(--app-subtle);
-	}
 
 	.sidebar-nav {
 		display: flex;
@@ -164,10 +156,10 @@
 		align-items: center;
 		gap: 10px;
 		padding: 10px 12px;
-		border-radius: 8px;
+		border-radius: var(--app-radius);
 		text-decoration: none;
 		color: var(--app-text);
-		font-size: 0.95rem;
+		font-size: var(--app-text-base);
 		transition: background 0.15s;
 	}
 
@@ -199,8 +191,8 @@
 	}
 
 	.theme-label {
-		font-size: 0.85rem;
+		font-size: var(--app-text-md);
 		white-space: nowrap;
-		opacity: 0.7;
+		color: var(--app-muted);
 	}
 </style>

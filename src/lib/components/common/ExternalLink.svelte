@@ -31,8 +31,8 @@
 	}
 	.open-error {
 		display: block;
-		font-size: 12px;
-		color: var(--color-error-500);
+		font-size: var(--app-text-sm);
+		color: var(--app-danger);
 		white-space: normal;
 	}
 </style>

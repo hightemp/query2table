@@ -122,7 +122,7 @@
 <style>
 	.cost-summary {
 		color: var(--app-muted);
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		min-width: 0;
 	}
 	summary {
@@ -151,8 +151,8 @@
 		gap: 3px;
 	}
 	.cost-warning {
-		color: var(--color-warning-500);
-		font-size: 12px;
+		color: var(--app-warning);
+		font-size: var(--app-text-sm);
 		margin: 4px 0;
 		overflow-wrap: anywhere;
 	}

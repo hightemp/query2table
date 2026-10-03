@@ -54,7 +54,7 @@ Screenshots show a new run of the example query above, captured in a separate ap
 | Desktop shell | Tauri v2 |
 | Backend | Rust (Tokio async runtime) |
 | Frontend | Svelte 5 (SvelteKit SPA) |
-| UI framework | Skeleton UI + Tailwind CSS v4 |
+| UI styling | Plain CSS with design tokens |
 | Database | SQLite (sqlx, WAL mode) |
 | LLM | OpenRouter / Ollama (local) / Ollama Cloud / OpenAI-compatible API (e.g. llama.cpp) |
 | Search | Brave Search API / Serper API |

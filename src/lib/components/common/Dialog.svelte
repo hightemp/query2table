@@ -77,12 +77,12 @@
 		color: var(--app-text);
 		background: var(--app-panel);
 		border: 1px solid var(--app-border);
-		border-radius: 12px;
-		box-shadow: 0 24px 80px #0005;
+		border-radius: var(--app-radius-lg);
+		box-shadow: var(--app-shadow-dialog);
 		overflow: hidden;
 	}
 	dialog::backdrop {
-		background: #0b122080;
+		background: var(--app-backdrop);
 		backdrop-filter: blur(3px);
 	}
 	.dialog-frame {
@@ -104,7 +104,7 @@
 		justify-content: space-between;
 	}
 	h2 {
-		font-size: 17px;
+		font-size: var(--app-text-xl);
 		font-weight: 650;
 		margin: 0;
 		min-width: 0;
@@ -127,7 +127,7 @@
 		width: min(520px, calc(100vw - 24px));
 		height: 100dvh;
 		max-height: 100dvh;
-		border-radius: 12px 0 0 12px;
+		border-radius: var(--app-radius-lg) 0 0 var(--app-radius-lg);
 	}
 	.drawer .dialog-frame {
 		height: 100%;

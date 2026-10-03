@@ -20,6 +20,7 @@
 	import type { RunRow } from '$lib/stores/run';
 	import { formatValue, webUrl, urlLabel } from '$lib/utils/values';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
+	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	let {
 		schema,
 		rows,
@@ -133,10 +134,10 @@
 		role="region"
 		aria-label="Results table"
 	>
-		{#if !schema.length}<div class="empty-state">The result schema will appear here.</div>
-		{:else if !visibleRows.length}<div class="empty-state">
-				{filter ? 'No matching rows. Try another search.' : 'No results yet.'}
-			</div>
+		{#if !schema.length}<EmptyState>The result schema will appear here.</EmptyState>
+		{:else if !visibleRows.length}<EmptyState
+				>{filter ? 'No matching rows. Try another search.' : 'No results yet.'}</EmptyState
+			>
 		{:else}
 			<table style={`width: ${schema.length * 220 + 64}px`} aria-rowcount={visibleRows.length + 1}>
 				<colgroup
@@ -219,7 +220,7 @@
 		min-width: 0;
 		min-height: 0;
 		border: 1px solid var(--app-border);
-		border-radius: 12px;
+		border-radius: var(--app-radius-lg);
 		background: var(--app-panel);
 		overflow: hidden;
 	}
@@ -247,7 +248,7 @@
 		padding: 4px;
 	}
 	.table-toolbar span {
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 		color: var(--app-muted);
 	}
 	.table-scroll {
@@ -262,7 +263,7 @@
 		border-spacing: 0;
 		table-layout: fixed;
 		min-width: 100%;
-		font-size: 13px;
+		font-size: var(--app-text-md);
 	}
 	thead {
 		position: sticky;

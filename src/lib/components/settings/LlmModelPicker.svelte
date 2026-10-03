@@ -135,6 +135,7 @@
 			<input
 				bind:this={input}
 				{id}
+				class="input"
 				role="combobox"
 				type="text"
 				autocomplete="off"
@@ -191,7 +192,7 @@
 			{/if}
 		</div>
 		<button
-			class="reload"
+			class="button reload"
 			type="button"
 			onclick={() => {
 				reload += 1;
@@ -224,28 +225,7 @@
 		position: relative;
 		flex: 1;
 	}
-	input,
-	.reload {
-		padding: 8px 12px;
-		border: 1px solid var(--app-border);
-		border-radius: 6px;
-		background: var(--app-subtle);
-		color: inherit;
-		font-size: 0.95rem;
-	}
-	input {
-		width: 100%;
-		box-sizing: border-box;
-	}
-	input:focus {
-		outline: none;
-		border-color: var(--color-primary-500);
-	}
-	.reload {
-		cursor: pointer;
-	}
 	.reload:disabled {
-		opacity: 0.5;
 		cursor: wait;
 	}
 	.dropdown {
@@ -254,9 +234,9 @@
 		max-height: 240px;
 		overflow-y: auto;
 		border: 1px solid var(--app-border);
-		border-radius: 6px;
+		border-radius: var(--app-radius);
 		background: var(--app-panel);
-		box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+		box-shadow: var(--app-shadow-popover);
 	}
 	[role='option'] {
 		display: block;
@@ -275,11 +255,11 @@
 	}
 	[aria-selected='true'] {
 		font-weight: 600;
-		color: var(--color-primary-500);
+		color: var(--app-accent);
 	}
 	p {
 		margin: 6px 0 0;
-		font-size: 0.82rem;
+		font-size: var(--app-text-sm);
 		color: var(--app-muted);
 		overflow-wrap: anywhere;
 	}

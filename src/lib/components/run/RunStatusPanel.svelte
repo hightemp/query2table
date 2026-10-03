@@ -70,7 +70,7 @@
 		gap: 8px;
 		align-items: center;
 		color: var(--app-muted);
-		font-size: 13px;
+		font-size: var(--app-text-md);
 		min-width: 0;
 		flex-wrap: wrap;
 	}
@@ -90,7 +90,7 @@
 	}
 	summary {
 		cursor: pointer;
-		font-size: 12px;
+		font-size: var(--app-text-sm);
 	}
 	.activity-popover {
 		max-height: 100px;
