@@ -358,6 +358,7 @@ pub struct EntityRowInfo {
     pub data: serde_json::Value,
     pub confidence: f64,
     pub status: String,
+    pub source_count: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -404,9 +405,11 @@ pub async fn get_run_rows(
 ) -> Result<Vec<EntityRowInfo>, String> {
     let repo = Repository::new(state.db.pool().clone());
     let rows = repo.get_entity_rows_by_run(&run_id).await.map_err(|e| e.to_string())?;
+    let source_counts = repo.count_row_sources_by_run(&run_id).await.map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(|r| {
         let data = serde_json::from_str(&r.data).unwrap_or(serde_json::Value::Object(Default::default()));
         EntityRowInfo {
+            source_count: source_counts.get(&r.id).copied().unwrap_or(0),
             id: r.id,
             data,
             confidence: r.confidence,

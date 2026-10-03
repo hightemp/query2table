@@ -51,6 +51,7 @@ export const test = base.extend({
 				},
 				confidence: 0.9,
 				status: 'final',
+				source_count: (i % 3) + 1,
 			}));
 			const runs = ['table', 'images', 'links', 'research'].map((type, i) => ({
 				id: type,

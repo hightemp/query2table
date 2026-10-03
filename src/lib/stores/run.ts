@@ -40,6 +40,8 @@ export interface RunRow {
 	id: string;
 	data: Record<string, unknown>;
 	confidence: number;
+	/** Saved sources, when known. */
+	sources?: number;
 }
 
 export type RunControl = 'pause' | 'resume' | 'cancel' | 'confirm_schema';
@@ -135,10 +137,12 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 		subscribe(onRowAdded, (e: RowAddedEvent) => {
 			runState.update((s) => {
 				if (s.runId !== e.run_id) return s;
+				// A new row is saved together with the page it was extracted from.
 				const row: RunRow = {
 					id: e.row_id,
 					data: e.data,
 					confidence: e.confidence,
+					sources: 1,
 				};
 				return { ...s, rows: [...s.rows, row] };
 			});
@@ -152,7 +156,7 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 		subscribe(onRowsReplaced, (event) => {
 			runState.update((state) => ({
 				...state,
-				rows: event.rows,
+				rows: event.rows.map(({ source_count, ...row }) => ({ ...row, sources: source_count })),
 				progress: state.progress ? { ...state.progress, rows_found: event.rows.length } : null,
 			}));
 		}),

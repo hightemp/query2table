@@ -2,13 +2,42 @@
 	import type { RunRow } from '$lib/stores/run';
 	import type { RowSource } from '$lib/types';
 	import { getRowSources } from '$lib/api/tauri';
-	import { formatValue, webUrl } from '$lib/utils/values';
-	import { errorText } from '$lib/utils/errors';
+	import { formatValue, webUrl, columnLabel } from '$lib/utils/values';
+	import { errorText, type ErrorContext } from '$lib/utils/errors';
+	import { ChevronUpIcon, ChevronDownIcon } from '@lucide/svelte';
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import CopyButton from '$lib/components/common/CopyButton.svelte';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
-	let { row, columns, onclose }: { row: RunRow; columns: string[]; onclose: () => void } = $props();
+	let {
+		row,
+		columns,
+		onclose,
+		position = null,
+		onnavigate,
+		context = 'run',
+	}: {
+		row: RunRow;
+		columns: string[];
+		onclose: () => void;
+		/** Place of this row among the displayed rows, for previous/next navigation. */
+		position?: { index: number; total: number } | null;
+		onnavigate?: (delta: number) => void;
+		context?: ErrorContext;
+	} = $props();
+	let canPrevious = $derived(!!position && position.index > 0);
+	let canNext = $derived(!!position && position.index < position.total - 1);
+	function navigate(delta: number) {
+		if ((delta < 0 && canPrevious) || (delta > 0 && canNext)) onnavigate?.(delta);
+	}
+	function handleKey(event: KeyboardEvent) {
+		if ((event.target as Element).closest('input, textarea, select')) return;
+		const previous = (event.altKey && event.key === 'ArrowUp') || (!event.altKey && event.key === 'k');
+		const next = (event.altKey && event.key === 'ArrowDown') || (!event.altKey && event.key === 'j');
+		if ((!previous && !next) || event.ctrlKey || event.metaKey) return;
+		event.preventDefault();
+		navigate(previous ? -1 : 1);
+	}
 	let sources = $state<RowSource[]>([]);
 	let loading = $state(true);
 	let error = $state('');
@@ -36,16 +65,41 @@
 	});
 </script>
 
-<Dialog title="Row Details" variant="drawer" {onclose}>
-	<div class="confidence">
+{#snippet navigation()}
+	<span class="position">Row {(position?.index ?? 0) + 1} of {position?.total}</span>
+	<button
+		class="button sm"
+		disabled={!canPrevious}
+		onclick={() => navigate(-1)}
+		title="Previous row (K or Alt+↑)"><ChevronUpIcon size={16} />Previous</button
+	>
+	<button
+		class="button sm"
+		disabled={!canNext}
+		onclick={() => navigate(1)}
+		title="Next row (J or Alt+↓)"><ChevronDownIcon size={16} />Next</button
+	>
+{/snippet}
+
+<svelte:window onkeydown={handleKey} />
+<Dialog
+	title="Row Details"
+	variant="drawer"
+	{onclose}
+	footer={position && onnavigate ? navigation : undefined}
+>
+	<div class="confidence" class:low={row.confidence < 0.6}>
 		<span>Extraction confidence</span><strong>{Math.round(row.confidence * 100)}%</strong>
+		{#if row.sources !== undefined}<span class="source-count"
+				>{row.sources} {row.sources === 1 ? 'source' : 'sources'}</span
+			>{/if}
 	</div>
 	<dl>
 		{#each columns as column}<div class="field">
 				<dt>
-					<span>{column}</span><CopyButton
+					<span title={column}>{columnLabel(column)}</span><CopyButton
 						text={formatValue(row.data[column], true)}
-						label={`Copy ${column}`}
+						label={`Copy ${columnLabel(column)}`}
 					/>
 				</dt>
 				<dd>
@@ -58,7 +112,7 @@
 	<section aria-label="Row sources">
 		<h3>Sources</h3>
 		{#if loading}<p role="status">Loading sources…</p>
-		{:else if error}<ErrorNotice {error} context="history" /><button
+		{:else if error}<ErrorNotice {error} {context} /><button
 				class="button"
 				onclick={() => {
 					retry++;
@@ -80,9 +134,20 @@
 </Dialog>
 
 <style>
+	.position {
+		margin-right: auto;
+		color: var(--app-muted);
+		font-size: var(--app-text-md);
+	}
+	.source-count {
+		margin-left: auto;
+		color: var(--app-muted);
+	}
+	.confidence.low strong {
+		color: var(--app-warning);
+	}
 	.confidence {
 		display: flex;
-		justify-content: space-between;
 		gap: 12px;
 		padding: 12px;
 		border-radius: var(--app-radius);

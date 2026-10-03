@@ -100,7 +100,13 @@ export interface RowAddedEvent {
 
 export interface RowsReplacedEvent {
 	run_id: string;
-	rows: { id: string; data: Record<string, unknown>; confidence: number }[];
+	rows: {
+		id: string;
+		data: Record<string, unknown>;
+		confidence: number;
+		/** Missing from events published by older versions. */
+		source_count?: number;
+	}[];
 }
 
 export interface ProgressStats {

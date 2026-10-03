@@ -508,6 +508,22 @@ impl Repository {
         Ok(id)
     }
 
+    /// Number of saved sources per entity row of a run. Rows without sources are absent.
+    pub async fn count_row_sources_by_run(
+        &self,
+        run_id: &str,
+    ) -> Result<std::collections::HashMap<String, i64>, sqlx::Error> {
+        let counts: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT s.entity_row_id, COUNT(*) FROM row_sources s \
+             JOIN entity_rows r ON r.id = s.entity_row_id \
+             WHERE r.run_id = ? GROUP BY s.entity_row_id",
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(counts.into_iter().collect())
+    }
+
     pub async fn get_row_sources(
         &self,
         entity_row_id: &str,
@@ -1183,6 +1199,25 @@ mod tests {
         let sources = repo.get_row_sources(&row_id).await.unwrap();
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].url, "https://example.com");
+    }
+
+    #[tokio::test]
+    async fn counts_sources_per_row_within_one_run() {
+        let (repo, _db) = test_repo().await;
+        repo.create_run("run-1", "test", "{}").await.unwrap();
+        repo.create_run("run-2", "test", "{}").await.unwrap();
+        let first = repo.create_entity_row("run-1", "{}", 0.8, "raw").await.unwrap();
+        let bare = repo.create_entity_row("run-1", "{}", 0.8, "raw").await.unwrap();
+        let other = repo.create_entity_row("run-2", "{}", 0.8, "raw").await.unwrap();
+        for url in ["https://a.example", "https://b.example"] {
+            repo.create_row_source(&first, url, None, None, None).await.unwrap();
+        }
+        repo.create_row_source(&other, "https://c.example", None, None, None).await.unwrap();
+
+        let counts = repo.count_row_sources_by_run("run-1").await.unwrap();
+        assert_eq!(counts.get(&first), Some(&2));
+        assert_eq!(counts.get(&bare), None);
+        assert_eq!(counts.len(), 1);
     }
 
     #[tokio::test]

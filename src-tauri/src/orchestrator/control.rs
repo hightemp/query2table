@@ -282,7 +282,8 @@ impl RunSupervisor {
                     )
                     .await?;
                 if let Some(events) = &self.events {
-                    events.emit_rows_replaced(&rows);
+                    let source_counts = self.repo.count_row_sources_by_run(&self.run_id).await?;
+                    events.emit_rows_replaced(&rows, &source_counts);
                 }
             }
             Ok::<_, sqlx::Error>(())

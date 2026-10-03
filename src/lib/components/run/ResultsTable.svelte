@@ -15,39 +15,117 @@
 		ArrowUpDownIcon,
 		SearchIcon,
 		PanelRightOpenIcon,
+		Columns3Icon,
+		Rows3Icon,
+		CheckIcon,
+		XIcon,
 	} from '@lucide/svelte';
 	import type { SchemaColumn } from '$lib/types';
 	import type { RunRow } from '$lib/stores/run';
-	import { formatValue, webUrl, urlLabel } from '$lib/utils/values';
+	import {
+		formatValue,
+		formatCell,
+		isMissing,
+		parseBoolean,
+		sortValue,
+		columnLabel,
+		webUrl,
+		urlLabel,
+	} from '$lib/utils/values';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
-	import { hasMod, modKey } from '$lib/utils/shortcuts';
 	import EmptyState from '$lib/components/common/EmptyState.svelte';
+	import { hasMod, modKey } from '$lib/utils/shortcuts';
+	import { persisted } from '$lib/utils/storage';
+	import { copyText } from '$lib/api/tauri';
+	import { toast } from '$lib/stores/toasts';
+
 	let {
 		schema,
 		rows,
 		onrowclick,
-	}: { schema: SchemaColumn[]; rows: RunRow[]; onrowclick: (row: RunRow) => void } = $props();
+	}: {
+		schema: SchemaColumn[];
+		rows: RunRow[];
+		/** Receives the clicked row and the ids of all rows in their current displayed order. */
+		onrowclick: (row: RunRow, order: string[]) => void;
+	} = $props();
+
+	const EVIDENCE = '__evidence';
+	const ACTIONS_WIDTH = 44;
+	const EVIDENCE_WIDTH = 116;
+	const LOW_CONFIDENCE = 0.6;
+	const density = persisted<'comfortable' | 'compact'>('q2t-table-density', 'comfortable', (v) =>
+		v === 'compact' || v === 'comfortable' ? v : null
+	);
+	let rowHeight = $derived($density === 'compact' ? 36 : 64);
+
 	let sorting = $state<SortingState>([]);
+	let filterInput = $state('');
 	let filter = $state('');
-	let searchInput = $state<HTMLInputElement>();
+	let filterColumn = $state('');
+	let hidden = $state<string[]>([]);
+	let widths = $state<Record<string, number>>({});
+	let columnsMenuOpen = $state(false);
 	let scrollElement = $state<HTMLDivElement>();
+	let searchInput = $state<HTMLInputElement>();
 	let focusedRowId = $state<string | null>(null);
-	let filteredRows = $derived(
-		rows.filter(
-			(row) =>
-				!filter.trim() ||
-				schema.some((column) =>
-					formatValue(row.data[column.name]).toLowerCase().includes(filter.trim().toLowerCase())
-				)
-		)
-	);
-	let columnDefs = $derived<ColumnDef<RunRow, unknown>[]>(
-		schema.map((column) => ({
+
+	// Debounce typing so large tables stay responsive.
+	$effect(() => {
+		const next = filterInput;
+		const timer = setTimeout(() => (filter = next), 150);
+		return () => clearTimeout(timer);
+	});
+
+	let visibleSchema = $derived(schema.filter((column) => !hidden.includes(column.name)));
+	let typeOf = $derived(new Map(schema.map((column) => [column.name, column.type])));
+
+	function defaultWidth(column: SchemaColumn, index: number) {
+		if (column.type === 'number' || column.type === 'date') return 140;
+		if (column.type === 'boolean') return 110;
+		if (column.type === 'url') return 200;
+		return index === 0 ? 240 : 220;
+	}
+	function widthOf(name: string) {
+		const index = schema.findIndex((column) => column.name === name);
+		return widths[name] ?? (index >= 0 ? defaultWidth(schema[index], index) : 220);
+	}
+
+	let filteredRows = $derived.by(() => {
+		const needle = filter.trim().toLowerCase();
+		if (!needle) return rows;
+		const columns = filterColumn ? schema.filter((c) => c.name === filterColumn) : schema;
+		return rows.filter((row) =>
+			columns.some(
+				(column) =>
+					formatCell(row.data[column.name], column.type).toLowerCase().includes(needle) ||
+					formatValue(row.data[column.name]).toLowerCase().includes(needle)
+			)
+		);
+	});
+
+	function compare(a: unknown, b: unknown) {
+		if (typeof a === 'number' && typeof b === 'number') return a < b ? -1 : a > b ? 1 : 0;
+		return String(a).localeCompare(String(b), undefined, { numeric: true });
+	}
+
+	let columnDefs = $derived.by<ColumnDef<RunRow, unknown>[]>(() => {
+		const data: ColumnDef<RunRow, unknown>[] = visibleSchema.map((column) => ({
 			id: column.name,
-			accessorFn: (row) => row.data[column.name] ?? '',
+			accessorFn: (row) => sortValue(row.data[column.name], column.type) ?? undefined,
 			header: column.name,
-		}))
-	);
+			sortUndefined: 'last',
+			sortingFn: (a, b, id) => compare(a.getValue(id), b.getValue(id)),
+		}));
+		const evidence: ColumnDef<RunRow, unknown> = {
+			id: EVIDENCE,
+			accessorFn: (row) => row.confidence,
+			header: 'Evidence',
+			sortingFn: (a, b, id) => compare(a.getValue(id), b.getValue(id)),
+		};
+		return data.length ? [data[0], evidence, ...data.slice(1)] : [evidence];
+	});
+
 	const table = createTable({
 		get data() {
 			return filteredRows;
@@ -69,7 +147,14 @@
 		getSortedRowModel: getSortedRowModel(),
 	});
 	let visibleRows = $derived(table.getRowModel().rows);
+	let headers = $derived(table.getHeaderGroups()[0]?.headers ?? []);
 	let focusIndex = $derived(visibleRows.findIndex((row) => row.id === focusedRowId));
+	let tableWidth = $derived(
+		ACTIONS_WIDTH +
+			headers.reduce((sum, h) => sum + (h.id === EVIDENCE ? EVIDENCE_WIDTH : widthOf(h.id)), 0)
+	);
+	let firstColumn = $derived(headers.find((h) => h.id !== EVIDENCE)?.id ?? null);
+
 	const virtualizer = createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
 		count: 0,
 		getScrollElement: () => null,
@@ -81,35 +166,112 @@
 		const element = scrollElement;
 		const focused = focusIndex;
 		const keys = visibleRows.map((row) => row.id);
-		untrack(() =>
-			get(virtualizer).setOptions({
+		const size = rowHeight;
+		untrack(() => {
+			const instance = get(virtualizer);
+			const sizeChanged = instance.options.estimateSize(0) !== size;
+			instance.setOptions({
+				...instance.options,
 				count,
 				getScrollElement: () => element ?? null,
+				estimateSize: () => size,
 				getItemKey: (index) => keys[index],
 				rangeExtractor: (range) =>
 					[...new Set([...defaultRangeExtractor(range), ...(focused >= 0 ? [focused] : [])])].sort(
 						(a, b) => a - b
 					),
-			})
-		);
+			});
+			if (sizeChanged) instance.measure();
+		});
 	});
 	// Filtering updates the row model before the virtualizer effect runs. Drop obsolete indices during that transition.
 	let items = $derived(
 		$virtualizer.getVirtualItems().filter((item) => item.index < visibleRows.length)
 	);
-	async function moveFocus(event: KeyboardEvent, index: number) {
-		if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-		event.preventDefault();
-		const next = Math.max(
-			0,
-			Math.min(visibleRows.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))
+
+	function open(row: RunRow) {
+		onrowclick(
+			row,
+			visibleRows.map((item) => item.id)
 		);
+	}
+
+	function rowText(row: RunRow) {
+		return visibleSchema.map((column) => formatValue(row.data[column.name], true)).join('\t');
+	}
+
+	async function handleRowKey(event: KeyboardEvent, index: number, row: RunRow) {
+		if (hasMod(event) && event.key.toLowerCase() === 'c' && !window.getSelection()?.toString()) {
+			event.preventDefault();
+			try {
+				await copyText(rowText(row));
+				toast('Row copied as tab-separated values.', 'success');
+			} catch {
+				toast('Could not copy the row. Open its details to copy single values.', 'error');
+			}
+			return;
+		}
+		if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+		event.preventDefault();
+		const last = visibleRows.length - 1;
+		const next =
+			event.key === 'Home'
+				? 0
+				: event.key === 'End'
+					? last
+					: Math.max(0, Math.min(last, index + (event.key === 'ArrowDown' ? 1 : -1)));
 		focusedRowId = visibleRows[next].id;
 		$virtualizer.scrollToIndex(next, { align: 'auto' });
 		await tick();
 		scrollElement
 			?.querySelector<HTMLButtonElement>(`button[data-row-index="${next}"]`)
 			?.focus({ preventScroll: true });
+	}
+
+	function handleRowClick(event: MouseEvent, row: RunRow) {
+		// Links and buttons inside the row keep their own behavior; selecting text does not open the row.
+		if ((event.target as Element).closest('a, button, input')) return;
+		if (window.getSelection()?.toString()) return;
+		focusedRowId = row.id;
+		open(row);
+	}
+
+	function startResize(event: PointerEvent, id: string) {
+		event.preventDefault();
+		event.stopPropagation();
+		const handle = event.currentTarget as HTMLElement;
+		handle.setPointerCapture(event.pointerId);
+		const startX = event.clientX;
+		const start = widthOf(id);
+		const move = (moveEvent: PointerEvent) => {
+			widths[id] = Math.min(800, Math.max(80, Math.round(start + moveEvent.clientX - startX)));
+		};
+		const stop = () => {
+			handle.removeEventListener('pointermove', move);
+			handle.removeEventListener('pointerup', stop);
+			handle.removeEventListener('pointercancel', stop);
+		};
+		handle.addEventListener('pointermove', move);
+		handle.addEventListener('pointerup', stop);
+		handle.addEventListener('pointercancel', stop);
+	}
+	function resizeWithKeys(event: KeyboardEvent, id: string) {
+		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+		event.preventDefault();
+		widths[id] = Math.min(800, Math.max(80, widthOf(id) + (event.key === 'ArrowRight' ? 20 : -20)));
+	}
+
+	function toggleColumn(name: string) {
+		if (hidden.includes(name)) hidden = hidden.filter((item) => item !== name);
+		// Keep at least one data column visible.
+		else if (visibleSchema.length > 1) hidden = [...hidden, name];
+	}
+
+	function cellClass(type: string, value: unknown) {
+		return [
+			type === 'number' ? 'numeric' : '',
+			isMissing(value) ? 'missing' : '',
+		].join(' ');
 	}
 </script>
 
@@ -120,23 +282,75 @@
 			event.preventDefault();
 			searchInput.focus();
 			searchInput.select();
+		} else if (event.key === 'Escape' && columnsMenuOpen) {
+			columnsMenuOpen = false;
 		}
 	}}
 />
-<div class="results-table-wrap">
+<div class="results-table-wrap" class:compact={$density === 'compact'}>
 	<div class="table-toolbar">
-		<label
+		<label class="search"
 			><SearchIcon size={16} /><input
+				class="input sm"
 				type="search"
 				aria-label="Search results"
 				placeholder={`Search results… (${modKey}+F)`}
 				bind:this={searchInput}
-				bind:value={filter}
+				bind:value={filterInput}
 			/></label
-		><span
+		>
+		{#if schema.length > 1}<select
+				class="input sm column-filter"
+				aria-label="Search in column"
+				bind:value={filterColumn}
+			>
+				<option value="">All columns</option>
+				{#each schema as column}<option value={column.name}>{columnLabel(column.name)}</option
+					>{/each}
+			</select>{/if}
+		<span class="count"
 			>{visibleRows.length}{filter ? ` of ${rows.length}` : ''}
 			{rows.length === 1 ? 'row' : 'rows'}</span
 		>
+		<div class="toolbar-actions">
+			<button
+				class="icon-button ghost sm"
+				aria-pressed={$density === 'compact'}
+				aria-label="Compact rows"
+				title="Compact rows"
+				onclick={() =>
+					density.update((value) => (value === 'compact' ? 'comfortable' : 'compact'))}
+				><Rows3Icon size={16} /></button
+			>
+			{#if schema.length > 1}
+				<div class="columns-menu">
+					<button
+						class="button ghost sm"
+						aria-expanded={columnsMenuOpen}
+						aria-controls="columns-menu"
+						onclick={() => (columnsMenuOpen = !columnsMenuOpen)}
+						><Columns3Icon size={16} />Columns{#if hidden.length}{` (${visibleSchema.length}/${schema.length})`}{/if}</button
+					>
+					{#if columnsMenuOpen}
+						<div class="menu" id="columns-menu" role="group" aria-label="Visible columns">
+							{#each schema as column}
+								<label
+									><input
+										type="checkbox"
+										checked={!hidden.includes(column.name)}
+										disabled={!hidden.includes(column.name) && visibleSchema.length === 1}
+										onchange={() => toggleColumn(column.name)}
+									/>{columnLabel(column.name)}</label
+								>
+							{/each}
+							{#if hidden.length}<button class="button ghost sm" onclick={() => (hidden = [])}
+									>Show all</button
+								>{/if}
+						</div>
+					{/if}
+				</div>
+			{/if}
+		</div>
 	</div>
 	<!-- Scroll region is keyboard-focusable to allow horizontal and vertical scrolling. -->
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -152,70 +366,125 @@
 				>{filter ? 'No matching rows. Try another search.' : 'No results yet.'}</EmptyState
 			>
 		{:else}
-			<table style={`width: ${schema.length * 220 + 64}px`} aria-rowcount={visibleRows.length + 1}>
-				<colgroup
-					>{#each schema as column}<col style="width:220px" />{/each}<col
-						style="width:64px"
-					/></colgroup
-				>
+			<table style={`width: ${tableWidth}px`} aria-rowcount={visibleRows.length + 1}>
+				<colgroup>
+					<col style={`width:${ACTIONS_WIDTH}px`} />
+					{#each headers as header (header.id)}<col
+							style={`width:${header.id === EVIDENCE ? EVIDENCE_WIDTH : widthOf(header.id)}px`}
+						/>{/each}
+				</colgroup>
 				<thead
 					><tr
-						>{#each table.getHeaderGroups()[0].headers as header}<th
-								aria-sort={header.column.getIsSorted() === 'asc'
+						><th class="sticky actions-cell"><span class="sr-only">Details</span></th
+						>{#each headers as header (header.id)}
+							{@const sorted = header.column.getIsSorted()}
+							{@const column = schema.find((item) => item.name === header.id)}
+							<th
+								class:sticky={header.id === firstColumn}
+								class:first-column={header.id === firstColumn}
+								class:numeric={column?.type === 'number'}
+								aria-sort={sorted === 'asc'
 									? 'ascending'
-									: header.column.getIsSorted() === 'desc'
+									: sorted === 'desc'
 										? 'descending'
 										: 'none'}
-								><button onclick={header.column.getToggleSortingHandler()}
-									>{header.column.id}{#if header.column.getIsSorted() === 'asc'}<ArrowUpIcon
-											size={14}
-										/>{:else if header.column.getIsSorted() === 'desc'}<ArrowDownIcon
+								><button
+									class:sorted={!!sorted}
+									title={header.id === EVIDENCE
+										? 'Extraction confidence and number of sources'
+										: column?.description || undefined}
+									onclick={header.column.getToggleSortingHandler()}
+									><span class="header-label"
+										>{header.id === EVIDENCE ? 'Evidence' : columnLabel(header.id)}</span
+									>{#if sorted === 'asc'}<ArrowUpIcon size={14} />{:else if sorted === 'desc'}<ArrowDownIcon
 											size={14}
 										/>{:else}<ArrowUpDownIcon size={14} />{/if}</button
-								></th
-							>{/each}<th><span class="sr-only">Details</span></th></tr
+								>{#if header.id !== EVIDENCE}
+									<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+									<span
+										class="resize-handle"
+										role="separator"
+										aria-orientation="vertical"
+										aria-label={`Resize ${columnLabel(header.id)} column`}
+										aria-valuenow={widthOf(header.id)}
+										tabindex="0"
+										onpointerdown={(event) => startResize(event, header.id)}
+										onkeydown={(event) => resizeWithKeys(event, header.id)}
+										ondblclick={() => delete widths[header.id]}
+									></span>{/if}</th
+							>{/each}</tr
 					></thead
 				>
 				<tbody>
 					{#each items as item, index (item.key)}
 						{@const row = visibleRows[item.index]}
 						{@const gap = item.start - (items[index - 1]?.end ?? 0)}
+						{@const low = row.original.confidence < LOW_CONFIDENCE}
 						{#if gap > 0}<tr aria-hidden="true" class="spacer"
-								><td colspan={schema.length + 1} style={`height:${gap}px`}></td></tr
+								><td colspan={headers.length + 1} style={`height:${gap}px`}></td></tr
 							>{/if}
+						<!-- Clicking anywhere on a row is a mouse shortcut; keyboard users use the details button. -->
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
 						<tr
 							class="data-row"
 							class:selected={focusedRowId === row.id}
+							class:low-confidence={low}
 							aria-rowindex={item.index + 2}
+							onclick={(event) => handleRowClick(event, row.original)}
 						>
-							{#each schema as column}
-								{@const value = row.original.data[column.name]}
-								<td
-									><div class="cell-preview" title={formatValue(value, true)}>
-										{#if webUrl(value)}<ExternalLink
-												href={String(value)}
-												label={urlLabel(String(value))}
-											/>{:else}{formatValue(value)}{/if}
-									</div></td
-								>
-							{/each}
-							<td
+							<td class="sticky actions-cell"
 								><button
-									class="icon-button"
+									class="icon-button ghost sm"
 									data-row-index={item.index}
 									aria-label={`Open row ${item.index + 1} details`}
+									title={`Open details (Enter). ${modKey}+C copies the row.`}
 									onfocus={() => {
 										focusedRowId = row.id;
 									}}
-									onkeydown={(event) => moveFocus(event, item.index)}
-									onclick={() => onrowclick(row.original)}><PanelRightOpenIcon size={16} /></button
+									onkeydown={(event) => handleRowKey(event, item.index, row.original)}
+									onclick={() => open(row.original)}><PanelRightOpenIcon size={16} /></button
 								></td
 							>
+							{#each headers as header (header.id)}
+								{#if header.id === EVIDENCE}
+									{@const sources = row.original.sources}
+									{@const percent = Math.round(row.original.confidence * 100)}
+									<td class="evidence"
+										><div class="confidence" title={`Extraction confidence ${percent}%`}>
+											<span class="meter"><span style={`width:${percent}%`}></span></span>{percent}%
+										</div>
+										{#if sources !== undefined}<div class="sources">
+												{sources}
+												{sources === 1 ? 'source' : 'sources'}
+											</div>{/if}</td
+									>
+								{:else}
+									{@const value = row.original.data[header.id]}
+									{@const type = typeOf.get(header.id) ?? 'text'}
+									{@const flag =
+										type === 'boolean' && !isMissing(value) ? parseBoolean(value) : null}
+									<td
+										class={cellClass(type, value)}
+										class:sticky={header.id === firstColumn}
+										class:first-column={header.id === firstColumn}
+										><div class="cell-preview" title={formatValue(value, true)}>
+											{#if webUrl(value)}<ExternalLink
+													href={String(value)}
+													label={urlLabel(String(value))}
+												/>{:else if flag !== null}<span class="flag" class:yes={flag}
+													>{#if flag}<CheckIcon size={14} />{:else}<XIcon size={14} />{/if}{flag
+														? 'Yes'
+														: 'No'}</span
+												>{:else}{formatCell(value, type)}{/if}
+										</div></td
+									>
+								{/if}
+							{/each}
 						</tr>
 					{/each}
 					{#if items.length}<tr aria-hidden="true" class="spacer"
 							><td
-								colspan={schema.length + 1}
+								colspan={headers.length + 1}
 								style={`height:${Math.max(0, $virtualizer.getTotalSize() - items[items.length - 1].end)}px`}
 							></td></tr
 						>{/if}
@@ -242,27 +511,64 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 8px;
-		padding: 10px 12px;
+		padding: 8px 12px;
 		border-bottom: 1px solid var(--app-border);
 		flex-shrink: 0;
 	}
-	.table-toolbar label {
+	.search {
 		display: flex;
 		gap: 8px;
 		align-items: center;
 		color: var(--app-muted);
-		flex: 1;
 	}
-	.table-toolbar input {
-		border: 0;
-		background: transparent;
-		color: var(--app-text);
-		width: min(100%, 320px);
-		padding: 4px;
+	.search input {
+		width: min(320px, 40vw);
 	}
-	.table-toolbar span {
+	.column-filter {
+		width: auto;
+		max-width: 180px;
+	}
+	.count {
 		font-size: var(--app-text-sm);
 		color: var(--app-muted);
+	}
+	.toolbar-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin-left: auto;
+	}
+	.columns-menu {
+		position: relative;
+	}
+	.menu {
+		position: absolute;
+		top: calc(100% + 4px);
+		right: 0;
+		z-index: 10;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 200px;
+		max-height: 320px;
+		overflow: auto;
+		padding: 6px;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius);
+		background: var(--app-panel);
+		box-shadow: var(--app-shadow-popover);
+	}
+	.menu label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 5px 8px;
+		border-radius: var(--app-radius-sm);
+		font-size: var(--app-text-md);
+		white-space: nowrap;
+	}
+	.menu label:hover {
+		background: var(--app-subtle);
 	}
 	.table-scroll {
 		flex: 1;
@@ -281,11 +587,12 @@
 	thead {
 		position: sticky;
 		top: 0;
-		z-index: 1;
-		background: var(--app-subtle);
+		z-index: 3;
 	}
 	th {
+		position: relative;
 		text-align: left;
+		background: var(--app-subtle);
 		border-bottom: 1px solid var(--app-border);
 		padding: 0;
 		height: 40px;
@@ -296,25 +603,80 @@
 		justify-content: space-between;
 		align-items: center;
 		gap: 8px;
-		background: transparent;
 		color: var(--app-text);
 		font-weight: 600;
 		padding: 10px 12px;
 		text-align: left;
-		border: 0;
-		overflow-wrap: anywhere;
 	}
-	.data-row {
-		height: 64px;
+	.header-label {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	/* Sort hints appear on hover or focus; the active sort stays visible. */
+	th button :global(svg) {
+		opacity: 0;
+		color: var(--app-muted);
+	}
+	th button:hover :global(svg),
+	th button:focus-visible :global(svg),
+	th button.sorted :global(svg) {
+		opacity: 1;
+	}
+	th button.sorted :global(svg) {
+		color: var(--app-accent);
+	}
+	.resize-handle {
+		position: absolute;
+		top: 0;
+		right: -3px;
+		bottom: 0;
+		width: 7px;
+		cursor: col-resize;
+		z-index: 1;
+		touch-action: none;
+	}
+	.resize-handle:hover,
+	.resize-handle:focus-visible {
+		outline: none;
+		background: linear-gradient(
+			90deg,
+			transparent 2px,
+			var(--app-accent) 2px,
+			var(--app-accent) 4px,
+			transparent 4px
+		);
+	}
+	.sticky {
+		position: sticky;
+		z-index: 2;
+	}
+	.actions-cell {
+		left: 0;
+		padding: 0 4px;
+		text-align: center;
+	}
+	.first-column {
+		left: 44px;
+		box-shadow: 1px 0 0 var(--app-border);
 	}
 	.data-row td {
 		height: 64px;
 		padding: 10px 12px;
 		border-bottom: 1px solid var(--app-border);
+		background: var(--app-panel);
+		cursor: pointer;
 	}
-	.data-row:hover,
-	.data-row.selected {
-		background: color-mix(in srgb, var(--app-accent) 5%, var(--app-panel));
+	.data-row td.actions-cell {
+		padding: 0 4px;
+	}
+	.data-row.low-confidence td {
+		background: color-mix(in srgb, var(--app-warning) 6%, var(--app-panel));
+	}
+	.data-row:hover td,
+	.data-row.selected td {
+		background: color-mix(in srgb, var(--app-accent) 7%, var(--app-panel));
 	}
 	.cell-preview {
 		display: -webkit-box;
@@ -326,6 +688,69 @@
 		line-height: 20px;
 		max-height: 40px;
 		white-space: pre-wrap;
+	}
+	.numeric {
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+	th.numeric button {
+		flex-direction: row-reverse;
+	}
+	.missing {
+		color: var(--app-muted);
+		font-style: italic;
+	}
+	.flag {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		color: var(--app-muted);
+	}
+	.flag.yes {
+		color: var(--app-success);
+	}
+	.evidence {
+		font-size: var(--app-text-sm);
+		font-variant-numeric: tabular-nums;
+	}
+	.confidence {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.meter {
+		width: 36px;
+		height: 4px;
+		border-radius: var(--app-radius-pill);
+		background: var(--app-subtle);
+		overflow: hidden;
+	}
+	.meter span {
+		display: block;
+		height: 100%;
+		background: var(--app-success);
+	}
+	.low-confidence .meter span {
+		background: var(--app-warning);
+	}
+	.sources {
+		color: var(--app-muted);
+	}
+	.compact .data-row td {
+		height: 36px;
+	}
+	.compact .data-row td:not(.actions-cell) {
+		padding-top: 6px;
+		padding-bottom: 6px;
+	}
+	.compact .cell-preview {
+		display: block;
+		max-height: 20px;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+	.compact .sources {
+		display: none;
 	}
 	.spacer td {
 		padding: 0;

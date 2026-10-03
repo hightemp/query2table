@@ -27,10 +27,15 @@ impl EventPublisher {
             tracing::error!(%error, "Failed to publish accounting");
         }
     }
-    pub fn emit_rows_replaced(&self, rows: &[crate::storage::repository::EntityRowRow]) {
+    pub fn emit_rows_replaced(
+        &self,
+        rows: &[crate::storage::repository::EntityRowRow],
+        source_counts: &std::collections::HashMap<String, i64>,
+    ) {
         let rows: Vec<_> = rows.iter().map(|row| serde_json::json!({
             "id": row.id, "data": serde_json::from_str::<serde_json::Value>(&row.data).unwrap_or_default(),
             "confidence": row.confidence,
+            "source_count": source_counts.get(&row.id).copied().unwrap_or(0),
         })).collect();
         if let Err(error) = self.app.emit(
             "run:rows_replaced",

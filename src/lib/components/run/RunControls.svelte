@@ -81,7 +81,7 @@
 		{/if}
 		<button class="button sm" onclick={onreset} aria-label="New query">
 			<RotateCcwIcon size={16} />
-			New Query
+			New query
 		</button>
 		{#if showExport && onexport}
 			<button class="button sm accent" onclick={onexport} aria-label="Export">

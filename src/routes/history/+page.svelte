@@ -34,6 +34,7 @@
 	import LlmIssues from '$lib/components/run/LlmIssues.svelte';
 	import { errorText, presentError } from '$lib/utils/errors';
 	import { statusLabel, statusTone } from '$lib/utils/status';
+	import { RowSelection } from '$lib/utils/rowSelection.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
 	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	import {
@@ -65,7 +66,8 @@
 	let issueError = $state('');
 	let issuesLoading = $state(false);
 	let viewRequest = 0;
-	let selectedRow = $state<RunRow | null>(null);
+	const selection = new RowSelection();
+	let selectedRow = $derived(viewRows.find((row) => row.id === selection.id) ?? null);
 	let showExport = $state(false);
 	let deleteTarget = $state<RunInfo | null>(null);
 	let deleting = $state(false);
@@ -101,7 +103,7 @@
 		viewResearchSteps = [];
 		viewResearchAnswer = null;
 		error = '';
-		selectedRow = null;
+		selection.clear();
 		viewIssues = [];
 		issueError = '';
 		issuesLoading = true;
@@ -152,6 +154,7 @@
 					id: r.id,
 					data: r.data as Record<string, unknown>,
 					confidence: r.confidence,
+					sources: r.source_count,
 				}));
 				viewImages = [];
 				viewLinks = [];
@@ -179,7 +182,7 @@
 		viewLinks = [];
 		viewResearchSteps = [];
 		viewResearchAnswer = null;
-		selectedRow = null;
+		selection.clear();
 		showExport = false;
 	}
 
@@ -292,9 +295,7 @@
 				<ResultsTable
 					schema={viewSchema}
 					rows={viewRows}
-					onrowclick={(row) => {
-						selectedRow = row;
-					}}
+					onrowclick={(row, order) => selection.select(row.id, order)}
 				/>
 			{:else}
 				<EmptyState>No results found for this run.</EmptyState>
@@ -304,9 +305,10 @@
 			<RowDetailPanel
 				row={selectedRow}
 				columns={viewSchema.map((c) => c.name)}
-				onclose={() => {
-					selectedRow = null;
-				}}
+				position={selection.position}
+				onnavigate={selection.move}
+				context="history"
+				onclose={selection.clear}
 			/>
 		{/if}
 	{:else}

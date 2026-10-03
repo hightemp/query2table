@@ -196,6 +196,7 @@ export interface EntityRowInfo {
 	data: Record<string, unknown>;
 	confidence: number;
 	status: string;
+	source_count?: number;
 }
 
 export async function getRunSchema(runId: string): Promise<RunSchemaInfo | null> {

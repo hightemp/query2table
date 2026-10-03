@@ -43,6 +43,7 @@
 	import { hasMod, modKey } from '$lib/utils/shortcuts';
 	import { errorText } from '$lib/utils/errors';
 	import { configurationProblems } from '$lib/utils/runConfig';
+	import { RowSelection } from '$lib/utils/rowSelection.svelte';
 	import {
 		DEFAULT_STOP_INPUT,
 		STOP_SETTING_KEYS,
@@ -56,8 +57,8 @@
 	type Mode = 'table' | 'images' | 'links' | 'research';
 	let query = $state('');
 	let runType = $state<Mode>('table');
-	let selectedRowId = $state<string | null>(null);
-	let selectedRow = $derived($runState.rows.find((row) => row.id === selectedRowId) ?? null);
+	const selection = new RowSelection();
+	let selectedRow = $derived($runState.rows.find((row) => row.id === selection.id) ?? null);
 	let submitError = $state('');
 	let showExport = $state(false);
 	let showStopConditions = $state(false);
@@ -141,7 +142,7 @@
 	function resetPage(nextQuery: string) {
 		resetRun();
 		query = nextQuery;
-		selectedRowId = null;
+		selection.clear();
 		submitError = '';
 		showExport = false;
 		confirmCancel = false;
@@ -544,9 +545,7 @@
 				{:else}<ResultsTable
 						schema={$runState.schema}
 						rows={$runState.rows}
-						onrowclick={(row) => {
-							selectedRowId = row.id;
-						}}
+						onrowclick={(row, order) => selection.select(row.id, order)}
 					/>{/if}
 			</div>
 		{/if}
@@ -554,9 +553,9 @@
 	{#if selectedRow}<RowDetailPanel
 			row={selectedRow}
 			columns={columnNames}
-			onclose={() => {
-				selectedRowId = null;
-			}}
+			position={selection.position}
+			onnavigate={selection.move}
+			onclose={selection.clear}
 		/>{/if}
 	{#if showExport && $runState.runId}<ExportDialog
 			runId={$runState.runId}
