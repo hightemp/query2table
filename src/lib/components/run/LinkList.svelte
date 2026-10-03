@@ -260,10 +260,9 @@
 			<button
 				class="button ghost sm copy-all"
 				disabled={!shown.length}
-				onclick={(event) => copyMenu(menuPointFor(event.currentTarget), selected.length ? selected : shown)}
-				><ClipboardCopyIcon size={15} />Copy {selected.length ? 'selected' : 'all'}<ChevronDownIcon
-					size={14}
-				/></button
+				aria-haspopup="menu"
+				onclick={(event) => copyMenu(menuPointFor(event.currentTarget), shown)}
+				><ClipboardCopyIcon size={15} />Copy all<ChevronDownIcon size={14} /></button
 			>
 		</div>
 		{#if selected.length}
@@ -275,6 +274,12 @@
 						>Select all shown</button
 					>{/if}
 				<span class="spacer"></span>
+				<button
+					class="button sm"
+					aria-haspopup="menu"
+					onclick={(event) => copyMenu(menuPointFor(event.currentTarget), selected)}
+					><CopyIcon size={14} />Copy<ChevronDownIcon size={14} /></button
+				>
 				<button class="button sm" onclick={() => requestOpen(selected)}
 					><ExternalLinkIcon size={14} />Open in browser</button
 				>

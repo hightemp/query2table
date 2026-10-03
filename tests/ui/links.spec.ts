@@ -95,13 +95,24 @@ test('Selected links can be copied in several formats, opened and hidden', async
 	await openLinks(page);
 	await page.getByRole('checkbox', { name: 'Select Resource 0' }).check({ force: true });
 	await page.getByRole('checkbox', { name: 'Select Resource 4' }).check({ force: true });
-	await page.getByRole('button', { name: /Copy selected/ }).click();
+	const selection = page.getByRole('region', { name: 'Selected links' });
+	await selection.getByRole('button', { name: 'Copy' }).click();
+	await expect(page.getByRole('menu', { name: 'Copy 2 links' }).getByRole('menuitem')).toHaveText([
+		'URLs, one per line',
+		'Markdown list',
+		'Title — URL',
+	]);
 	await page.getByRole('menuitem', { name: 'Markdown list' }).click();
 	expect((await calls(page, 'copy_text')).at(-1).args.text).toBe(
 		'- [Resource 0](https://github.com/org/repo-0)\n- [Resource 4](https://github.com/org/repo-4)'
 	);
 	await page.getByRole('button', { name: 'Open in browser' }).click();
 	await expect.poll(async () => (await calls(page, 'plugin:opener|open_url')).length).toBe(2);
+
+	// The toolbar button always copies every shown link.
+	await page.getByRole('button', { name: 'Copy all' }).click();
+	await page.getByRole('menuitem', { name: 'URLs, one per line' }).click();
+	expect((await calls(page, 'copy_text')).at(-1).args.text.split('\n')).toHaveLength(12);
 
 	await page.getByRole('button', { name: 'Select all shown' }).click();
 	await expect(page.getByRole('region', { name: 'Selected links' })).toContainText('12 selected');
