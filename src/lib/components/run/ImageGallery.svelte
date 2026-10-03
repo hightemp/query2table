@@ -12,7 +12,17 @@
 		ExternalLinkIcon,
 		ImageOffIcon,
 		XIcon,
+		MaximizeIcon,
+		LinkIcon,
+		SquareCheckIcon,
+		SquareIcon,
 	} from '@lucide/svelte';
+	import ContextMenu, {
+		isMenuKey,
+		menuPointFor,
+		type MenuItem,
+	} from '$lib/components/common/ContextMenu.svelte';
+	import { openExternal } from '$lib/utils/links';
 	import { open, save } from '@tauri-apps/plugin-dialog';
 	import { proxyImage, copyText, saveImage, saveImages } from '$lib/api/tauri';
 	import Dialog from '$lib/components/common/Dialog.svelte';
@@ -203,6 +213,65 @@
 			saving = false;
 		}
 	}
+	let menu = $state<{ x: number; y: number; view: ImageView } | null>(null);
+	async function openLink(url: string) {
+		try {
+			await openExternal(url);
+		} catch {
+			toast('Could not open this link. Copy its address and open it in your browser.', 'error');
+		}
+	}
+	async function copy(url: string, message: string) {
+		try {
+			await copyText(url);
+			toast(message, 'success');
+		} catch {
+			toast('Could not copy the link.', 'error');
+		}
+	}
+	function menuItems(view: ImageView): MenuItem[] {
+		const isSelected = selectedIds.includes(view.image.id);
+		const items: MenuItem[] = [
+			{
+				label: 'Preview',
+				icon: MaximizeIcon,
+				action: () => {
+					previewId = view.image.id;
+				},
+			},
+		];
+		if (view.original)
+			items.push({ label: 'Open original', icon: ExternalLinkIcon, action: () => openLink(view.original!) });
+		if (view.page)
+			items.push({ label: 'Open source page', icon: ExternalLinkIcon, action: () => openLink(view.page!) });
+		if (view.original)
+			items.push({
+				label: 'Copy image link',
+				icon: CopyIcon,
+				separator: true,
+				action: () => copy(view.original!, 'Image link copied.'),
+			});
+		if (view.page)
+			items.push({
+				label: 'Copy page link',
+				icon: LinkIcon,
+				separator: !view.original,
+				action: () => copy(view.page!, 'Page link copied.'),
+			});
+		items.push(
+			{ label: 'Save image…', icon: DownloadIcon, separator: true, disabled: saving, action: () => saveOne(view) },
+			{
+				label: isSelected ? 'Deselect' : 'Select',
+				icon: isSelected ? SquareIcon : SquareCheckIcon,
+				action: () => toggle(view.image.id),
+			}
+		);
+		return items;
+	}
+	function openMenu(view: ImageView, point: { x: number; y: number }) {
+		menu = { ...point, view };
+	}
+
 	function size(view: ImageView) {
 		return view.image.width && view.image.height
 			? `${view.image.width} × ${view.image.height}`
@@ -298,6 +367,7 @@
 						selecting={selected.length > 0}
 						onpreview={() => (previewId = view.image.id)}
 						ontoggle={() => toggle(view.image.id)}
+						onmenu={(point) => openMenu(view, point)}
 						onratio={(ratio) => (measured[view.image.id] = Math.min(3, Math.max(0.4, ratio)))}
 					/>{/each}
 			</div>
@@ -316,7 +386,13 @@
 				</thead>
 				<tbody>
 					{#each shown as view (view.image.id)}
-						<tr class:selected={selectedIds.includes(view.image.id)}>
+						<tr
+							class:selected={selectedIds.includes(view.image.id)}
+							oncontextmenu={(event) => {
+								event.preventDefault();
+								openMenu(view, { x: event.clientX, y: event.clientY });
+							}}
+						>
 							<td class="check-cell"
 								><input
 									type="checkbox"
@@ -329,7 +405,14 @@
 								><button
 									class="thumb"
 									aria-label={`Preview ${view.title}`}
+									aria-haspopup="menu"
 									onclick={() => (previewId = view.image.id)}
+									onkeydown={(event) => {
+										if (isMenuKey(event)) {
+											event.preventDefault();
+											openMenu(view, menuPointFor(event.currentTarget));
+										}
+									}}
 									>{#if view.image.thumbnail_url}<img
 											src={view.image.thumbnail_url}
 											alt=""
@@ -364,6 +447,15 @@
 		{/if}
 	</div>
 </div>
+{#if menu}
+	<ContextMenu
+		x={menu.x}
+		y={menu.y}
+		label={`Actions for ${menu.view.title}`}
+		items={menuItems(menu.view)}
+		onclose={() => (menu = null)}
+	/>
+{/if}
 {#if preview}
 	<Dialog
 		title={preview.title}

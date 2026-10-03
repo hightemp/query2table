@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ImageOffIcon, CheckIcon } from '@lucide/svelte';
 	import type { ImageView } from '$lib/utils/images';
+	import { isMenuKey, menuPointFor } from '$lib/components/common/ContextMenu.svelte';
 	let {
 		view,
 		selected = false,
@@ -9,6 +10,7 @@
 		onpreview,
 		ontoggle,
 		onratio,
+		onmenu,
 	}: {
 		view: ImageView;
 		selected?: boolean;
@@ -19,6 +21,8 @@
 		ontoggle: () => void;
 		/** Reports the real proportions when the saved size is unknown. */
 		onratio?: (ratio: number) => void;
+		/** Opens the image's context menu at a point on screen. */
+		onmenu?: (point: { x: number; y: number }) => void;
 	} = $props();
 
 	// Thumbnail first; the original when the thumbnail fails; a placeholder after that.
@@ -42,8 +46,24 @@
 	class:selecting
 	style={`--ratio:${view.ratio ?? 1.5}`}
 	role="listitem"
+	oncontextmenu={(event) => {
+		if (!onmenu) return;
+		event.preventDefault();
+		onmenu({ x: event.clientX, y: event.clientY });
+	}}
 >
-	<button class="preview" onclick={onpreview} aria-label={`Preview ${view.title}`}>
+	<button
+		class="preview"
+		onclick={onpreview}
+		aria-label={`Preview ${view.title}`}
+		aria-haspopup="menu"
+		onkeydown={(event) => {
+			if (onmenu && isMenuKey(event)) {
+				event.preventDefault();
+				onmenu(menuPointFor(event.currentTarget));
+			}
+		}}
+	>
 		{#if source}<img
 				src={source}
 				alt=""

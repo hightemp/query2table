@@ -31,6 +31,18 @@
 		document.documentElement.classList.toggle('dark', $currentTheme === 'dark');
 	});
 
+	// The webview's own menu offers browser actions (open in new window, save image, reload)
+	// that do not work in the app. Keep it only where it helps: text fields and selected text.
+	// In development, Shift+right-click still opens it for "Inspect element".
+	function handleContextMenu(event: MouseEvent) {
+		if (event.defaultPrevented) return;
+		const target = event.target as Element | null;
+		if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+		if (window.getSelection()?.toString().trim()) return;
+		if (import.meta.env.DEV && event.shiftKey) return;
+		event.preventDefault();
+	}
+
 	function handleShortcut(event: KeyboardEvent) {
 		if (!hasMod(event) || event.shiftKey) return;
 		const key = event.key.toLowerCase();
@@ -84,7 +96,7 @@
 	});
 </script>
 
-<svelte:window onkeydown={handleShortcut} />
+<svelte:window onkeydown={handleShortcut} oncontextmenu={handleContextMenu} />
 <div class="app-shell">
 	<Sidebar />
 	<div class="app-main">

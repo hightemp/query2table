@@ -186,3 +186,73 @@ test('Several images can be selected, copied and saved to a folder', async ({ pa
 	await expect(page.locator('.image-list')).toBeVisible();
 	await page.getByRole('button', { name: 'Clear selection' }).waitFor({ state: 'detached' });
 });
+
+test('Images have their own context menu instead of the webview one', async ({ page }) => {
+	await openGallery(page);
+	await page.getByRole('button', { name: 'Preview Wide tower' }).click({ button: 'right' });
+	const menu = page.getByRole('menu', { name: 'Actions for Wide tower' });
+	await expect(menu.getByRole('menuitem')).toHaveText([
+		'Preview',
+		'Open original',
+		'Open source page',
+		'Copy image link',
+		'Copy page link',
+		'Save image…',
+		'Select',
+	]);
+	await expect(menu.getByRole('menuitem', { name: 'Preview' })).toBeFocused();
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await expect(menu.getByRole('menuitem', { name: 'Copy image link' })).toBeFocused();
+	await page.keyboard.press('Enter');
+	await expect(menu).toHaveCount(0);
+	expect((await calls(page, 'copy_text')).at(-1).args.text).toBe('https://cdn.example/wide.svg');
+
+	await page.getByRole('button', { name: 'Preview Wide tower' }).click({ button: 'right' });
+	await menu.getByRole('menuitem', { name: 'Open source page' }).click();
+	expect((await calls(page, 'plugin:opener|open_url')).at(-1).args.url).toBe(
+		'https://news.example/towers'
+	);
+
+	// Old records have no known image file, so only page actions are offered.
+	const legacy = page.getByRole('button', { name: 'Preview forbes.ru' });
+	await legacy.focus();
+	await page.keyboard.press('Shift+F10');
+	const legacyMenu = page.getByRole('menu', { name: 'Actions for forbes.ru' });
+	await expect(legacyMenu.getByRole('menuitem')).toHaveText([
+		'Preview',
+		'Open source page',
+		'Copy page link',
+		'Save image…',
+		'Select',
+	]);
+	await page.keyboard.press('Escape');
+	await expect(legacyMenu).toHaveCount(0);
+	await expect(legacy).toBeFocused();
+
+	await legacy.click({ button: 'right' });
+	await legacyMenu.getByRole('menuitem', { name: 'Select' }).click();
+	await expect(page.getByRole('region', { name: 'Selected images' })).toContainText('1 selected');
+
+	await page.getByRole('button', { name: 'List view' }).click();
+	await page.locator('.image-list tbody tr').first().click({ button: 'right', position: { x: 400, y: 10 } });
+	await expect(page.getByRole('menu')).toBeVisible();
+	await page.mouse.click(5, 5);
+	await expect(page.getByRole('menu')).toHaveCount(0);
+});
+
+test('The webview menu stays only in text fields and on selected text', async ({ page }) => {
+	await openGallery(page);
+	const prevented = (selector: string) =>
+		page.locator(selector).first().evaluate((element) => {
+			const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+			element.dispatchEvent(event);
+			return event.defaultPrevented;
+		});
+	expect(await prevented('.sidebar')).toBe(true);
+	expect(await prevented('h1')).toBe(true);
+	expect(await prevented('input[type="search"]')).toBe(false);
+	await page.locator('h1').selectText();
+	expect(await prevented('h1')).toBe(false);
+});
