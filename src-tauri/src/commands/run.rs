@@ -455,7 +455,12 @@ pub struct LinkResultInfo {
     pub url: String,
     pub title: String,
     pub description: String,
+    pub reason: String,
     pub relevance_score: Option<f64>,
+    pub low_relevance: bool,
+    pub hidden: bool,
+    pub visited_at: Option<i64>,
+    pub created_at: i64,
 }
 
 #[tauri::command]
@@ -470,8 +475,43 @@ pub async fn get_link_results(
         url: r.url,
         title: r.title,
         description: r.description,
+        reason: r.reason,
         relevance_score: r.relevance_score,
+        low_relevance: r.low_relevance,
+        hidden: r.hidden,
+        visited_at: r.visited_at,
+        created_at: r.created_at,
     }).collect())
+}
+
+/// Marks a link as opened, or clears the mark.
+#[tauri::command]
+pub async fn set_link_visited(
+    state: State<'_, AppState>,
+    link_id: String,
+    visited: bool,
+) -> Result<(), String> {
+    let repo = Repository::new(state.db.pool().clone());
+    match repo.set_link_visited(&link_id, visited).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err("Link not found".to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Hides a link from the run's results and exports, or shows it again.
+#[tauri::command]
+pub async fn set_link_hidden(
+    state: State<'_, AppState>,
+    link_id: String,
+    hidden: bool,
+) -> Result<(), String> {
+    let repo = Repository::new(state.db.pool().clone());
+    match repo.set_link_hidden(&link_id, hidden).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err("Link not found".to_string()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[derive(Debug, Serialize)]

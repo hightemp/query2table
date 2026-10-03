@@ -8,6 +8,8 @@
 	import { addLog, logPanelOpen } from '$lib/stores/logs';
 	import { currentTheme, loadTheme, sidebarCollapsed } from '$lib/stores/ui';
 	import Toaster from '$lib/components/layout/Toaster.svelte';
+	import ContextMenu from '$lib/components/common/ContextMenu.svelte';
+	import { contextMenu, closeContextMenu } from '$lib/stores/contextMenu';
 	import { hasMod } from '$lib/utils/shortcuts';
 	import type { LogEntry } from '$lib/types';
 	import type { Snippet } from 'svelte';
@@ -114,6 +116,17 @@
 	</div>
 </div>
 <Toaster />
+{#if $contextMenu}
+	{#key $contextMenu}
+		<ContextMenu
+			x={$contextMenu.x}
+			y={$contextMenu.y}
+			label={$contextMenu.label}
+			items={$contextMenu.items}
+			onclose={closeContextMenu}
+		/>
+	{/key}
+{/if}
 
 <style>
 	.app-alerts {

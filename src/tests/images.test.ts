@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import type { ImageResult } from '$lib/types';
 import {
 	describeImage,
-	displayHost,
 	filterImages,
 	domainCounts,
 	relevanceVaries,
 	imageFileName,
 	urlExtension,
 } from '$lib/utils/images';
+import { displayHost } from '$lib/utils/hosts';
 
 const image = (overrides: Partial<ImageResult>): ImageResult => ({
 	id: 'i',

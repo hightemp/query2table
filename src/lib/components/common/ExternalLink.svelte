@@ -1,21 +1,53 @@
 <script lang="ts">
-	import { openExternal } from '$lib/utils/links';
-	import { toast } from '$lib/stores/toasts';
 	import type { Snippet } from 'svelte';
-	let { href, children, label }: { href: string; children?: Snippet; label?: string } = $props();
+	import type { MenuItem } from './ContextMenu.svelte';
+	import { isMenuKey, menuPointFor } from './ContextMenu.svelte';
+	import { showContextMenu } from '$lib/stores/contextMenu';
+	import { linkMenuItems, openLink } from '$lib/utils/linkMenu';
+	let {
+		href,
+		children,
+		label,
+		onopen,
+		menuItems,
+		class: className = '',
+	}: {
+		href: string;
+		children?: Snippet;
+		label?: string;
+		/** Called after the link was opened in the browser. */
+		onopen?: () => void;
+		/** Replaces the default link menu (Open, Copy link, Copy as Markdown). */
+		menuItems?: () => MenuItem[];
+		class?: string;
+	} = $props();
 	async function open(event: MouseEvent) {
 		event.preventDefault();
 		event.stopPropagation();
-		try {
-			await openExternal(href);
-		} catch {
-			toast('Could not open this link. Copy its address and open it in your browser.', 'error');
-		}
+		if (await openLink(href)) onopen?.();
+	}
+	function menu(point: { x: number; y: number }) {
+		showContextMenu(point, `Actions for ${label ?? href}`, menuItems?.() ?? linkMenuItems(href, label));
 	}
 </script>
 
-<a {href} title={href} onclick={open}
-	>{#if children}{@render children()}{:else}{label ?? href}{/if}</a
+<a
+	{href}
+	title={href}
+	class={className}
+	onclick={open}
+	aria-haspopup="menu"
+	oncontextmenu={(event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		menu({ x: event.clientX, y: event.clientY });
+	}}
+	onkeydown={(event) => {
+		if (isMenuKey(event)) {
+			event.preventDefault();
+			menu(menuPointFor(event.currentTarget));
+		}
+	}}>{#if children}{@render children()}{:else}{label ?? href}{/if}</a
 >
 
 <style>

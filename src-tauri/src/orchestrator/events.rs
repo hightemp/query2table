@@ -186,13 +186,16 @@ impl EventPublisher {
         debug!(run_id = %self.run_id, image_id, "Emitted image_added");
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn emit_link_added(
         &self,
         link_id: &str,
         url: &str,
         title: &str,
         description: &str,
+        reason: &str,
         relevance_score: Option<f64>,
+        low_relevance: bool,
     ) {
         let payload = LinkAddedEvent {
             run_id: self.run_id.clone(),
@@ -200,7 +203,9 @@ impl EventPublisher {
             url: url.to_string(),
             title: title.to_string(),
             description: description.to_string(),
+            reason: reason.to_string(),
             relevance_score,
+            low_relevance,
         };
         if let Err(e) = self.app.emit("run:link_added", &payload) {
             tracing::error!(error = %e, "Failed to emit link_added event");
@@ -317,7 +322,9 @@ pub struct LinkAddedEvent {
     pub url: String,
     pub title: String,
     pub description: String,
+    pub reason: String,
     pub relevance_score: Option<f64>,
+    pub low_relevance: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -11,6 +11,13 @@
 		<div class="toast {item.tone}" role={item.tone === 'error' ? 'alert' : undefined}>
 			<span class="icon"><Icon size={16} /></span>
 			<p>{item.message}</p>
+			{#if item.action}{@const action = item.action}<button
+					class="button ghost sm toast-action"
+					onclick={() => {
+						dismissToast(item.id);
+						void action.run();
+					}}>{action.label}</button
+				>{/if}
 			<button class="icon-button ghost sm" aria-label="Dismiss" onclick={() => dismissToast(item.id)}
 				><XIcon size={14} /></button
 			>
@@ -62,6 +69,10 @@
 		min-width: 0;
 		padding-top: 1px;
 		overflow-wrap: anywhere;
+	}
+	.toast-action {
+		color: var(--app-accent);
+		margin-top: -3px;
 	}
 	@keyframes enter {
 		from {

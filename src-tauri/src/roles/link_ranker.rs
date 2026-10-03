@@ -1,10 +1,9 @@
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::providers::llm::manager::LlmManager;
 use crate::providers::llm::types::Message;
 use crate::roles::document_parser::ParsedDocument;
 
-/// A page to be scored for relevance, with its source metadata.
 #[derive(Debug, Clone)]
 pub struct PageCandidate {
     pub url: String,
@@ -13,85 +12,39 @@ pub struct PageCandidate {
     pub document: ParsedDocument,
 }
 
-/// A link result with a relevance score and LLM-generated description.
 #[derive(Debug, Clone)]
 pub struct RankedLink {
     pub url: String,
     pub title: String,
+    /// What the page contains, independent of the query.
     pub description: String,
+    /// Why the page does or does not match the query.
+    pub reason: String,
     pub relevance_score: f64,
 }
 
-/// Uses LLM to score page content relevance to the original query and
-/// generate a concise description, keeping only the most relevant pages.
+/// LLM answer for one page.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct PageScore {
+    #[serde(default)]
+    pub relevance: f64,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub reason: String,
+}
+
 pub struct LinkRanker;
 
 impl LinkRanker {
-    /// Rank pages by content relevance to the query.
-    /// Scores each page from its fetched content (one LLM call per page),
-    /// filters out pages below `min_relevance`, and sorts by score descending.
-    pub async fn rank(
-        query: &str,
-        candidates: Vec<PageCandidate>,
-        llm: &LlmManager,
-        min_relevance: f64,
-        max_text_chars: Option<usize>,
-    ) -> Result<Vec<RankedLink>, String> {
-        if candidates.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let mut ranked: Vec<RankedLink> = Vec::new();
-
-        for candidate in &candidates {
-            if llm.spending_limit_reached() {
-                break;
-            }
-            match Self::score_one(query, candidate, llm, max_text_chars).await {
-                Ok((score, description)) => {
-                    let description = if description.trim().is_empty() {
-                        candidate.snippet.clone()
-                    } else {
-                        description
-                    };
-                    let title = if candidate.title.trim().is_empty() {
-                        candidate.document.title.clone()
-                    } else {
-                        candidate.title.clone()
-                    };
-                    ranked.push(RankedLink {
-                        url: candidate.url.clone(),
-                        title,
-                        description,
-                        relevance_score: score,
-                    });
-                }
-                Err(e) => {
-                    warn!(url = %candidate.url, error = %e, "Link relevance scoring failed, skipping page");
-                }
-            }
-        }
-
-        // Filter and sort
-        ranked.retain(|r| r.relevance_score >= min_relevance);
-        ranked.sort_by(|a, b| {
-            b.relevance_score
-                .partial_cmp(&a.relevance_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        debug!(query = %query, passed = ranked.len(), "Link ranking complete");
-
-        Ok(ranked)
-    }
-
-    /// Score a single page and produce a relevance score + concise description.
-    async fn score_one(
+    /// Scores one fetched page against the query and describes it.
+    /// An unusable model answer scores 0.0 and is reported as an LLM issue.
+    pub async fn score(
         query: &str,
         candidate: &PageCandidate,
         llm: &LlmManager,
         max_text_chars: Option<usize>,
-    ) -> Result<(f64, String), String> {
+    ) -> Result<RankedLink, String> {
         let text = match max_text_chars {
             Some(limit) => crate::utils::text::truncate_chars(&candidate.document.text, limit),
             None => &candidate.document.text,
@@ -107,13 +60,19 @@ impl LinkRanker {
              - 0.4-0.6 = generally on-topic but missing key aspects\n\
              - 0.1-0.3 = barely related\n\
              - 0.0 = completely irrelevant\n\n\
-             Also write a concise 1-2 sentence description (max ~280 chars) summarizing \
-             what this page offers WITH RESPECT TO the query. Write the description in the \
-             same language as the query.\n\n\
+             Write two short texts in the same language as the query:\n\
+             - \"description\": 1-2 sentences (max ~240 chars) saying what the page IS and \
+             CONTAINS, as a neutral summary for a reader who has not opened it. Name the kind \
+             of page (article, repository, documentation, forum thread, product page, list, \
+             video) and its main topics. Do NOT mention the query, the user, relevance, or how \
+             well it matches; never start with phrases like \"This page is exactly about\".\n\
+             - \"reason\": one short phrase (max ~120 chars) explaining why the page does or \
+             does not match the query.\n\n\
              Page URL: {url}\n\
              Page title: {title}\n\
              Page content:\n{text}\n\n\
-             Respond with ONLY valid JSON: {{\"relevance\": <float 0.0-1.0>, \"description\": \"<text>\"}}. \
+             Respond with ONLY valid JSON: \
+             {{\"relevance\": <float 0.0-1.0>, \"description\": \"<text>\", \"reason\": \"<text>\"}}. \
              No markdown, no explanation.",
             query = query,
             url = candidate.url,
@@ -124,8 +83,8 @@ impl LinkRanker {
         let messages = vec![
             Message::system(
                 "You are a strict web page relevance judge. Output ONLY a JSON object with \
-                 a float \"relevance\" field (0.0-1.0) and a string \"description\" field. \
-                 No extra text.",
+                 a float \"relevance\" field (0.0-1.0) and string \"description\" and \
+                 \"reason\" fields. No extra text.",
             ),
             Message::user(prompt),
         ];
@@ -135,45 +94,61 @@ impl LinkRanker {
             .await
             .map_err(|e| format!("LLM scoring failed: {e}"))?;
 
-        let (score, description) = Self::parse_score(&response.content).unwrap_or_else(|e| {
-            llm.report_invalid_response("link_ranker", &format!("Invalid relevance score: {e}. The page was skipped."), &response);
-            (0.0, String::new())
+        let score = Self::parse_score(&response.content).unwrap_or_else(|e| {
+            llm.report_invalid_response(
+                "link_ranker",
+                &format!("Invalid relevance score: {e}. The page was scored as irrelevant."),
+                &response,
+            );
+            PageScore { relevance: 0.0, description: String::new(), reason: String::new() }
         });
 
         debug!(
             url = %candidate.url,
-            score,
+            score = score.relevance,
             raw_response = %response.content.chars().take(200).collect::<String>(),
             "Link relevance score"
         );
 
-        Ok((score, description))
+        Ok(Self::ranked(candidate, score))
     }
 
-    /// Parse a JSON object `{ "relevance": f64, "description": String }` from the LLM response.
-    /// Reports invalid JSON so the caller can explain why the page was rejected.
-    fn parse_score(response: &str) -> Result<(f64, String), serde_json::Error> {
-        let trimmed = response.trim();
-        let json_str = if let Some(start) = trimmed.find('{') {
-            if let Some(end) = trimmed.rfind('}') {
-                &trimmed[start..=end]
+    /// A link built from search data alone, used when no model is configured.
+    pub fn unscored(candidate: &PageCandidate) -> RankedLink {
+        Self::ranked(
+            candidate,
+            PageScore { relevance: 0.0, description: String::new(), reason: String::new() },
+        )
+    }
+
+    fn ranked(candidate: &PageCandidate, score: PageScore) -> RankedLink {
+        RankedLink {
+            url: candidate.url.clone(),
+            title: if candidate.title.trim().is_empty() {
+                candidate.document.title.clone()
             } else {
-                trimmed
-            }
-        } else {
-            trimmed
-        };
-
-        #[derive(serde::Deserialize)]
-        struct ScoreResponse {
-            #[serde(default)]
-            relevance: f64,
-            #[serde(default)]
-            description: String,
+                candidate.title.clone()
+            },
+            description: if score.description.trim().is_empty() {
+                candidate.snippet.clone()
+            } else {
+                score.description.trim().to_string()
+            },
+            reason: score.reason.trim().to_string(),
+            relevance_score: score.relevance,
         }
+    }
 
-        let parsed = serde_json::from_str::<ScoreResponse>(json_str)?;
-        Ok((parsed.relevance.clamp(0.0, 1.0), parsed.description))
+    /// Parses `{ "relevance": f64, "description": String, "reason": String }` from the LLM response.
+    pub fn parse_score(response: &str) -> Result<PageScore, serde_json::Error> {
+        let trimmed = response.trim();
+        let json_str = match (trimmed.find('{'), trimmed.rfind('}')) {
+            (Some(start), Some(end)) if end > start => &trimmed[start..=end],
+            _ => trimmed,
+        };
+        let mut parsed = serde_json::from_str::<PageScore>(json_str)?;
+        parsed.relevance = parsed.relevance.clamp(0.0, 1.0);
+        Ok(parsed)
     }
 }
 
@@ -183,22 +158,27 @@ mod tests {
 
     #[test]
     fn test_parse_score_valid() {
-        let (score, desc) = LinkRanker::parse_score("{\"relevance\": 0.9, \"description\": \"A great page\"}").unwrap();
-        assert_eq!(score, 0.9);
-        assert_eq!(desc, "A great page");
+        let score = LinkRanker::parse_score(
+            "{\"relevance\": 0.9, \"description\": \"A great page\", \"reason\": \"Covers Tauri\"}",
+        )
+        .unwrap();
+        assert_eq!(score.relevance, 0.9);
+        assert_eq!(score.description, "A great page");
+        assert_eq!(score.reason, "Covers Tauri");
     }
 
     #[test]
-    fn test_parse_score_with_text() {
-        let (score, desc) = LinkRanker::parse_score("Here: {\"relevance\": 0.5, \"description\": \"ok\"}").unwrap();
-        assert_eq!(score, 0.5);
-        assert_eq!(desc, "ok");
+    fn test_parse_score_with_text_and_without_reason() {
+        let score = LinkRanker::parse_score("Here: {\"relevance\": 0.5, \"description\": \"ok\"}").unwrap();
+        assert_eq!(score.relevance, 0.5);
+        assert_eq!(score.description, "ok");
+        assert_eq!(score.reason, "");
     }
 
     #[test]
     fn test_parse_score_clamp() {
-        let (score, _) = LinkRanker::parse_score("{\"relevance\": 1.7, \"description\": \"x\"}").unwrap();
-        assert_eq!(score, 1.0);
+        let score = LinkRanker::parse_score("{\"relevance\": 1.7, \"description\": \"x\"}").unwrap();
+        assert_eq!(score.relevance, 1.0);
     }
 
     #[test]

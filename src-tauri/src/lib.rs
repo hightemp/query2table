@@ -120,6 +120,8 @@ pub fn run() {
             commands::settings::copy_text,
             commands::run::get_image_results,
             commands::run::get_link_results,
+            commands::run::set_link_visited,
+            commands::run::set_link_hidden,
             commands::run::get_research_result,
             commands::images::proxy_image,
             commands::images::save_image,

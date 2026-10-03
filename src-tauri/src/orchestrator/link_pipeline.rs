@@ -195,34 +195,98 @@ impl LinkPipeline {
             drop(fetch_tx);
         });
 
-        let mut candidates: Vec<PageCandidate> = Vec::new();
+        // Each page is scored as soon as it is fetched and shown right away, while the
+        // remaining pages keep downloading in the pool.
+        let max_text_chars = if self.config.enable_content_truncation {
+            Some(self.config.max_extraction_text_chars)
+        } else {
+            None
+        };
+        let min_relevance = self.config.min_confidence;
+        let max_links = self.config.stop.target_row_count as u64;
+        if llm.is_some() {
+            self.log("INFO", "link_ranker", "Scoring page relevance with LLM as pages arrive...")
+                .await;
+        } else {
+            self.log("INFO", "link_pipeline", "LLM not configured, keeping all pages with snippet descriptions").await;
+        }
+
         let mut pages_fetched: u64 = 0;
         let mut pages_failed: u64 = 0;
+        let mut stored_count: u64 = 0;
+        let mut relevant_count: u64 = 0;
+        let mut stop_reason: Option<&str> = None;
 
         while let Some(result) = fetch_rx.recv().await {
-            match result {
+            let candidate = match result {
                 FetchResult::Success(doc) => {
                     pages_fetched += 1;
                     let (url, title, snippet) = meta
                         .get(&doc.search_result_id)
                         .cloned()
                         .unwrap_or_else(|| (doc.document.url.clone(), doc.document.title.clone(), String::new()));
-                    candidates.push(PageCandidate {
-                        url,
-                        title,
-                        snippet,
-                        document: doc.document,
-                    });
+                    Some(PageCandidate { url, title, snippet, document: doc.document })
                 }
                 FetchResult::Failure(f) => {
                     pages_failed += 1;
                     warn!(url = %f.url, error = %f.error, "Fetch failed");
+                    None
+                }
+            };
+
+            if let Some(candidate) = candidate {
+                let link = match llm {
+                    Some(ref llm_mgr) if llm_mgr.spending_limit_reached() => {
+                        stop_reason = Some("spending limit reached");
+                        None
+                    }
+                    Some(ref llm_mgr) => {
+                        match LinkRanker::score(&self.query, &candidate, llm_mgr, max_text_chars).await {
+                            Ok(link) => Some((link, true)),
+                            Err(e) => {
+                                warn!(url = %candidate.url, error = %e, "Link relevance scoring failed, skipping page");
+                                None
+                            }
+                        }
+                    }
+                    None => Some((LinkRanker::unscored(&candidate), false)),
+                };
+                if let Some((link, scored)) = link {
+                    let low_relevance = scored && link.relevance_score < min_relevance;
+                    let link_id = self
+                        .repo
+                        .create_link_result(
+                            &self.run_id,
+                            &link.url,
+                            &link.title,
+                            &link.description,
+                            &link.reason,
+                            scored.then_some(link.relevance_score),
+                            low_relevance,
+                        )
+                        .await
+                        .map_err(|e| format!("Storage: {e}"))?;
+                    stored_count += 1;
+                    if !low_relevance {
+                        relevant_count += 1;
+                    }
+                    if let Some(ref events) = self.events {
+                        events.emit_link_added(
+                            &link_id,
+                            &link.url,
+                            &link.title,
+                            &link.description,
+                            &link.reason,
+                            scored.then_some(link.relevance_score),
+                            low_relevance,
+                        );
+                    }
                 }
             }
 
             if let Some(ref events) = self.events {
                 events.emit_progress(ProgressStats {
-                    rows_found: 0,
+                    rows_found: relevant_count,
                     pages_fetched,
                     pages_total: total_pages as u64,
                     queries_executed: queries.len() as u64,
@@ -230,121 +294,35 @@ impl LinkPipeline {
                     elapsed_secs: self.start_time.elapsed().as_secs(),
                     spent_usd: self.budget.spent_usd(),
                 });
+            }
+
+            if relevant_count >= max_links {
+                stop_reason = Some("target number of links reached");
+            }
+            if stop_reason.is_some() {
+                break;
             }
         }
 
         self.log("INFO", "fetcher", &format!(
             "Fetched {} pages ({} failed)", pages_fetched, pages_failed
         )).await;
-
-        if candidates.is_empty() {
+        if let Some(reason) = stop_reason {
+            self.log("INFO", "link_pipeline", &format!("Stopped early: {reason}")).await;
+        }
+        if pages_fetched == 0 {
             self.log("WARN", "link_pipeline", "No pages could be fetched").await;
-            self.set_status("completed").await;
-            return Ok(PipelineState::Completed);
         }
-
-        // Score relevance from page content + generate descriptions
-        let max_text_chars = if self.config.enable_content_truncation {
-            Some(self.config.max_extraction_text_chars)
-        } else {
-            None
-        };
-
-        let ranked = if let Some(ref llm_mgr) = llm {
-            self.log("INFO", "link_ranker", "Scoring page relevance with LLM...")
-                .await;
-            let min_relevance = self.config.min_confidence;
-            let _candidate_count = candidates.len();
-            match LinkRanker::rank(
-                &self.query,
-                candidates,
-                llm_mgr,
-                min_relevance,
-                max_text_chars,
-            )
-            .await
-            {
-                Ok(r) => {
-                    self.log(
-                        "INFO",
-                        "link_ranker",
-                        &format!("Ranked: {} pages passed relevance filter", r.len()),
-                    )
-                    .await;
-                    r
-                }
-                Err(e) => {
-                    return Err(format!("Link ranking: {e}"));
-                }
-            }
-        } else {
-            self.log("INFO", "link_pipeline", "LLM not configured, keeping all pages with snippet descriptions").await;
-            candidates
-                .into_iter()
-                .map(|c| crate::roles::link_ranker::RankedLink {
-                    url: c.url,
-                    title: c.title,
-                    description: c.snippet,
-                    relevance_score: 0.5,
-                })
-                .collect()
-        };
-
-        // Apply target limit
-        let max_links = self.config.stop.target_row_count;
-        let ranked = if ranked.len() > max_links {
-            self.log("INFO", "link_pipeline", &format!("Limiting results from {} to {} (max links)", ranked.len(), max_links)).await;
-            ranked.into_iter().take(max_links).collect::<Vec<_>>()
-        } else {
-            ranked
-        };
-
-        // Store results
-        self.log("INFO", "link_storage", &format!("Storing {} link results", ranked.len())).await;
-        let mut stored_count = 0u64;
-
-        for link in &ranked {
-            let link_id = self
-                .repo
-                .create_link_result(
-                    &self.run_id,
-                    &link.url,
-                    &link.title,
-                    &link.description,
-                    Some(link.relevance_score),
-                )
-                .await
-                .map_err(|e| format!("Storage: {e}"))?;
-
-            stored_count += 1;
-
-            if let Some(ref events) = self.events {
-                events.emit_link_added(
-                    &link_id,
-                    &link.url,
-                    &link.title,
-                    &link.description,
-                    Some(link.relevance_score),
-                );
-                events.emit_progress(ProgressStats {
-                    rows_found: stored_count,
-                    pages_fetched,
-                    pages_total: total_pages as u64,
-                    queries_executed: queries.len() as u64,
-                    queries_total: queries.len() as u64,
-                    elapsed_secs: self.start_time.elapsed().as_secs(),
-                    spent_usd: self.budget.spent_usd(),
-                });
-            }
-
-            // The count cap was applied before storage. A monetary cap stops new
-            // provider calls, not persistence of results already paid for. Cancel
-            // remains responsive through the supervisor while writes complete.
-        }
+        self.log(
+            "INFO",
+            "link_storage",
+            &format!("Stored {stored_count} links ({relevant_count} relevant)"),
+        )
+        .await;
 
         // Update run stats
         let stats = serde_json::json!({
-            "link_count": stored_count,
+            "link_count": relevant_count,
             "pages_fetched": pages_fetched,
             "queries_executed": queries.len(),
             "elapsed_secs": self.start_time.elapsed().as_secs(),
@@ -355,7 +333,7 @@ impl LinkPipeline {
             .await
             .map_err(|e| format!("Storage: {e}"))?;
 
-        self.log("INFO", "link_pipeline", &format!("Link search completed: {} links", stored_count)).await;
+        self.log("INFO", "link_pipeline", &format!("Link search completed: {} relevant links", relevant_count)).await;
         self.set_status("completed").await;
 
         Ok(PipelineState::Completed)

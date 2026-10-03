@@ -271,12 +271,12 @@ test('Long links stay within the workspace in a small window', async ({ page }) 
 	await page.setViewportSize({ width: 900, height: 600 });
 	await viewRun(page, 2);
 	await page.getByRole('button', { name: /Logs \(/ }).click();
-	await expect(page.locator('.link-card')).toContainText('Relevance 80%');
+	await expect(page.locator('.link-card')).toContainText('Good match');
 	expect(await page.locator('.link-list').evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(
 		true
 	);
-	await page.getByRole('button', { name: 'Copy link URL' }).click();
-	await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible();
+	await page.getByRole('button', { name: /^Copy link of / }).click();
+	await expect(page.locator('.toast')).toContainText('Link copied.');
 	await page.getByRole('button', { name: 'Light', exact: true }).click();
 	await expect(page.locator('html')).not.toHaveClass('dark');
 });

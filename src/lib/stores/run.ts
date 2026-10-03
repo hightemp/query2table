@@ -206,7 +206,12 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 					url: e.url,
 					title: e.title,
 					description: e.description,
+					reason: e.reason ?? '',
 					relevance_score: e.relevance_score,
+					low_relevance: e.low_relevance ?? false,
+					hidden: false,
+					visited_at: null,
+					created_at: Date.now() / 1000,
 				};
 				return { ...s, linkResults: [...s.linkResults, link] };
 			});

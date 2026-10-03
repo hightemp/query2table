@@ -74,6 +74,12 @@ pub async fn export_run(
         }).collect();
 
         export_to_file(path, &columns, &export_rows, format)
+    } else if run.run_type == "links" {
+        // Hidden links and links below the relevance threshold are left out.
+        let links = repo.get_link_results(&request.run_id).await
+            .map_err(|e| format!("Failed to get link results: {e}"))?;
+        let (columns, export_rows) = link_export_rows(&links);
+        export_to_file(path, &columns, &export_rows, format)
     } else {
         // Export table results (original logic)
         let schema = repo.get_run_schema(&request.run_id).await
@@ -112,5 +118,70 @@ pub async fn export_run(
         }
 
         export_to_file(path, &column_names, &export_rows, format)
+    }
+}
+
+/// Columns and rows for a links export. Hidden links and links below the relevance
+/// threshold are left out, matching what the results view shows by default.
+fn link_export_rows(
+    links: &[crate::storage::repository::LinkResultRow],
+) -> (Vec<String>, Vec<ExportRow>) {
+    let columns = ["url", "title", "description", "reason", "relevance_score", "visited"]
+        .iter()
+        .map(|c| c.to_string())
+        .collect();
+    let rows = links
+        .iter()
+        .filter(|link| !link.hidden && !link.low_relevance)
+        .map(|link| ExportRow {
+            data: serde_json::json!({
+                "url": link.url,
+                "title": link.title,
+                "description": link.description,
+                "reason": link.reason,
+                "relevance_score": link.relevance_score.map(|s| format!("{:.2}", s)).unwrap_or_default(),
+                "visited": if link.visited_at.is_some() { "yes" } else { "" },
+            }),
+            confidence: link.relevance_score.unwrap_or(0.0),
+            sources: vec![],
+        })
+        .collect();
+    (columns, rows)
+}
+
+#[cfg(test)]
+mod link_export_tests {
+    use super::*;
+    use crate::storage::repository::LinkResultRow;
+
+    fn link(id: &str, low_relevance: bool, hidden: bool, visited_at: Option<i64>) -> LinkResultRow {
+        LinkResultRow {
+            id: id.into(),
+            run_id: "run".into(),
+            url: format!("https://{id}.example/"),
+            title: id.into(),
+            description: "Docs".into(),
+            reason: "Matches".into(),
+            relevance_score: Some(0.9),
+            low_relevance,
+            hidden,
+            visited_at,
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn exports_only_shown_links_with_review_state() {
+        let (columns, rows) = link_export_rows(&[
+            link("kept", false, false, Some(5)),
+            link("weak", true, false, None),
+            link("hidden", false, true, None),
+        ]);
+        assert_eq!(columns, ["url", "title", "description", "reason", "relevance_score", "visited"]);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].data["url"], "https://kept.example/");
+        assert_eq!(rows[0].data["reason"], "Matches");
+        assert_eq!(rows[0].data["relevance_score"], "0.90");
+        assert_eq!(rows[0].data["visited"], "yes");
     }
 }

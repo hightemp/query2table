@@ -648,32 +648,59 @@ impl Repository {
 
     // --- Link Results ---
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_link_result(
         &self,
         run_id: &str,
         url: &str,
         title: &str,
         description: &str,
+        reason: &str,
         relevance_score: Option<f64>,
+        low_relevance: bool,
     ) -> Result<String, sqlx::Error> {
         let id = new_id();
         sqlx::query(
-            "INSERT INTO link_results (id, run_id, url, title, description, relevance_score, created_at) VALUES (?, ?, ?, ?, ?, ?, unixepoch())"
+            "INSERT INTO link_results (id, run_id, url, title, description, reason, relevance_score, low_relevance, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch())"
         )
         .bind(&id)
         .bind(run_id)
         .bind(url)
         .bind(title)
         .bind(description)
+        .bind(reason)
         .bind(relevance_score)
+        .bind(low_relevance)
         .execute(&self.pool)
         .await?;
         Ok(id)
     }
 
+    /// Marks a link as opened (or clears the mark). Returns false when the link does not exist.
+    pub async fn set_link_visited(&self, link_id: &str, visited: bool) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE link_results SET visited_at = CASE WHEN ? THEN COALESCE(visited_at, unixepoch()) ELSE NULL END WHERE id = ?"
+        )
+        .bind(visited)
+        .bind(link_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Hides a link from the run's results and exports (or shows it again).
+    pub async fn set_link_hidden(&self, link_id: &str, hidden: bool) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("UPDATE link_results SET hidden = ? WHERE id = ?")
+            .bind(hidden)
+            .bind(link_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn get_link_results(&self, run_id: &str) -> Result<Vec<LinkResultRow>, sqlx::Error> {
         let rows = sqlx::query_as::<_, LinkResultRow>(
-            "SELECT id, run_id, url, title, description, relevance_score, created_at FROM link_results WHERE run_id = ? ORDER BY relevance_score DESC NULLS LAST, created_at"
+            "SELECT id, run_id, url, title, description, reason, relevance_score, low_relevance, hidden, visited_at, created_at FROM link_results WHERE run_id = ? ORDER BY relevance_score DESC NULLS LAST, created_at"
         )
         .bind(run_id)
         .fetch_all(&self.pool)
@@ -875,7 +902,11 @@ pub struct LinkResultRow {
     pub url: String,
     pub title: String,
     pub description: String,
+    pub reason: String,
     pub relevance_score: Option<f64>,
+    pub low_relevance: bool,
+    pub hidden: bool,
+    pub visited_at: Option<i64>,
     pub created_at: i64,
 }
 
@@ -1199,6 +1230,39 @@ mod tests {
         let sources = repo.get_row_sources(&row_id).await.unwrap();
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].url, "https://example.com");
+    }
+
+    #[tokio::test]
+    async fn links_keep_reason_relevance_flag_and_review_state() {
+        let (repo, _db) = test_repo().await;
+        repo.create_run("run-1", "links", "{}").await.unwrap();
+        let good = repo
+            .create_link_result("run-1", "https://a.example", "A", "Docs", "Covers it", Some(0.9), false)
+            .await
+            .unwrap();
+        let weak = repo
+            .create_link_result("run-1", "https://b.example", "B", "Blog", "Off topic", Some(0.2), true)
+            .await
+            .unwrap();
+
+        assert!(repo.set_link_visited(&good, true).await.unwrap());
+        let first_visit = repo.get_link_results("run-1").await.unwrap()[0].visited_at;
+        assert!(first_visit.is_some());
+        // Opening the link again keeps the first visit time.
+        repo.set_link_visited(&good, true).await.unwrap();
+        assert_eq!(repo.get_link_results("run-1").await.unwrap()[0].visited_at, first_visit);
+        assert!(repo.set_link_hidden(&weak, true).await.unwrap());
+        assert!(!repo.set_link_hidden("missing", true).await.unwrap());
+
+        let links = repo.get_link_results("run-1").await.unwrap();
+        assert_eq!((links[0].id.as_str(), links[0].reason.as_str()), (good.as_str(), "Covers it"));
+        assert!(!links[0].low_relevance && !links[0].hidden);
+        assert!(links[1].low_relevance && links[1].hidden && links[1].visited_at.is_none());
+
+        repo.set_link_visited(&good, false).await.unwrap();
+        repo.set_link_hidden(&weak, false).await.unwrap();
+        let links = repo.get_link_results("run-1").await.unwrap();
+        assert!(links[0].visited_at.is_none() && !links[1].hidden);
     }
 
     #[tokio::test]

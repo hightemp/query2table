@@ -240,6 +240,14 @@ export async function getLinkResults(runId: string): Promise<LinkResult[]> {
 	return invoke('get_link_results', { runId });
 }
 
+export function setLinkVisited(linkId: string, visited: boolean): Promise<void> {
+	return invoke('set_link_visited', { linkId, visited });
+}
+
+export function setLinkHidden(linkId: string, hidden: boolean): Promise<void> {
+	return invoke('set_link_hidden', { linkId, hidden });
+}
+
 export function onLinkAdded(cb: (e: LinkAddedEvent) => void): Promise<UnlistenFn> {
 	return listen<LinkAddedEvent>('run:link_added', (event) => cb(event.payload));
 }

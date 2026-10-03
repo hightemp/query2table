@@ -160,7 +160,7 @@ test('Logs show local time, problem counts, filters, copy and resizing', async (
 test('Copy failures appear as toasts instead of shifting the layout', async ({ page }) => {
 	await viewRun(page, 2);
 	await page.evaluate(() => ((window as any).__uiFixture.failCopy = true));
-	await page.getByRole('button', { name: 'Copy link URL' }).click();
+	await page.getByRole('button', { name: /^Copy link of / }).click();
 	await expect(page.getByRole('alert')).toContainText('Could not copy');
 	await expect(page.locator('.link-card [role=alert]')).toHaveCount(0);
 });

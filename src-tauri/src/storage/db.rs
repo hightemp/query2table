@@ -238,6 +238,20 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_link_results_run_id ON link_results(run_id)")
             .execute(&self.pool).await?;
 
+        // Link review state and the model's match explanation (for existing databases).
+        for column in [
+            "reason TEXT NOT NULL DEFAULT ''",
+            // Scored below the run's relevance threshold: kept, but collapsed and not exported.
+            "low_relevance INTEGER NOT NULL DEFAULT 0",
+            "hidden INTEGER NOT NULL DEFAULT 0",
+            "visited_at INTEGER",
+        ] {
+            sqlx::query(&format!("ALTER TABLE link_results ADD COLUMN {column}"))
+                .execute(&self.pool)
+                .await
+                .ok(); // ok() — ignore error if column already exists
+        }
+
         // Research agent steps table (search / fetch / think transcript)
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS research_steps (
@@ -305,6 +319,7 @@ impl Database {
         let defaults = vec![
             ("theme", "system"),
             ("notifications_enabled", "true"),
+            ("show_site_icons", "true"),
             // LLM
             ("llm_provider", "openrouter"),
             ("openrouter_model", "openai/gpt-4.1-mini"),
@@ -449,6 +464,31 @@ fn dirs_next() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn link_review_columns_are_added_to_existing_databases() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE runs (id TEXT PRIMARY KEY, query TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', config TEXT NOT NULL DEFAULT '{}', stats TEXT, error TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, completed_at INTEGER)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("CREATE TABLE link_results (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', relevance_score REAL, created_at INTEGER NOT NULL DEFAULT 0)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO runs (id, query) VALUES ('old', 'q')").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO link_results (id, run_id, url, description, relevance_score) VALUES ('l1', 'old', 'https://a.example', 'Saved before', 0.8)")
+            .execute(&pool).await.unwrap();
+
+        let db = Database::with_pool(pool).await;
+        db.migrate().await.unwrap();
+        db.migrate().await.unwrap();
+        let repo = crate::storage::repository::Repository::new(db.pool().clone());
+        let links = repo.get_link_results("old").await.unwrap();
+        assert_eq!(links[0].description, "Saved before");
+        assert_eq!(links[0].reason, "");
+        assert!(!links[0].low_relevance && !links[0].hidden && links[0].visited_at.is_none());
+    }
 
     async fn test_db() -> Database {
         let pool = SqlitePoolOptions::new()

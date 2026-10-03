@@ -254,8 +254,18 @@ export interface LinkResult {
 	id: string;
 	url: string;
 	title: string;
+	/** What the page contains. */
 	description: string;
+	/** Why the page matches the query; empty for runs saved before it was recorded. */
+	reason?: string;
 	relevance_score: number | null;
+	/** Scored below the run's relevance threshold: shown collapsed and not exported. */
+	low_relevance?: boolean;
+	hidden?: boolean;
+	/** Unix seconds when the link was first opened. */
+	visited_at?: number | null;
+	/** Unix seconds when the link was found. */
+	created_at?: number;
 }
 
 export interface LinkAddedEvent {
@@ -265,6 +275,8 @@ export interface LinkAddedEvent {
 	title: string;
 	description: string;
 	relevance_score: number | null;
+	reason?: string;
+	low_relevance?: boolean;
 }
 
 // --- Research (agentic) types ---

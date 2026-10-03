@@ -2,10 +2,16 @@ import { writable } from 'svelte/store';
 
 export type ToastTone = 'info' | 'success' | 'error';
 
+export interface ToastAction {
+	label: string;
+	run: () => void | Promise<void>;
+}
+
 export interface Toast {
 	id: number;
 	message: string;
 	tone: ToastTone;
+	action?: ToastAction;
 }
 
 const DURATION: Record<ToastTone, number> = { info: 3500, success: 3500, error: 7000 };
@@ -21,13 +27,18 @@ export function dismissToast(id: number) {
 	toasts.update((items) => items.filter((item) => item.id !== id));
 }
 
-/** Shows a short, self-dismissing message. Repeating the visible message restarts its timer. */
-export function toast(message: string, tone: ToastTone = 'info'): number {
+/**
+ * Shows a short, self-dismissing message. Repeating the visible message restarts its timer.
+ * An action (such as Undo) keeps the message visible longer.
+ */
+export function toast(message: string, tone: ToastTone = 'info', action?: ToastAction): number {
 	let id = 0;
 	toasts.update((items) => {
-		const existing = items.find((item) => item.message === message && item.tone === tone);
+		const existing = items.find(
+			(item) => item.message === message && item.tone === tone && !item.action && !action
+		);
 		id = existing?.id ?? nextId++;
-		const next = existing ? items : [...items, { id, message, tone }];
+		const next = existing ? items : [...items, { id, message, tone, action }];
 		for (const dropped of next.slice(0, Math.max(0, next.length - MAX_VISIBLE))) {
 			clearTimeout(timers.get(dropped.id));
 			timers.delete(dropped.id);
@@ -37,7 +48,7 @@ export function toast(message: string, tone: ToastTone = 'info'): number {
 	clearTimeout(timers.get(id));
 	timers.set(
 		id,
-		setTimeout(() => dismissToast(id), DURATION[tone])
+		setTimeout(() => dismissToast(id), action ? 8000 : DURATION[tone])
 	);
 	return id;
 }

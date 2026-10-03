@@ -367,6 +367,17 @@
 						{ label: 'Disabled', value: 'false' },
 					],
 				},
+				{
+					key: 'show_site_icons',
+					label: 'Site icons',
+					description:
+						'Show website icons next to links. Icons are loaded from icons.duckduckgo.com, which then sees the sites in your results. When disabled, a letter is shown instead.',
+					type: 'select',
+					options: [
+						{ label: 'Show', value: 'true' },
+						{ label: 'Hide', value: 'false' },
+					],
+				},
 			],
 		},
 	];
@@ -374,7 +385,7 @@
 	function getValue(key: string): string {
 		return (
 			settingsMap.get(key) ??
-			(key === 'llm_reasoning_effort' ? 'auto' : ['search_fallback_enabled', 'notifications_enabled'].includes(key)
+			(key === 'llm_reasoning_effort' ? 'auto' : ['search_fallback_enabled', 'notifications_enabled', 'show_site_icons'].includes(key)
 				? 'true'
 				: '')
 		);

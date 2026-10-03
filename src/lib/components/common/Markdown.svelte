@@ -3,6 +3,9 @@
 	import DOMPurify from 'dompurify';
 	import { openExternal } from '$lib/utils/links';
 	import { toast } from '$lib/stores/toasts';
+	import { showContextMenu } from '$lib/stores/contextMenu';
+	import { linkMenuItems } from '$lib/utils/linkMenu';
+	import { webUrl } from '$lib/utils/values';
 	let { content }: { content: string } = $props();
 	const prefix = $props.id();
 	const html = $derived.by(() => {
@@ -37,7 +40,20 @@
 	}
 </script>
 
-<div class="markdown" onclick={open} role="presentation">{@html html}</div>
+<div
+	class="markdown"
+	onclick={open}
+	oncontextmenu={(event) => {
+		const anchor = (event.target as Element)?.closest('a');
+		const url = webUrl(anchor?.getAttribute('href') ?? '');
+		if (!anchor || !url) return;
+		event.preventDefault();
+		showContextMenu({ x: event.clientX, y: event.clientY }, `Actions for ${url}`, linkMenuItems(url, anchor.textContent ?? ''));
+	}}
+	role="presentation"
+>
+	{@html html}
+</div>
 
 <style>
 	.markdown {
