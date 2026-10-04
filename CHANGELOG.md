@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.7.0 — 2026-10-04
+
+Research becomes a conversation, History becomes a searchable library, and Settings can test your connections before a run.
+
+### Research
+
+- Ask follow-up questions under an answer. The agent searches and reads again while taking earlier questions, answers and sources into account. Cancel stops only the current question.
+- Answer, Activity and Sources tabs for every question. Sources list cited and read pages; Activity shows readable steps with page titles instead of raw page text.
+- Copy an answer as Markdown, plain text or with its sources. Long answers get a contents list; text width and tables are easier to read.
+- Suggested follow-up questions, the cost of each answer and of the whole conversation, and export of the whole conversation or a single question.
+- The Max steps limit is now applied to the agent; the default is 100 steps (up to 200).
+
+### Images and links
+
+- Images: justified rows, filters by site and size, multi-select, save one or many images to a folder, and an app context menu instead of the webview one.
+- Links: compact cards with descriptions and reasons, scores appear while ranking, visited state, grouping by site, hiding with undo, and copy formats for all or selected links.
+
+### History
+
+- Every run has its own page (`/history/<id>`): Back and reload keep your place, and the list returns to where you left it.
+- Search queries and follow-up questions; filter by type and status; sort by date, results or cost; more runs load while scrolling.
+- Compact rows grouped by day show results, duration, cost and model. Rename, pin, copy the query, export one or many runs, and delete with Undo.
+- Run again repeats a run with its mode and limits (tables offer the earlier schema for review); Edit and run fills the query form.
+
+### Run notices
+
+- Model issues and cost warnings share one collapsible strip that no longer pushes results down.
+- Each issue says what it meant for the result (retried, worked around, page skipped, simpler fallback, run stopped) and is grouped with repeats. Technical details stay collapsed. Notices can be marked as read.
+
+### Settings
+
+- Five sections with a section list, search (Ctrl+F), Advanced blocks, readiness status, and reset per field or section.
+- Test connection for the LLM and search provider before saving; test proxies. Model lists for local Ollama and OpenAI-compatible servers.
+- Sliders and range checks with errors at the field, switches for on/off options, hidden proxy passwords, theme choice, and settings import/export without API keys.
+- Settings are saved in one transaction. “Page load timeout” and “Pages per query” now take effect (Links now reads at most 10 new pages per query by default); Precision/Recall and Evidence Strictness, which had no effect, were removed from the page.
+
+### Also
+
+- Design tokens replace Tailwind and Skeleton; toasts, keyboard shortcuts and theme persistence across the app.
+- The dev server no longer applies component styles globally when CSS loads before its component.
+
+Existing settings and history are kept; the database is updated automatically on first start.
+
+Download the installer for your platform from the release assets below: Linux (DEB, RPM, AppImage), Windows (EXE, MSI), or macOS Apple Silicon (DMG, app archive).
+
 ## 0.6.0 — 2026-09-13
 
 Query2Table now has a calmer, consistent desktop workspace across Query, Settings, History, all result modes, and dialogs.
