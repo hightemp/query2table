@@ -76,6 +76,39 @@ export interface RunInfo {
 	created_at: number;
 	/** JSON map of dismissed notice kinds to counts. */
 	dismissed_notices?: string | null;
+	/** Name given in History; the query is shown when missing. */
+	title?: string | null;
+	pinned_at?: number | null;
+	/** JSON: mode and the stop conditions the run started with. */
+	config?: string;
+}
+
+/** A run in the History list. */
+export interface HistoryRun {
+	id: string;
+	query: string;
+	title: string | null;
+	status: string;
+	run_type: string;
+	stats: string | null;
+	error: string | null;
+	created_at: number;
+	completed_at: number | null;
+	pinned_at: number | null;
+	dismissed_notices: string | null;
+	/** Questions asked in a research conversation. */
+	turn_count: number;
+}
+
+export type HistorySort = 'newest' | 'oldest' | 'results' | 'cost';
+
+export interface HistoryFilter {
+	search: string;
+	/** all, table, images, links or research */
+	runType: string;
+	/** any, completed, failed, cancelled or active */
+	status: string;
+	sort: HistorySort;
 }
 
 export interface RunLogEntry {

@@ -65,7 +65,7 @@ impl ImagePipeline {
         info!(run_id = %self.run_id, query = %self.query, "Image pipeline started");
 
         // Create run in DB
-        let config_json = serde_json::json!({ "mode": "images" });
+        let config_json = self.config.run_config("images");
         self.repo.create_run_with_type(&self.run_id, &self.query, &config_json.to_string(), "images")
             .await.map_err(|e| format!("Storage: {e}"))?;
 

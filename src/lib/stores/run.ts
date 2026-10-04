@@ -138,6 +138,20 @@ const initialState: RunState = {
 
 export const runState = writable<RunState>({ ...initialState });
 
+/** A query to put in the form when the query page opens (Edit and run from History). */
+export interface QueryDraft {
+	query: string;
+	runType: string;
+	limits: Required<import('$lib/api/tauri').StopConditions> | null;
+}
+export const queryDraft = writable<QueryDraft | null>(null);
+
+const BUSY = ['pending', 'running', 'paused', 'schema_review'];
+/** A run is being worked on in the query page. */
+export function runInProgress(): boolean {
+	return BUSY.includes(get(runState).status);
+}
+
 // Track event unsubscribers
 let unlisteners: (() => void)[] = [];
 let generation = 0;
@@ -331,7 +345,9 @@ function unsubscribeEvents() {
 export async function startNewRun(
 	query: string,
 	runType: string = 'table',
-	stopConditions?: import('$lib/api/tauri').StopConditions
+	stopConditions?: import('$lib/api/tauri').StopConditions,
+	/** Table runs: columns to offer for review instead of planning new ones. */
+	schema?: SchemaColumn[] | null
 ) {
 	const currentGeneration = ++generation;
 	unsubscribeEvents();
@@ -349,7 +365,7 @@ export async function startNewRun(
 		try {
 			await subscribeEvents(currentGeneration, earlyEvents);
 			if (currentGeneration !== generation) return;
-			const resp = await apiStartRun(query, runType, stopConditions);
+			const resp = await apiStartRun(query, runType, stopConditions, schema);
 			if (currentGeneration !== generation) return;
 			runState.update((s) => ({ ...s, runId: resp.run_id }));
 			for (const deliver of earlyEvents) deliver();

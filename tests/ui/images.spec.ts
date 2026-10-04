@@ -181,8 +181,8 @@ test('Several images can be selected, copied and saved to a folder', async ({ pa
 	await page.getByRole('button', { name: 'List view' }).click();
 	await expect(page.locator('.image-list tbody tr')).toHaveCount(3);
 	await expect(page.locator('.image-list')).toContainText('1600 × 900');
+	// The run is its own page, so a reload stays on it.
 	await page.reload();
-	await page.getByRole('button', { name: 'View', exact: true }).nth(1).click();
 	await expect(page.locator('.image-list')).toBeVisible();
 	await page.getByRole('button', { name: 'Clear selection' }).waitFor({ state: 'detached' });
 });

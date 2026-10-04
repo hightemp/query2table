@@ -5,6 +5,7 @@ import type {
 	RunInfo,
 	RunLogEntry,
 	SchemaColumn,
+	HistoryRun,
 	StatusChangedEvent,
 	RowAddedEvent,
 	AccountingEvent,
@@ -101,13 +102,60 @@ export interface StopConditions {
 export async function startRun(
 	query: string,
 	runType?: string,
-	stopConditions?: StopConditions
+	stopConditions?: StopConditions,
+	/** Table runs: columns to offer for review instead of planning new ones. */
+	schema?: SchemaColumn[] | null
 ): Promise<StartRunResponse> {
 	return invoke('start_run', {
 		query,
 		runType: runType ?? null,
 		stopConditions: stopConditions ?? null,
+		schema: schema ?? null,
 	});
+}
+
+// --- History list ---
+
+export interface HistoryPage {
+	runs: HistoryRun[];
+	counts: Record<string, number>;
+}
+
+export async function listHistory(filter: {
+	search: string | null;
+	run_type: string | null;
+	status: string | null;
+	sort: string;
+	limit: number;
+	offset: number;
+}): Promise<HistoryPage> {
+	return invoke('list_history', { filter });
+}
+
+/** Hides runs; `restoreRuns` brings them back until `purgeRuns` or the app closes. */
+export async function deleteRuns(runIds: string[]): Promise<void> {
+	return invoke('delete_runs', { runIds });
+}
+
+export async function restoreRuns(runIds: string[]): Promise<void> {
+	return invoke('restore_runs', { runIds });
+}
+
+export async function purgeRuns(runIds: string[]): Promise<void> {
+	return invoke('purge_runs', { runIds });
+}
+
+export async function renameRun(runId: string, title: string | null): Promise<void> {
+	return invoke('rename_run', { runId, title });
+}
+
+export async function pinRun(runId: string, pinned: boolean): Promise<void> {
+	return invoke('pin_run', { runId, pinned });
+}
+
+/** One file per run in `dir`; research runs are Markdown. Returns the written paths. */
+export async function exportRuns(runIds: string[], dir: string, format: string): Promise<string[]> {
+	return invoke('export_runs', { runIds, dir, format });
 }
 
 export async function cancelRun(runId: string): Promise<void> {

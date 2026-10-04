@@ -43,9 +43,23 @@ pub struct PipelineConfig {
     pub max_extraction_text_chars: usize,
     pub max_pdf_text_chars: usize,
     pub max_page_size_bytes: u64,
+    /// Table runs: columns proposed for review instead of planning new ones (Run again).
+    pub suggested_schema: Option<Vec<SchemaColumn>>,
 }
 
 impl PipelineConfig {
+    /// What a run saves as its config: the mode and the stop conditions it ran with.
+    pub fn run_config(&self, mode: &str) -> serde_json::Value {
+        serde_json::json!({
+            "mode": mode,
+            "stop": {
+                "target_row_count": self.stop.target_row_count,
+                "max_budget_usd": self.stop.max_budget_usd,
+                "max_duration_seconds": self.stop.max_duration_secs,
+            },
+        })
+    }
+
     pub fn from_settings(settings: &HashMap<String, String>) -> Self {
         Self {
             llm: LlmManager::config_from_settings(settings),
@@ -82,6 +96,7 @@ impl PipelineConfig {
                 .and_then(|v| v.parse::<u64>().ok())
                 .map(|kb| kb * 1024)
                 .unwrap_or(5 * 1024 * 1024),
+            suggested_schema: None,
         }
     }
 }
@@ -194,12 +209,11 @@ impl Pipeline {
         info!(run_id = %self.run_id, query = %self.query, "Pipeline started");
 
         // Create the run in DB
-        let config_json = serde_json::json!({
-            "max_parallel_fetches": self.config.max_parallel_fetches,
-            "max_parallel_extractions": self.config.max_parallel_extractions,
-            "min_confidence": self.config.min_confidence,
-            "dedup_similarity": self.config.dedup_similarity,
-        });
+        let mut config_json = self.config.run_config("table");
+        config_json["max_parallel_fetches"] = self.config.max_parallel_fetches.into();
+        config_json["max_parallel_extractions"] = self.config.max_parallel_extractions.into();
+        config_json["min_confidence"] = self.config.min_confidence.into();
+        config_json["dedup_similarity"] = self.config.dedup_similarity.into();
         self.repo.create_run(&self.run_id, &self.query, &config_json.to_string()).await
             .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
@@ -270,11 +284,18 @@ impl Pipeline {
 
         // --- Phase 2: Plan schema ---
         self.set_state(PipelineState::Planning).await;
-        self.log("INFO", "planner", "Generating table schema with LLM...").await;
-
-        let proposed_schema = SchemaPlanner::plan(&intent, &llm)
-            .await
-            .map_err(|e| PipelineError::Llm(format!("SchemaPlanner: {e}")))?;
+        let proposed_schema = match self.config.suggested_schema.clone().filter(|c| !c.is_empty()) {
+            Some(columns) => {
+                self.log("INFO", "planner", "Using the schema of the earlier run").await;
+                crate::roles::schema_planner::ProposedSchema { columns }
+            }
+            None => {
+                self.log("INFO", "planner", "Generating table schema with LLM...").await;
+                SchemaPlanner::plan(&intent, &llm)
+                    .await
+                    .map_err(|e| PipelineError::Llm(format!("SchemaPlanner: {e}")))?
+            }
+        };
 
         // Save proposed schema
         let columns_json = serde_json::to_string(&proposed_schema.columns)

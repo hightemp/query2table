@@ -66,6 +66,7 @@ pub async fn start_run(
     query: String,
     run_type: Option<String>,
     stop_conditions: Option<StopConditions>,
+    schema: Option<Vec<SchemaColumn>>,
 ) -> Result<StartRunResponse, String> {
     let run_id = new_id();
     let run_type = run_type.unwrap_or_else(|| "table".to_string());
@@ -76,6 +77,8 @@ pub async fn start_run(
 
     let mut config = PipelineConfig::from_settings(&settings);
     apply_stop_conditions(&mut config, stop_conditions);
+    // Run again: a table run offers the earlier schema for review.
+    config.suggested_schema = schema;
     let repo = Arc::new(Repository::new(state.db.pool().clone()));
     let notifications_enabled = settings
         .get("notifications_enabled")
@@ -235,6 +238,9 @@ pub struct RunInfo {
     pub error: Option<String>,
     pub created_at: i64,
     pub dismissed_notices: Option<String>,
+    pub title: Option<String>,
+    pub pinned_at: Option<i64>,
+    pub config: String,
 }
 
 #[tauri::command]
@@ -253,6 +259,9 @@ pub async fn get_run(
         error: r.error,
         created_at: r.created_at,
         dismissed_notices: r.dismissed_notices,
+        title: r.title,
+        pinned_at: r.pinned_at,
+        config: r.config,
     }))
 }
 
@@ -274,7 +283,99 @@ pub async fn list_runs(
         error: r.error,
         created_at: r.created_at,
         dismissed_notices: r.dismissed_notices,
+        title: r.title,
+        pinned_at: r.pinned_at,
+        config: r.config,
     }).collect())
+}
+
+/// A run in the History list.
+#[derive(Debug, Serialize)]
+pub struct HistoryRun {
+    pub id: String,
+    pub query: String,
+    pub title: Option<String>,
+    pub status: String,
+    pub run_type: String,
+    pub stats: Option<String>,
+    pub error: Option<String>,
+    pub created_at: i64,
+    pub completed_at: Option<i64>,
+    pub pinned_at: Option<i64>,
+    pub dismissed_notices: Option<String>,
+    pub turn_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HistoryPage {
+    pub runs: Vec<HistoryRun>,
+    /// Matching runs of each type, ignoring the type filter.
+    pub counts: HashMap<String, i64>,
+}
+
+#[tauri::command]
+pub async fn list_history(
+    state: State<'_, AppState>,
+    filter: crate::storage::repository::RunListFilter,
+) -> Result<HistoryPage, String> {
+    let repo = Repository::new(state.db.pool().clone());
+    let rows = repo.list_runs_filtered(&filter).await.map_err(|e| e.to_string())?;
+    let counts = repo.count_runs_by_type(&filter).await.map_err(|e| e.to_string())?;
+    Ok(HistoryPage {
+        runs: rows
+            .into_iter()
+            .map(|r| HistoryRun {
+                id: r.id,
+                query: r.query,
+                title: r.title,
+                status: r.status,
+                run_type: r.run_type,
+                stats: r.stats,
+                error: r.error,
+                created_at: r.created_at,
+                completed_at: r.completed_at,
+                pinned_at: r.pinned_at,
+                dismissed_notices: r.dismissed_notices,
+                turn_count: r.turn_count,
+            })
+            .collect(),
+        counts: counts.into_iter().collect(),
+    })
+}
+
+/// Hides runs from History; `restore_runs` undoes it until `purge_runs` or the app closes.
+#[tauri::command]
+pub async fn delete_runs(
+    state: State<'_, AppState>,
+    controller: State<'_, RunController>,
+    run_ids: Vec<String>,
+) -> Result<(), String> {
+    let active = controller.active.lock().await;
+    if run_ids.iter().any(|id| active.contains_key(id)) {
+        return Err("A running run cannot be deleted. Cancel it first.".into());
+    }
+    drop(active);
+    Repository::new(state.db.pool().clone()).soft_delete_runs(&run_ids).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn restore_runs(state: State<'_, AppState>, run_ids: Vec<String>) -> Result<(), String> {
+    Repository::new(state.db.pool().clone()).restore_runs(&run_ids).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn purge_runs(state: State<'_, AppState>, run_ids: Vec<String>) -> Result<(), String> {
+    Repository::new(state.db.pool().clone()).purge_deleted_runs(Some(&run_ids)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn rename_run(state: State<'_, AppState>, run_id: String, title: Option<String>) -> Result<(), String> {
+    Repository::new(state.db.pool().clone()).rename_run(&run_id, title.as_deref()).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn pin_run(state: State<'_, AppState>, run_id: String, pinned: bool) -> Result<(), String> {
+    Repository::new(state.db.pool().clone()).set_run_pinned(&run_id, pinned).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

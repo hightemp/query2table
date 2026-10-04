@@ -108,7 +108,7 @@ impl ResearchPipeline {
         info!(run_id = %self.run_id, query = %self.query, "Research pipeline started");
 
         if self.turn_index == 0 {
-            let config_json = serde_json::json!({ "mode": "research" });
+            let config_json = self.config.run_config("research");
             self.repo
                 .create_run_with_type(&self.run_id, &self.query, &config_json.to_string(), "research")
                 .await

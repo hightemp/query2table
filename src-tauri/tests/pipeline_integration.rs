@@ -711,3 +711,46 @@ async fn test_schema_auto_confirm_with_no_events() {
     assert!(!columns.is_empty(), "Should have columns");
     assert_eq!(columns[0].name, "name", "First column should be 'name'");
 }
+
+// =============================================================================
+// Run again: a suggested schema replaces planning, and limits are saved
+// =============================================================================
+#[tokio::test]
+async fn a_suggested_schema_is_proposed_instead_of_planning_and_limits_are_saved() {
+    let server = spawn_test_http_server().await;
+    let (repo, _db) = setup_test_db().await;
+    let run_id = format!("test-run-{}", uuid::Uuid::new_v4());
+    let mut config = test_pipeline_config();
+    config.stop.target_row_count = 7;
+    let suggested = vec![SchemaColumn {
+        name: "company".into(),
+        col_type: "text".into(),
+        description: "Company name".into(),
+        required: true,
+    }];
+    config.suggested_schema = Some(suggested.clone());
+    let fetcher = test_fetcher(&config);
+    let search = Arc::new(SearchManager::with_providers(
+        Arc::new(MockSearchProvider::new().with_results(local_search_results(&server.uri()))),
+        None,
+        config.search.clone(),
+    ));
+    let mock_llm = Arc::new(MockLlmProvider::new());
+    let llm = Arc::new(LlmManager::with_provider(mock_llm.clone(), config.llm.clone()));
+    let (mut pipeline, _cmd_tx) = Pipeline::new(run_id.clone(), "Find companies".into(), config, repo.clone(), None);
+    pipeline.set_providers(llm, search);
+    pipeline.set_fetcher(fetcher);
+    assert_eq!(pipeline.run().await.unwrap(), PipelineState::Completed);
+
+    let schema = repo.get_run_schema(&run_id).await.unwrap().unwrap();
+    let columns: Vec<SchemaColumn> = serde_json::from_str(&schema.columns).unwrap();
+    assert_eq!(columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["company"]);
+    assert_eq!(mock_llm.role_calls("schema"), 0);
+
+    let run = repo.get_run(&run_id).await.unwrap().unwrap();
+    let saved: serde_json::Value = serde_json::from_str(&run.config).unwrap();
+    assert_eq!(saved["mode"], "table");
+    assert_eq!(saved["stop"]["target_row_count"], 7);
+    assert!(saved["stop"]["max_budget_usd"].is_number());
+    assert!(saved["stop"]["max_duration_seconds"].is_number());
+}

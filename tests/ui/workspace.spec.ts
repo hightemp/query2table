@@ -252,18 +252,18 @@ test('Export blocks every dismissal while saving and shows completion', async ({
 	await dialog.getByRole('button', { name: 'Done' }).click();
 });
 
-test('History deletion supports cancellation and keeps the entry after failure', async ({
-	page,
-}) => {
+test('History deletion can be undone and keeps the entry after failure', async ({ page }) => {
 	await page.goto('/history');
-	await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
-	await page.getByRole('button', { name: 'Keep run' }).click();
-	await expect(page.locator('.run-card')).toHaveCount(4);
+	await page.getByRole('button', { name: 'Actions for Saved table research' }).click();
+	await page.getByRole('menuitem', { name: 'Delete' }).click();
+	await expect(page.locator('.history-row')).toHaveCount(3);
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect(page.locator('.history-row')).toHaveCount(4);
 	await page.evaluate(() => ((window as any).__uiFixture.failDelete = true));
-	await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
-	await page.getByRole('button', { name: 'Delete run', exact: true }).click();
-	await expect(page.getByRole('dialog')).toContainText('Local data');
-	await expect(page.locator('.run-card')).toHaveCount(4);
+	await page.getByRole('button', { name: 'Actions for Saved table research' }).click();
+	await page.getByRole('menuitem', { name: 'Delete' }).click();
+	await expect(page.locator('.toast')).toContainText('Could not delete: local data could not be accessed.');
+	await expect(page.locator('.history-row')).toHaveCount(4);
 });
 
 test('Long links stay within the workspace in a small window', async ({ page }) => {
@@ -315,10 +315,10 @@ test('Empty history results and image close during loading leave no stale dialog
 }) => {
 	await page.goto('/history');
 	await page.evaluate(() => ((window as any).__uiFixture.rows = []));
-	await page.getByRole('button', { name: 'View', exact: true }).first().click();
+	await page.getByRole('link', { name: 'Saved table research', exact: true }).click();
 	await expect(page.getByText('No results found for this run.')).toBeVisible();
 	await page.getByRole('button', { name: 'Back to History' }).click();
-	await page.getByRole('button', { name: 'View', exact: true }).nth(1).click();
+	await page.getByRole('link', { name: 'Saved images research', exact: true }).click();
 	await page.evaluate(() => ((window as any).__uiFixture.delayImage = true));
 	await page.getByRole('button', { name: 'Preview Robot image 0' }).click();
 	await expect

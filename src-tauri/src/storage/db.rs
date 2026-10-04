@@ -324,6 +324,13 @@ impl Database {
             .execute(&self.pool)
             .await
             .ok(); // ok() — ignore error if column already exists
+        // History: a user-given name, pinning, and deletion that can be undone.
+        for column in ["title TEXT", "pinned_at INTEGER", "deleted_at INTEGER"] {
+            sqlx::query(&format!("ALTER TABLE runs ADD COLUMN {column}"))
+                .execute(&self.pool)
+                .await
+                .ok(); // ok() — ignore error if column already exists
+        }
         // Research runs saved before conversations become one-turn conversations.
         sqlx::query(
             "INSERT INTO research_turns (id, run_id, turn_index, question, answer_markdown, status, created_at)

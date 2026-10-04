@@ -58,10 +58,10 @@ async function openConversationWithNotices(page: Page) {
 					return;
 				}
 				const result = await original(command, args);
-				if (command === 'list_runs')
-					return result.map((run: any) =>
-						run.id === 'research' ? { ...run, dismissed_notices: dismissed } : run
-					);
+				const withDismissal = (run: any) =>
+					run?.id === 'research' ? { ...run, dismissed_notices: dismissed } : run;
+				if (command === 'list_history') return { ...result, runs: result.runs.map(withDismissal) };
+				if (command === 'get_run') return withDismissal(result);
 				return result;
 			};
 		},
@@ -118,7 +118,7 @@ test('Dismissed notices stay quiet when the run is opened again', async ({ page 
 	expect(calls[0].args.runId).toBe('research');
 
 	await page.getByRole('button', { name: 'Back to History' }).click();
-	await page.getByRole('button', { name: 'View', exact: true }).nth(3).click();
+	await page.getByRole('link', { name: 'Saved research research', exact: true }).click();
 	await expect(page.getByRole('region', { name: 'Run notices' })).toHaveAttribute('data-dismissed', 'true');
 });
 

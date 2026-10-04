@@ -76,6 +76,8 @@ pub struct MockLlmProvider {
     extract_response: String,
     /// If set, return invalid JSON for extraction to test error handling.
     extract_returns_invalid: bool,
+    /// Roles detected for each call, in order.
+    roles: std::sync::Mutex<Vec<String>>,
 }
 
 impl MockLlmProvider {
@@ -89,7 +91,13 @@ impl MockLlmProvider {
             expand_response: include_str!("../fixtures/expand_response.json").to_string(),
             extract_response: include_str!("../fixtures/extract_response.json").to_string(),
             extract_returns_invalid: false,
+            roles: Default::default(),
         }
+    }
+
+    /// How many calls were made for one role ("schema", "extract", …).
+    pub fn role_calls(&self, role: &str) -> usize {
+        self.roles.lock().unwrap().iter().filter(|r| r.as_str() == role).count()
     }
 
     pub fn with_error(mut self, error: LlmError) -> Self {
@@ -143,6 +151,7 @@ impl LlmProvider for MockLlmProvider {
         }
 
         let role = self.detect_role(&request);
+        self.roles.lock().unwrap().push(role.to_string());
         let content = match role {
             "interpret" => self.interpret_response.clone(),
             "schema" => self.schema_response.clone(),
@@ -307,6 +316,7 @@ pub fn test_pipeline_config() -> PipelineConfig {
         max_extraction_text_chars: 12000,
         max_pdf_text_chars: 500_000,
         max_page_size_bytes: 5 * 1024 * 1024,
+        suggested_schema: None,
     }
 }
 

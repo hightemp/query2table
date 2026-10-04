@@ -34,6 +34,10 @@ pub fn run() {
     let db = runtime.block_on(async {
         let db = Database::new().await.expect("Failed to initialize database");
         db.migrate().await.expect("Failed to run migrations");
+        // Runs deleted in History can be restored only until the app closes.
+        if let Err(e) = storage::repository::Repository::new(db.pool().clone()).purge_deleted_runs(None).await {
+            tracing::warn!(error = %e, "Could not purge deleted runs");
+        }
         db
     });
 
@@ -129,6 +133,13 @@ pub fn run() {
             commands::images::save_image,
             commands::images::save_images,
             commands::export::export_run,
+            commands::export::export_runs,
+            commands::run::list_history,
+            commands::run::delete_runs,
+            commands::run::restore_runs,
+            commands::run::purge_runs,
+            commands::run::rename_run,
+            commands::run::pin_run,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

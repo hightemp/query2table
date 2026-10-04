@@ -61,6 +61,13 @@ export const test = base.extend({
 				stats: null,
 				error: null,
 				created_at: 1000 + i,
+				completed_at: null,
+				title: null as string | null,
+				pinned_at: null as number | null,
+				dismissed_notices: null as string | null,
+				turn_count: type === 'research' ? 1 : 0,
+				config: '{}',
+				deleted: false,
 			}));
 			const imageData =
 				'data:image/svg+xml,' +
@@ -202,6 +209,51 @@ export const test = base.extend({
 							return '/tmp/query2table-fixture.csv';
 						case 'get_run':
 							return fixture.runs.find((run: any) => run.id === args.runId) ?? null;
+						case 'list_history': {
+							// Mirrors the backend: search, filters, pinned first, newest first.
+							const f = args.filter;
+							const search = (f.search ?? '').toLowerCase();
+							const matching = fixture.runs.filter(
+								(run: any) =>
+									!run.deleted &&
+									(!search || `${run.query} ${run.title ?? ''}`.toLowerCase().includes(search)) &&
+									(!f.status ||
+										(f.status === 'active'
+											? ['pending', 'running', 'paused', 'schema_review'].includes(run.status)
+											: run.status === f.status))
+							);
+							const counts: Record<string, number> = {};
+							for (const run of matching) counts[run.run_type] = (counts[run.run_type] ?? 0) + 1;
+							const sorted = matching
+								.filter((run: any) => !f.run_type || run.run_type === f.run_type)
+								.sort(
+									(a: any, b: any) =>
+										(b.pinned_at ?? 0) - (a.pinned_at ?? 0) ||
+										(f.sort === 'oldest' ? a.created_at - b.created_at : b.created_at - a.created_at)
+								);
+							return { runs: sorted.slice(f.offset, f.offset + f.limit), counts };
+						}
+						case 'delete_runs':
+							if (fixture.failDelete) throw new Error('sqlite: database is locked');
+							for (const run of fixture.runs as any[]) if (args.runIds.includes(run.id)) run.deleted = true;
+							return;
+						case 'restore_runs':
+							for (const run of fixture.runs as any[]) if (args.runIds.includes(run.id)) run.deleted = false;
+							return;
+						case 'purge_runs':
+							fixture.runs = fixture.runs.filter((run: any) => !(run.deleted && args.runIds.includes(run.id)));
+							return;
+						case 'rename_run':
+							for (const run of fixture.runs as any[]) if (run.id === args.runId) run.title = args.title;
+							return;
+						case 'pin_run':
+							for (const run of fixture.runs as any[])
+								if (run.id === args.runId) run.pinned_at = args.pinned ? Date.now() : null;
+							return;
+						case 'export_runs':
+							return args.runIds.map((id: string) => `${args.dir}/${id}.${args.format}`);
+						case 'plugin:dialog|open':
+							return '/tmp/exports';
 						case 'export_run':
 							return fixture.delayExport
 								? new Promise<void>((resolve) => (fixture.finishExport = resolve))
@@ -217,9 +269,11 @@ export const test = base.extend({
 	},
 });
 export { expect };
+const FIXTURE_TYPES = ['table', 'images', 'links', 'research'];
+/** Opens a saved fixture run from History: 0 table, 1 images, 2 links, 3 research. */
 export async function viewRun(page: Page, index: number) {
 	await page.goto('/history');
-	await page.getByRole('button', { name: 'View', exact: true }).nth(index).click();
+	await page.getByRole('link', { name: `Saved ${FIXTURE_TYPES[index]} research`, exact: true }).click();
 }
 export async function emit(page: Page, event: string, payload: unknown) {
 	await page.evaluate(({ event, payload }) => (window as any).__uiFixture.emit(event, payload), {

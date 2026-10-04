@@ -22,31 +22,104 @@ pub async fn export_run(
     request: ExportRequest,
 ) -> Result<(), String> {
     let repo = Repository::new(state.db.pool().clone());
+    export_run_to(&repo, &request.run_id, &request.format, std::path::Path::new(&request.path), request.turn_index).await
+}
 
+/// Selected runs from History, one file each in `dir`; returns the written paths.
+#[tauri::command]
+pub async fn export_runs(
+    state: State<'_, AppState>,
+    run_ids: Vec<String>,
+    dir: String,
+    format: String,
+) -> Result<Vec<String>, String> {
+    let repo = Repository::new(state.db.pool().clone());
+    export_runs_to(&repo, &run_ids, std::path::Path::new(&dir), &format).await
+}
+
+/// File name for a bulk export: the query and the run's date, made unique among `taken`.
+fn export_file_name(query: &str, created_at: i64, ext: &str, taken: &mut std::collections::HashSet<String>) -> String {
+    let cleaned: String = query
+        .chars()
+        .map(|c| if c.is_control() || "/\\:*?\"<>|".contains(c) { ' ' } else { c })
+        .collect();
+    let mut base = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    base = base.trim_end_matches(['.', ' ']).to_string();
+    if base.chars().count() > 60 {
+        base = base.chars().take(60).collect::<String>().trim_end().to_string();
+    }
+    if base.is_empty() {
+        base = "run".into();
+    }
+    let date = chrono::DateTime::from_timestamp(created_at, 0)
+        .map(|d| d.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string())
+        .unwrap_or_default();
+    let mut n = 1;
+    loop {
+        let suffix = if n == 1 { String::new() } else { format!(" ({n})") };
+        let name = format!("{base} - {date}{suffix}.{ext}");
+        if taken.insert(name.to_lowercase()) {
+            return name;
+        }
+        n += 1;
+    }
+}
+
+/// Exports each run: research as Markdown, other runs in `format` (csv, json or xlsx).
+pub async fn export_runs_to(
+    repo: &Repository,
+    run_ids: &[String],
+    dir: &std::path::Path,
+    format: &str,
+) -> Result<Vec<String>, String> {
+    let mut taken: std::collections::HashSet<String> = std::fs::read_dir(dir)
+        .map(|entries| entries.flatten().map(|e| e.file_name().to_string_lossy().to_lowercase()).collect())
+        .unwrap_or_default();
+    let mut written = Vec::with_capacity(run_ids.len());
+    for run_id in run_ids {
+        let run = repo.get_run(run_id).await
+            .map_err(|e| format!("Failed to get run: {e}"))?
+            .ok_or_else(|| format!("Run not found: {run_id}"))?;
+        let ext = if run.run_type == "research" { "md" } else { format };
+        let name = export_file_name(run.title.as_deref().unwrap_or(&run.query), run.created_at, ext, &mut taken);
+        let path = dir.join(name);
+        export_run_to(repo, run_id, format, &path, None).await
+            .map_err(|e| format!("{}: {e}", run.query))?;
+        written.push(path.to_string_lossy().into_owned());
+    }
+    Ok(written)
+}
+
+/// Writes one run's results to `path`.
+pub async fn export_run_to(
+    repo: &Repository,
+    run_id: &str,
+    format: &str,
+    path: &std::path::Path,
+    turn_index: Option<i64>,
+) -> Result<(), String> {
     // Check run type
-    let run = repo.get_run(&request.run_id).await
+    let run = repo.get_run(run_id).await
         .map_err(|e| format!("Failed to get run: {e}"))?
         .ok_or_else(|| "Run not found".to_string())?;
 
-    let path = std::path::Path::new(&request.path);
-
     // Research mode exports the conversation as Markdown (format is ignored).
     if run.run_type == "research" {
-        let turns = repo.get_research_turns(&request.run_id).await
+        let turns = repo.get_research_turns(run_id).await
             .map_err(|e| format!("Failed to get research conversation: {e}"))?;
-        let steps = repo.get_research_steps(&request.run_id).await
+        let steps = repo.get_research_steps(run_id).await
             .map_err(|e| format!("Failed to get research steps: {e}"))?;
-        std::fs::write(path, conversation_markdown(&turns, &steps, request.turn_index))
+        std::fs::write(path, conversation_markdown(&turns, &steps, turn_index))
             .map_err(|e| format!("Failed to write file: {e}"))?;
         return Ok(());
     }
 
-    let format = ExportFormat::from_str(&request.format)
-        .ok_or_else(|| format!("Unknown export format: {}", request.format))?;
+    let format = ExportFormat::from_str(format)
+        .ok_or_else(|| format!("Unknown export format: {}", format))?;
 
     if run.run_type == "images" {
         // Export image results
-        let image_rows = repo.get_image_results(&request.run_id).await
+        let image_rows = repo.get_image_results(run_id).await
             .map_err(|e| format!("Failed to get image results: {e}"))?;
 
         let columns = vec![
@@ -79,13 +152,13 @@ pub async fn export_run(
         export_to_file(path, &columns, &export_rows, format)
     } else if run.run_type == "links" {
         // Hidden links and links below the relevance threshold are left out.
-        let links = repo.get_link_results(&request.run_id).await
+        let links = repo.get_link_results(run_id).await
             .map_err(|e| format!("Failed to get link results: {e}"))?;
         let (columns, export_rows) = link_export_rows(&links);
         export_to_file(path, &columns, &export_rows, format)
     } else {
         // Export table results (original logic)
-        let schema = repo.get_run_schema(&request.run_id).await
+        let schema = repo.get_run_schema(run_id).await
             .map_err(|e| format!("Failed to get schema: {e}"))?
             .ok_or_else(|| "No schema found for this run".to_string())?;
 
@@ -93,7 +166,7 @@ pub async fn export_run(
             .map_err(|e| format!("Failed to parse schema columns: {e}"))?;
         let column_names: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
 
-        let entity_rows = repo.get_entity_rows_by_run(&request.run_id).await
+        let entity_rows = repo.get_entity_rows_by_run(run_id).await
             .map_err(|e| format!("Failed to get entity rows: {e}"))?;
 
         let mut export_rows = Vec::with_capacity(entity_rows.len());
@@ -286,5 +359,49 @@ mod research_export_tests {
     fn unanswered_turns_say_so() {
         let turns = [turn(0, "Find proxies", None)];
         assert_eq!(conversation_markdown(&turns, &[], None), "# Find proxies\n\n_No answer was produced._\n");
+    }
+}
+
+#[cfg(test)]
+mod bulk_export_tests {
+    use super::*;
+    use crate::storage::db::Database;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::collections::HashSet;
+
+    #[test]
+    fn file_names_come_from_the_query_and_date_and_never_collide() {
+        let mut taken = HashSet::new();
+        // 2026-10-03 12:00 UTC, the same date in every time zone the app is used in.
+        let at = 1791018000;
+        assert_eq!(export_file_name("How do heat pumps perform?", at, "md", &mut taken), "How do heat pumps perform - 2026-10-03.md");
+        assert_eq!(export_file_name("How do heat pumps perform?", at, "md", &mut taken), "How do heat pumps perform - 2026-10-03 (2).md");
+        assert_eq!(export_file_name("a/b\\c:d*e?f\"g<h>i|j", at, "csv", &mut taken), "a b c d e f g h i j - 2026-10-03.csv");
+        assert_eq!(export_file_name("   ", at, "csv", &mut taken), "run - 2026-10-03.csv");
+        let long = export_file_name(&"слово ".repeat(40), at, "json", &mut taken);
+        assert!(long.chars().count() <= 80, "{long}");
+    }
+
+    #[tokio::test]
+    async fn selected_runs_export_one_file_each_in_their_own_format() {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        let db = Database::with_pool(pool.clone()).await;
+        db.migrate().await.unwrap();
+        let repo = Repository::new(pool);
+        repo.create_run_with_type("links", "Rust books", "{}", "links").await.unwrap();
+        repo.create_run_with_type("talk", "Heat pumps", "{}", "research").await.unwrap();
+        repo.create_research_turn("talk", 0, "Heat pumps", "{}").await.unwrap();
+        repo.finish_research_turn("talk", 0, Some("They work."), &[], "completed").await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let written = export_runs_to(&repo, &["links".into(), "talk".into()], dir.path(), "json").await.unwrap();
+        assert_eq!(written.len(), 2);
+        let names: Vec<String> = written
+            .iter()
+            .map(|p| std::path::Path::new(p).file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(names[0].starts_with("Rust books - ") && names[0].ends_with(".json"), "{names:?}");
+        assert!(names[1].starts_with("Heat pumps - ") && names[1].ends_with(".md"), "{names:?}");
+        assert!(std::fs::read_to_string(&written[1]).unwrap().contains("They work."));
+        assert!(export_runs_to(&repo, &["missing".into()], dir.path(), "json").await.is_err());
     }
 }

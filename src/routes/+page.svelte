@@ -10,6 +10,8 @@
 		resetRun,
 		askFollowUp,
 		dismissNotices,
+		queryDraft,
+		runInProgress,
 	} from '$lib/stores/run';
 	import type { RunInfo, SchemaColumn } from '$lib/types';
 	import { listRuns } from '$lib/api/tauri';
@@ -20,6 +22,7 @@
 	import ProgressBar from '$lib/components/run/ProgressBar.svelte';
 	import RunProgress from '$lib/components/run/RunProgress.svelte';
 	import RunControls from '$lib/components/run/RunControls.svelte';
+	import RunHeader from '$lib/components/run/RunHeader.svelte';
 	import ExportDialog from '$lib/components/run/ExportDialog.svelte';
 	import RunStatusPanel from '$lib/components/run/RunStatusPanel.svelte';
 	import ImageGallery from '$lib/components/run/ImageGallery.svelte';
@@ -175,7 +178,6 @@
 		if (isIdle && queryInput) queryInput.focus();
 	});
 
-	let queryExpanded = $state(false);
 	const modes = [
 		{
 			value: 'table' as const,
@@ -261,7 +263,30 @@
 	}
 	onMount(() => {
 		void loadRecent();
+		applyDraft();
 	});
+	/** Edit and run from History: fill the form without starting. */
+	function applyDraft() {
+		const draft = $queryDraft;
+		if (!draft) return;
+		queryDraft.set(null);
+		if (runInProgress()) return;
+		if (!isIdle) resetRun();
+		query = draft.query;
+		if (modes.some((item) => item.value === draft.runType)) {
+			// Set the mode first so its remembered limit does not replace the run's own.
+			stopMode = draft.runType as Mode;
+			runType = draft.runType as Mode;
+		}
+		if (draft.limits) {
+			stopInput = {
+				target: String(draft.limits.target_row_count),
+				budget: draft.limits.max_budget_usd.toFixed(2),
+				duration: String(Math.max(1, Math.round(draft.limits.max_duration_seconds / 60))),
+			};
+			stopEdited = true;
+		}
+	}
 	function useQuery(text: string, type: string) {
 		query = text;
 		if (modes.some((item) => item.value === type)) runType = type as Mode;
@@ -465,40 +490,32 @@
 		</div>
 	{/if}
 	{#if showResults}
-		<header class="run-header">
-			<div class="run-query-display">
-				<span class="eyebrow"
-					>{modes.find((item) => item.value === $runState.runType)?.label ?? 'Results'}</span
-				>
-				<h2 class:expanded={queryExpanded}>{$runState.query}</h2>
-				{#if $runState.query.length > 90}<button
-						class="query-expand"
-						onclick={() => {
-							queryExpanded = !queryExpanded;
-						}}
-						aria-expanded={queryExpanded}>{queryExpanded ? 'Show less' : 'Show full query'}</button
-					>{/if}
-			</div>
-			<RunControls
-				status={$runState.status}
-				pending={$runState.controlPending}
-				onpause={pauseCurrentRun}
-				onresume={resumeCurrentRun}
-				oncancel={() => {
-					confirmCancel = true;
-				}}
-				onreset={handleReset}
-				onedit={handleEdit}
-				onexport={() => {
-					showExport = true;
-				}}
-				showExport={isFinished &&
-					($runState.rows.length > 0 ||
-						$runState.imageResults.length > 0 ||
-						$runState.linkResults.length > 0 ||
-						!!$runState.researchAnswer)}
-			/>
-		</header>
+		<RunHeader
+			eyebrow={modes.find((item) => item.value === $runState.runType)?.label ?? 'Results'}
+			title={$runState.query}
+		>
+			{#snippet actions()}
+				<RunControls
+					status={$runState.status}
+					pending={$runState.controlPending}
+					onpause={pauseCurrentRun}
+					onresume={resumeCurrentRun}
+					oncancel={() => {
+						confirmCancel = true;
+					}}
+					onreset={handleReset}
+					onedit={handleEdit}
+					onexport={() => {
+						showExport = true;
+					}}
+					showExport={isFinished &&
+						($runState.rows.length > 0 ||
+							$runState.imageResults.length > 0 ||
+							$runState.linkResults.length > 0 ||
+							!!$runState.researchAnswer)}
+				/>
+			{/snippet}
+		</RunHeader>
 		<div class="run-summary">
 			<div class="summary-line">
 				{#if isActive || isSchemaReview}<RunStatusPanel
@@ -847,49 +864,6 @@
 		border-bottom-width: 2px;
 		border-radius: var(--app-radius-sm);
 		font-family: inherit;
-	}
-	.run-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		flex-wrap: wrap;
-		gap: 12px 20px;
-		flex-shrink: 0;
-		padding-bottom: 12px;
-	}
-	.run-query-display {
-		flex: 1 1 240px;
-		min-width: 0;
-	}
-	.eyebrow {
-		color: var(--app-muted);
-		font-size: var(--app-text-xs);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-	}
-	h2 {
-		font-size: var(--app-text-2xl);
-		font-weight: 650;
-		line-height: 1.35;
-		overflow-wrap: anywhere;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-		margin: 4px 0 0;
-	}
-	h2.expanded {
-		display: block;
-		max-height: 120px;
-		overflow: auto;
-	}
-	.query-expand {
-		font-size: var(--app-text-sm);
-		color: var(--app-accent);
-		background: transparent;
-		padding: 4px 0;
-		border: 0;
 	}
 	.run-summary {
 		display: flex;

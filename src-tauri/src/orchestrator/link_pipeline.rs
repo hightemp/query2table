@@ -66,7 +66,7 @@ impl LinkPipeline {
         info!(run_id = %self.run_id, query = %self.query, "Link pipeline started");
 
         // Create run in DB
-        let config_json = serde_json::json!({ "mode": "links" });
+        let config_json = self.config.run_config("links");
         self.repo
             .create_run_with_type(&self.run_id, &self.query, &config_json.to_string(), "links")
             .await

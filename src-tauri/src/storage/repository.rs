@@ -93,7 +93,7 @@ impl Repository {
         run_id: &str,
     ) -> Result<Option<RunRow>, sqlx::Error> {
         let row = sqlx::query_as::<_, RunRow>(
-            "SELECT id, query, status, config, stats, error, run_type, created_at, updated_at, completed_at, dismissed_notices FROM runs WHERE id = ?"
+            "SELECT id, query, status, config, stats, error, run_type, created_at, updated_at, completed_at, dismissed_notices, title, pinned_at FROM runs WHERE id = ?"
         )
         .bind(run_id)
         .fetch_optional(&self.pool)
@@ -110,9 +110,107 @@ impl Repository {
         Ok(())
     }
 
+    /// History list: pinned runs first, then by the chosen order; deleted runs are left out.
+    pub async fn list_runs_filtered(&self, filter: &RunListFilter) -> Result<Vec<RunListRow>, sqlx::Error> {
+        let (conditions, binds) = history_conditions(filter, true);
+        let order = match filter.sort.as_deref() {
+            Some("oldest") => "r.created_at ASC, r.rowid ASC".to_string(),
+            Some("results") => format!("{RESULT_COUNT} DESC, r.created_at DESC"),
+            Some("cost") => format!("{RUN_COST} DESC, r.created_at DESC"),
+            _ => "r.created_at DESC, r.rowid DESC".to_string(),
+        };
+        let sql = format!(
+            "SELECT r.id, r.query, r.title, r.status, r.run_type, r.stats, r.error, r.created_at, r.completed_at, \
+             r.pinned_at, r.dismissed_notices, \
+             (SELECT COUNT(*) FROM research_turns t WHERE t.run_id = r.id) AS turn_count \
+             FROM runs r WHERE {conditions} \
+             ORDER BY (r.pinned_at IS NULL), r.pinned_at DESC, {order} LIMIT {} OFFSET {}",
+            filter.limit.clamp(1, 500),
+            filter.offset.max(0)
+        );
+        let mut query = sqlx::query_as::<_, RunListRow>(&sql);
+        for bind in &binds {
+            query = query.bind(bind);
+        }
+        query.fetch_all(&self.pool).await
+    }
+
+    /// Runs of each type matching the search and status, for the type filter chips.
+    pub async fn count_runs_by_type(&self, filter: &RunListFilter) -> Result<Vec<(String, i64)>, sqlx::Error> {
+        let (conditions, binds) = history_conditions(filter, false);
+        let sql = format!("SELECT r.run_type, COUNT(*) FROM runs r WHERE {conditions} GROUP BY r.run_type ORDER BY r.run_type");
+        let mut query = sqlx::query_as::<_, (String, i64)>(&sql);
+        for bind in &binds {
+            query = query.bind(bind);
+        }
+        query.fetch_all(&self.pool).await
+    }
+
+    /// Hides runs until they are restored or purged (deletion with undo).
+    pub async fn soft_delete_runs(&self, ids: &[String]) -> Result<(), sqlx::Error> {
+        for id in ids {
+            sqlx::query("UPDATE runs SET deleted_at = unixepoch() WHERE id = ?")
+                .bind(id)
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(())
+    }
+
+    pub async fn restore_runs(&self, ids: &[String]) -> Result<(), sqlx::Error> {
+        for id in ids {
+            sqlx::query("UPDATE runs SET deleted_at = NULL WHERE id = ?")
+                .bind(id)
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Permanently removes deleted runs: the given ones, or all of them.
+    pub async fn purge_deleted_runs(&self, ids: Option<&[String]>) -> Result<(), sqlx::Error> {
+        match ids {
+            Some(ids) => {
+                for id in ids {
+                    sqlx::query("DELETE FROM runs WHERE id = ? AND deleted_at IS NOT NULL")
+                        .bind(id)
+                        .execute(&self.pool)
+                        .await?;
+                }
+            }
+            None => {
+                sqlx::query("DELETE FROM runs WHERE deleted_at IS NOT NULL")
+                    .execute(&self.pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Names a run; a blank title brings back the query.
+    pub async fn rename_run(&self, run_id: &str, title: Option<&str>) -> Result<(), sqlx::Error> {
+        let title = title.map(str::trim).filter(|t| !t.is_empty()).map(|t| t.chars().take(200).collect::<String>());
+        sqlx::query("UPDATE runs SET title = ? WHERE id = ?")
+            .bind(title)
+            .bind(run_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_run_pinned(&self, run_id: &str, pinned: bool) -> Result<(), sqlx::Error> {
+        let sql = if pinned {
+            "UPDATE runs SET pinned_at = unixepoch() WHERE id = ?"
+        } else {
+            "UPDATE runs SET pinned_at = NULL WHERE id = ?"
+        };
+        sqlx::query(sql).bind(run_id).execute(&self.pool).await?;
+        Ok(())
+    }
+
     pub async fn list_runs(&self, limit: i64, offset: i64) -> Result<Vec<RunRow>, sqlx::Error> {
         let rows = sqlx::query_as::<_, RunRow>(
-            "SELECT id, query, status, config, stats, error, run_type, created_at, updated_at, completed_at, dismissed_notices FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            "SELECT id, query, status, config, stats, error, run_type, created_at, updated_at, completed_at, dismissed_notices, title, pinned_at FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?"
         )
         .bind(limit)
         .bind(offset)
@@ -887,6 +985,80 @@ pub struct RunRow {
     pub completed_at: Option<i64>,
     /// JSON map of notice kinds to how many of each had been seen when dismissed.
     pub dismissed_notices: Option<String>,
+    /// Name given by the user; the query is shown when missing.
+    pub title: Option<String>,
+    pub pinned_at: Option<i64>,
+}
+
+/// A run in the History list.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct RunListRow {
+    pub id: String,
+    pub query: String,
+    pub title: Option<String>,
+    pub status: String,
+    pub run_type: String,
+    pub stats: Option<String>,
+    pub error: Option<String>,
+    pub created_at: i64,
+    pub completed_at: Option<i64>,
+    pub pinned_at: Option<i64>,
+    pub dismissed_notices: Option<String>,
+    /// Questions asked in a research conversation.
+    pub turn_count: i64,
+}
+
+/// Search, filters and paging of the History list.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct RunListFilter {
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub run_type: Option<String>,
+    /// completed, failed, cancelled or active (pending, running, paused, schema review).
+    #[serde(default)]
+    pub status: Option<String>,
+    /// newest (default), oldest, results or cost.
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+
+const ACTIVE_STATUSES: &str = "'pending', 'running', 'paused', 'schema_review'";
+const RESULT_COUNT: &str = "COALESCE(json_extract(r.stats, '$.rows_found'), json_extract(r.stats, '$.link_count'), json_extract(r.stats, '$.image_count'), json_extract(r.stats, '$.steps'), 0)";
+const RUN_COST: &str = "COALESCE(json_extract(r.stats, '$.accounting.spent_usd'), json_extract(r.stats, '$.spent_usd'), 0)";
+
+/// WHERE clause and bindings shared by the list and its type counts.
+fn history_conditions(filter: &RunListFilter, with_type: bool) -> (String, Vec<String>) {
+    let mut sql = String::from("r.deleted_at IS NULL");
+    let mut binds = Vec::new();
+    if let Some(search) = filter.search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        let escaped = search.to_lowercase().replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let pattern = format!("%{escaped}%");
+        sql.push_str(
+            " AND (lower(r.query) LIKE ?1 ESCAPE '\\' OR lower(COALESCE(r.title, '')) LIKE ?1 ESCAPE '\\' \
+             OR EXISTS (SELECT 1 FROM research_turns t WHERE t.run_id = r.id AND lower(t.question) LIKE ?1 ESCAPE '\\'))",
+        );
+        binds.push(pattern);
+    }
+    if with_type {
+        if let Some(kind) = filter.run_type.as_deref().filter(|s| !s.is_empty() && *s != "all") {
+            binds.push(kind.to_string());
+            sql.push_str(&format!(" AND r.run_type = ?{}", binds.len()));
+        }
+    }
+    match filter.status.as_deref() {
+        Some("active") => sql.push_str(&format!(" AND r.status IN ({ACTIVE_STATUSES})")),
+        Some(status) if !status.is_empty() && status != "any" => {
+            binds.push(status.to_string());
+            sql.push_str(&format!(" AND r.status = ?{}", binds.len()));
+        }
+        _ => {}
+    }
+    (sql, binds)
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -1054,6 +1226,120 @@ mod tests {
         let db = Database::with_pool(pool.clone()).await;
         db.migrate().await.unwrap();
         (Repository::new(pool), db)
+    }
+
+    async fn history_fixture(repo: &Repository) {
+        // (id, query, type, status, stats, created_at)
+        let runs = [
+            ("t1", "Robot channels", "table", "completed", r#"{"rows_found":48,"accounting":{"spent_usd":0.5}}"#, 100),
+            ("l1", "Rust books", "links", "completed", r#"{"link_count":46,"accounting":{"spent_usd":0.1}}"#, 200),
+            ("i1", "Green beetle", "images", "failed", r#"{"image_count":3}"#, 300),
+            ("r1", "Heat pumps", "research", "completed", r#"{"steps":12,"spent_usd":0.9}"#, 400),
+            ("t2", "Old table", "table", "cancelled", r#"{"rows_found":5}"#, 50),
+            ("p1", "Paused run", "table", "paused", "{}", 60),
+        ];
+        for (id, query, kind, status, stats, created) in runs {
+            repo.create_run_with_type(id, query, "{}", kind).await.unwrap();
+            repo.update_run_status(id, status).await.unwrap();
+            repo.update_run_stats(id, stats).await.unwrap();
+            sqlx::query("UPDATE runs SET created_at = ? WHERE id = ?")
+                .bind(created as i64)
+                .bind(id)
+                .execute(&repo.pool)
+                .await
+                .unwrap();
+        }
+        repo.create_research_turn("r1", 0, "Heat pumps", "{}").await.unwrap();
+        repo.create_research_turn("r1", 1, "Перескажи по-русски", "{}").await.unwrap();
+    }
+
+    fn ids(rows: &[RunListRow]) -> Vec<&str> {
+        rows.iter().map(|r| r.id.as_str()).collect()
+    }
+
+    #[tokio::test]
+    async fn history_lists_newest_first_with_turn_counts_and_pages() {
+        let (repo, _db) = test_repo().await;
+        history_fixture(&repo).await;
+        let all = repo.list_runs_filtered(&RunListFilter { limit: 10, ..Default::default() }).await.unwrap();
+        assert_eq!(ids(&all), ["r1", "i1", "l1", "t1", "p1", "t2"]);
+        assert_eq!(all[0].turn_count, 2);
+        assert_eq!(all[1].turn_count, 0);
+        let page = repo.list_runs_filtered(&RunListFilter { limit: 2, offset: 2, ..Default::default() }).await.unwrap();
+        assert_eq!(ids(&page), ["l1", "t1"]);
+    }
+
+    #[tokio::test]
+    async fn history_searches_queries_titles_and_follow_up_questions() {
+        let (repo, _db) = test_repo().await;
+        history_fixture(&repo).await;
+        let search = |text: &str| RunListFilter { search: Some(text.into()), limit: 10, ..Default::default() };
+        assert_eq!(ids(&repo.list_runs_filtered(&search("rust")).await.unwrap()), ["l1"]);
+        assert_eq!(ids(&repo.list_runs_filtered(&search("по-русски")).await.unwrap()), ["r1"]);
+        repo.rename_run("t2", Some("Archive of robots")).await.unwrap();
+        assert_eq!(ids(&repo.list_runs_filtered(&search("ROBOT")).await.unwrap()), ["t1", "t2"]);
+        // LIKE wildcards in the search text are literal.
+        assert!(repo.list_runs_filtered(&search("%")).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn history_filters_by_type_and_status_and_counts_types() {
+        let (repo, _db) = test_repo().await;
+        history_fixture(&repo).await;
+        let tables = RunListFilter { run_type: Some("table".into()), limit: 10, ..Default::default() };
+        assert_eq!(ids(&repo.list_runs_filtered(&tables).await.unwrap()), ["t1", "p1", "t2"]);
+        let active = RunListFilter { status: Some("active".into()), limit: 10, ..Default::default() };
+        assert_eq!(ids(&repo.list_runs_filtered(&active).await.unwrap()), ["p1"]);
+        let failed = RunListFilter { status: Some("failed".into()), limit: 10, ..Default::default() };
+        assert_eq!(ids(&repo.list_runs_filtered(&failed).await.unwrap()), ["i1"]);
+        // Counts ignore the type filter so every chip shows its own total.
+        let counts = repo.count_runs_by_type(&RunListFilter { run_type: Some("table".into()), status: Some("completed".into()), ..Default::default() }).await.unwrap();
+        assert_eq!(counts, vec![("links".to_string(), 1), ("research".to_string(), 1), ("table".to_string(), 1)]);
+    }
+
+    #[tokio::test]
+    async fn history_sorts_by_results_and_cost_with_pinned_runs_first() {
+        let (repo, _db) = test_repo().await;
+        history_fixture(&repo).await;
+        let sorted = |sort: &str| RunListFilter { sort: Some(sort.into()), limit: 10, ..Default::default() };
+        assert_eq!(ids(&repo.list_runs_filtered(&sorted("oldest")).await.unwrap()), ["t2", "p1", "t1", "l1", "i1", "r1"]);
+        assert_eq!(ids(&repo.list_runs_filtered(&sorted("results")).await.unwrap())[..4], ["t1", "l1", "r1", "t2"]);
+        assert_eq!(ids(&repo.list_runs_filtered(&sorted("cost")).await.unwrap())[..3], ["r1", "t1", "l1"]);
+        repo.set_run_pinned("t2", true).await.unwrap();
+        let rows = repo.list_runs_filtered(&sorted("newest")).await.unwrap();
+        assert_eq!(ids(&rows)[0], "t2");
+        assert!(rows[0].pinned_at.is_some());
+        repo.set_run_pinned("t2", false).await.unwrap();
+        assert_eq!(ids(&repo.list_runs_filtered(&sorted("newest")).await.unwrap())[0], "r1");
+    }
+
+    #[tokio::test]
+    async fn deleted_runs_hide_until_restored_or_purged() {
+        let (repo, _db) = test_repo().await;
+        history_fixture(&repo).await;
+        repo.soft_delete_runs(&["t1".into(), "l1".into()]).await.unwrap();
+        let all = RunListFilter { limit: 10, ..Default::default() };
+        assert_eq!(ids(&repo.list_runs_filtered(&all).await.unwrap()), ["r1", "i1", "p1", "t2"]);
+        assert!(!repo.count_runs_by_type(&all).await.unwrap().iter().any(|(t, _)| t == "links"));
+        repo.restore_runs(&["l1".into()]).await.unwrap();
+        assert!(ids(&repo.list_runs_filtered(&all).await.unwrap()).contains(&"l1"));
+        // Purging removes only runs still marked deleted.
+        repo.purge_deleted_runs(Some(&["t1".into(), "l1".into()])).await.unwrap();
+        assert!(repo.get_run("t1").await.unwrap().is_none());
+        assert!(repo.get_run("l1").await.unwrap().is_some());
+        repo.soft_delete_runs(&["i1".into()]).await.unwrap();
+        repo.purge_deleted_runs(None).await.unwrap();
+        assert!(repo.get_run("i1").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_run_can_be_renamed_back_to_its_query() {
+        let (repo, _db) = test_repo().await;
+        history_fixture(&repo).await;
+        repo.rename_run("t1", Some("  Robots  ")).await.unwrap();
+        assert_eq!(repo.get_run("t1").await.unwrap().unwrap().title.as_deref(), Some("Robots"));
+        repo.rename_run("t1", Some("   ")).await.unwrap();
+        assert_eq!(repo.get_run("t1").await.unwrap().unwrap().title, None);
     }
 
     #[tokio::test]

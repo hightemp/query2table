@@ -100,8 +100,11 @@
 	function scroller(): HTMLElement | null {
 		return layout?.closest('.research-view') ?? null;
 	}
+	/** A heading chosen in the contents stays current until the reader scrolls. */
+	let chosenHeading: string | null = null;
 	function goTo(slug: string) {
 		activeHeading = slug;
+		chosenHeading = slug;
 		document.getElementById(`${id}-h-${slug}`)?.scrollIntoView({ block: 'start' });
 	}
 	// Highlights the section being read.
@@ -110,6 +113,10 @@
 		if (!element || !showContents || tab !== 'answer') return;
 		const list = headings;
 		const update = () => {
+			if (chosenHeading) {
+				activeHeading = chosenHeading;
+				return;
+			}
 			const top = element.getBoundingClientRect().top + 80;
 			let current = list[0]?.slug ?? null;
 			for (const heading of list) {
@@ -121,9 +128,16 @@
 				current = list.at(-1)?.slug ?? current;
 			activeHeading = current;
 		};
+		const release = () => (chosenHeading = null);
 		update();
 		element.addEventListener('scroll', update, { passive: true });
-		return () => element.removeEventListener('scroll', update);
+		for (const event of ['wheel', 'touchmove', 'keydown', 'pointerdown'] as const)
+			element.addEventListener(event, release, { passive: true });
+		return () => {
+			element.removeEventListener('scroll', update);
+			for (const event of ['wheel', 'touchmove', 'keydown', 'pointerdown'] as const)
+				element.removeEventListener(event, release);
+		};
 	});
 
 	function copyMenu(event: MouseEvent) {
