@@ -82,7 +82,9 @@
 									class="button ghost sm"
 									aria-expanded={rawShown.includes(view.step.id)}
 									onclick={() => (rawShown = toggle(rawShown, view.step.id))}
-									>{rawShown.includes(view.step.id) ? 'Hide page text' : 'Show page text'}</button
+									>{rawShown.includes(view.step.id)
+											? view.rawKind === 'page' ? 'Hide page text' : 'Hide details'
+											: view.rawKind === 'page' ? 'Show page text' : 'Show details'}</button
 								>{/if}
 						</div>
 					{/if}

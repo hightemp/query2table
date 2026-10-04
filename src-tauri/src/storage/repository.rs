@@ -93,7 +93,7 @@ impl Repository {
         run_id: &str,
     ) -> Result<Option<RunRow>, sqlx::Error> {
         let row = sqlx::query_as::<_, RunRow>(
-            "SELECT id, query, status, config, stats, error, run_type, created_at, updated_at, completed_at FROM runs WHERE id = ?"
+            "SELECT id, query, status, config, stats, error, run_type, created_at, updated_at, completed_at, dismissed_notices FROM runs WHERE id = ?"
         )
         .bind(run_id)
         .fetch_optional(&self.pool)
@@ -101,9 +101,18 @@ impl Repository {
         Ok(row)
     }
 
+    pub async fn set_run_dismissed_notices(&self, run_id: &str, dismissed: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE runs SET dismissed_notices = ? WHERE id = ?")
+            .bind(dismissed)
+            .bind(run_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn list_runs(&self, limit: i64, offset: i64) -> Result<Vec<RunRow>, sqlx::Error> {
         let rows = sqlx::query_as::<_, RunRow>(
-            "SELECT id, query, status, config, stats, error, run_type, created_at, updated_at, completed_at FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            "SELECT id, query, status, config, stats, error, run_type, created_at, updated_at, completed_at, dismissed_notices FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?"
         )
         .bind(limit)
         .bind(offset)
@@ -876,6 +885,8 @@ pub struct RunRow {
     pub created_at: i64,
     pub updated_at: i64,
     pub completed_at: Option<i64>,
+    /// JSON map of notice kinds to how many of each had been seen when dismissed.
+    pub dismissed_notices: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -1043,6 +1054,18 @@ mod tests {
         let db = Database::with_pool(pool.clone()).await;
         db.migrate().await.unwrap();
         (Repository::new(pool), db)
+    }
+
+    #[tokio::test]
+    async fn dismissed_notices_are_kept_with_the_run() {
+        let (repo, _db) = test_repo().await;
+        repo.create_run("run", "test", "{}").await.unwrap();
+        assert_eq!(repo.get_run("run").await.unwrap().unwrap().dismissed_notices, None);
+        repo.set_run_dismissed_notices("run", r#"{"cost:unknown":2}"#).await.unwrap();
+        let run = repo.get_run("run").await.unwrap().unwrap();
+        assert_eq!(run.dismissed_notices.as_deref(), Some(r#"{"cost:unknown":2}"#));
+        let listed = repo.list_runs(10, 0).await.unwrap();
+        assert_eq!(listed[0].dismissed_notices.as_deref(), Some(r#"{"cost:unknown":2}"#));
     }
 
     #[tokio::test]

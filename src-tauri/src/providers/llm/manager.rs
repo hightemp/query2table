@@ -72,6 +72,15 @@ pub struct LlmManager {
     config: LlmConfig,
     diagnostics: Option<UnboundedSender<LlmIssue>>,
     accounting: Option<Arc<dyn UsageObserver>>,
+    /// Research conversation turn stamped on diagnostics.
+    turn_index: Option<u32>,
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default()
 }
 
 impl LlmManager {
@@ -102,6 +111,10 @@ impl LlmManager {
                     attempt: 1,
                     max_attempts: 1,
                     will_retry: false,
+                    outcome: Some(IssueOutcome::Stopped.as_str().into()),
+                    call_id: Some(crate::utils::id::new_id()),
+                    turn_index: None,
+                    at: Some(now_ms()),
                 });
                 Err(error)
             }
@@ -148,6 +161,7 @@ impl LlmManager {
             config,
             diagnostics: None,
             accounting: None,
+            turn_index: None,
         })
     }
 
@@ -164,6 +178,20 @@ impl LlmManager {
     pub fn with_diagnostics(mut self, sender: UnboundedSender<LlmIssue>) -> Self {
         self.diagnostics = Some(sender);
         self
+    }
+
+    /// Marks diagnostics as belonging to one turn of a research conversation.
+    pub fn with_turn(mut self, turn_index: u32) -> Self {
+        self.turn_index = Some(turn_index);
+        self
+    }
+
+    fn send_issue(&self, mut issue: LlmIssue) {
+        issue.turn_index = issue.turn_index.or(self.turn_index);
+        issue.at = issue.at.or_else(|| Some(now_ms()));
+        if let Some(sender) = &self.diagnostics {
+            let _ = sender.send(issue);
+        }
     }
 
     pub fn with_accounting(mut self, observer: Arc<dyn UsageObserver>) -> Self {
@@ -247,6 +275,7 @@ impl LlmManager {
         stage: &str,
         message: &str,
         response: &CompletionResponse,
+        outcome: IssueOutcome,
     ) {
         let issue = LlmIssue {
             code: "invalid_response".into(),
@@ -262,12 +291,13 @@ impl LlmManager {
             attempt: 1,
             max_attempts: 1,
             will_retry: false,
+            outcome: Some(outcome.as_str().into()),
+            call_id: Some(crate::utils::id::new_id()),
+            ..Default::default()
         };
         warn!(provider = %issue.provider, model = %issue.model, stage = ?issue.stage,
             "[FIX:llm-diagnostics] Role could not parse the model response");
-        if let Some(sender) = &self.diagnostics {
-            let _ = sender.send(issue);
-        }
+        self.send_issue(issue);
     }
 
     pub async fn complete_for_stage(
@@ -338,18 +368,40 @@ impl LlmManager {
         };
         let max_attempts = config.max_retries + 1;
         let mut attempt = 0;
+        let call_id = crate::utils::id::new_id();
+        // The last failed attempt, repeated as "recovered" if a retry succeeds.
+        let last_failure = std::sync::Mutex::new(None::<LlmIssue>);
         retry_with_backoff(&config, "llm_complete", || {
             attempt += 1;
             let current_attempt = attempt;
             let req = request.clone();
             let request = &request;
+            let call_id = &call_id;
+            let last_failure = &last_failure;
             async move {
                 match self.accounted_completion(req).await {
-                    Ok(resp) => (Ok(resp), RetryAction::Success, None),
+                    Ok(resp) => {
+                        if let Some(failure) = last_failure.lock().unwrap().take() {
+                            self.send_issue(LlmIssue {
+                                attempt: current_attempt,
+                                will_retry: false,
+                                retry_after_ms: None,
+                                outcome: Some(IssueOutcome::Recovered.as_str().into()),
+                                at: None,
+                                ..failure
+                            });
+                        }
+                        (Ok(resp), RetryAction::Success, None)
+                    }
                     Err(error) => {
                         let will_retry = error.retryable() && current_attempt < max_attempts;
                         let retry_after_ms = error.retry_after_ms().map(|ms| ms.min(60_000));
                         let usage = error.usage();
+                        let outcome = if will_retry {
+                            Some(IssueOutcome::Retrying)
+                        } else {
+                            IssueOutcome::after_failure(stage, error.code())
+                        };
                         let issue = LlmIssue {
                             code: error.code().into(),
                             provider: self.safe_diagnostic_text(self.provider_name(), 64),
@@ -364,13 +416,17 @@ impl LlmManager {
                             attempt: current_attempt,
                             max_attempts,
                             will_retry,
+                            outcome: outcome.map(|o| o.as_str().into()),
+                            call_id: Some(call_id.clone()),
+                            ..Default::default()
                         };
                         warn!(code = %issue.code, provider = %issue.provider, model = %issue.model,
                             stage = ?issue.stage, attempt = current_attempt, max_attempts, will_retry,
                             "[FIX:llm-diagnostics] Provider attempt failed");
-                        if let Some(sender) = &self.diagnostics {
-                            let _ = sender.send(issue);
+                        if will_retry {
+                            *last_failure.lock().unwrap() = Some(issue.clone());
                         }
+                        self.send_issue(issue);
                         let action = if will_retry { RetryAction::Retry } else { RetryAction::Fail };
                         (Err(error), action, retry_after_ms.map(Duration::from_millis))
                     }
@@ -411,6 +467,7 @@ impl LlmManager {
             config,
             diagnostics: None,
             accounting: None,
+            turn_index: None,
         }
     }
 

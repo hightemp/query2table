@@ -929,6 +929,7 @@ async fn parsing_diagnostic_keeps_response_usage_and_does_not_include_content() 
             completion_tokens: 34,
             total_tokens: 157,
         },
+        query2table_lib::providers::llm::IssueOutcome::Skipped,
     );
     let issue = rx.try_recv().unwrap();
     assert_eq!(
@@ -966,4 +967,151 @@ async fn native_length_without_message_still_reports_output_limit() {
         .unwrap_err();
     assert_eq!(error.code(), "output_limit");
     assert_eq!(error.usage().completion_tokens, Some(128));
+}
+
+/// Fails the first `failures` calls with a rate limit, then answers.
+struct FlakyProvider {
+    failures: u32,
+    calls: std::sync::atomic::AtomicU32,
+}
+
+#[async_trait::async_trait]
+impl LlmProvider for FlakyProvider {
+    async fn chat_completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<query2table_lib::providers::llm::CompletionResponse, LlmError> {
+        let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if call < self.failures {
+            return Err(LlmError::RateLimited { retry_after_ms: 0 });
+        }
+        Ok(query2table_lib::providers::llm::CompletionResponse {
+            content: "{}".into(),
+            model: request.model,
+            prompt_tokens: 1,
+            completion_tokens: 1,
+            total_tokens: 2,
+            usage: Default::default(),
+        })
+    }
+    fn provider_name(&self) -> &str {
+        "mock"
+    }
+    async fn health_check(&self) -> Result<(), LlmError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn attempts_of_one_request_share_a_call_and_end_with_what_the_stage_does_next() {
+    let provider = std::sync::Arc::new(FailingProvider {
+        error: LlmError::RateLimited { retry_after_ms: 0 },
+        calls: Default::default(),
+    });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let manager = LlmManager::with_provider(provider, LlmConfig::default())
+        .with_diagnostics(tx)
+        .with_turn(2);
+    manager
+        .complete_for_stage("extractor", vec![Message::user("page")], true)
+        .await
+        .unwrap_err();
+    let issues: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert_eq!(issues.len(), 4);
+    let call = issues[0].call_id.clone().expect("call id");
+    for issue in &issues {
+        assert_eq!(issue.call_id.as_deref(), Some(call.as_str()));
+        assert_eq!(issue.turn_index, Some(2));
+        assert!(issue.at.is_some());
+    }
+    let outcomes: Vec<_> = issues.iter().map(|i| i.outcome.as_deref()).collect();
+    assert_eq!(
+        outcomes,
+        [Some("retrying"), Some("retrying"), Some("retrying"), Some("skipped")]
+    );
+}
+
+#[tokio::test]
+async fn a_retry_that_succeeds_is_recorded_as_recovered() {
+    let provider = std::sync::Arc::new(FlakyProvider {
+        failures: 1,
+        calls: Default::default(),
+    });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let manager = LlmManager::with_provider(provider, LlmConfig::default()).with_diagnostics(tx);
+    manager
+        .complete_for_stage("extractor", vec![Message::user("page")], true)
+        .await
+        .unwrap();
+    let issues: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert_eq!(issues.len(), 2);
+    assert_eq!(issues[0].outcome.as_deref(), Some("retrying"));
+    assert_eq!(issues[1].outcome.as_deref(), Some("recovered"));
+    assert_eq!((issues[1].code.as_str(), issues[1].attempt, issues[1].will_retry), ("rate_limit", 2, false));
+    assert_eq!(issues[0].call_id, issues[1].call_id);
+    // A request that succeeds at once reports nothing.
+    let provider = std::sync::Arc::new(FlakyProvider { failures: 0, calls: Default::default() });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    LlmManager::with_provider(provider, LlmConfig::default())
+        .with_diagnostics(tx)
+        .complete_for_stage("extractor", vec![], true)
+        .await
+        .unwrap();
+    assert!(rx.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn final_failures_say_what_each_stage_does_next() {
+    for (stage, error, outcome) in [
+        ("interpreter", LlmError::AuthError, "stopped"),
+        ("planner", LlmError::AuthError, "stopped"),
+        ("query_expander", LlmError::AuthError, "stopped"),
+        ("extractor", LlmError::AuthError, "skipped"),
+        ("link_ranker", LlmError::AuthError, "skipped"),
+        ("image_ranker", LlmError::AuthError, "fallback"),
+        ("image_search_planner", LlmError::AuthError, "fallback"),
+        ("link_search_planner", LlmError::AuthError, "fallback"),
+        ("research", LlmError::AuthError, "continued"),
+        ("research", LlmError::BudgetExceeded, "stopped"),
+    ] {
+        let provider = std::sync::Arc::new(FailingProvider { error, calls: Default::default() });
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        LlmManager::with_provider(provider, LlmConfig::default())
+            .with_diagnostics(tx)
+            .complete_for_stage(stage, vec![], true)
+            .await
+            .unwrap_err();
+        let issue = rx.try_recv().unwrap();
+        assert_eq!(issue.outcome.as_deref(), Some(outcome), "{stage}");
+    }
+}
+
+#[tokio::test]
+async fn unreadable_responses_carry_the_outcome_their_role_chose() {
+    use query2table_lib::providers::llm::{CompletionResponse, IssueOutcome};
+    let provider = std::sync::Arc::new(FailingProvider {
+        error: LlmError::ParseError("unused".into()),
+        calls: Default::default(),
+    });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let manager = LlmManager::with_provider(provider, LlmConfig::default())
+        .with_diagnostics(tx)
+        .with_turn(1);
+    manager.report_invalid_response(
+        "research",
+        "The model response did not contain a valid research action",
+        &CompletionResponse {
+            usage: Default::default(),
+            model: "test-model".into(),
+            content: String::new(),
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+        },
+        IssueOutcome::Continued,
+    );
+    let issue = rx.try_recv().unwrap();
+    assert_eq!(issue.outcome.as_deref(), Some("continued"));
+    assert_eq!(issue.turn_index, Some(1));
+    assert!(issue.call_id.is_some() && issue.at.is_some());
 }

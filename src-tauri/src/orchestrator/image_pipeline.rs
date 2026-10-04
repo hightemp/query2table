@@ -300,12 +300,12 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
         let parsed: QueriesResponse = serde_json::from_str(&response.content)
             .map_err(|e| {
                 let message = format!("Failed to parse search queries: {e}");
-                llm.report_invalid_response("image_search_planner", &message, &response);
+                llm.report_invalid_response("image_search_planner", &message, &response, crate::providers::llm::IssueOutcome::Fallback);
                 message
             })?;
 
         if parsed.queries.is_empty() {
-            llm.report_invalid_response("image_search_planner", "LLM returned an empty query list", &response);
+            llm.report_invalid_response("image_search_planner", "LLM returned an empty query list", &response, crate::providers::llm::IssueOutcome::Fallback);
             return Err("LLM returned empty query list".to_string());
         }
 

@@ -114,6 +114,7 @@ pub fn run() {
             commands::run::delete_run,
             commands::run::get_run_logs,
             commands::run::get_run_issues,
+            commands::run::dismiss_run_notices,
             commands::run::get_run_schema,
             commands::run::get_run_rows,
             commands::run::get_row_sources,

@@ -157,7 +157,9 @@ impl ResearchPipeline {
             self.config.llm.clone(),
             self.control.issue_sender(),
         ) {
-            Ok(m) => m.with_accounting(self.budget.observer()),
+            Ok(m) => m
+                .with_accounting(self.budget.observer())
+                .with_turn(self.turn_index as u32),
             Err(e) => {
                 let msg = format!("LLM not configured: {e}");
                 self.log("ERROR", "research", &msg).await;

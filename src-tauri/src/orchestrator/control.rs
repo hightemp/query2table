@@ -548,6 +548,7 @@ mod tests {
             attempt: 1,
             max_attempts: 1,
             will_retry: false,
+            ..Default::default()
         }
     }
 

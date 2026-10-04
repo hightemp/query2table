@@ -32,13 +32,13 @@ describe('history and export errors', () => {
 	it('loads persisted model issues for a completed run and clears them when another run is selected', async () => {
 		render(HistoryPage);
 		await fireEvent.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
-		expect(await screen.findByRole('region', { name: 'Model request issues' })).toHaveTextContent(/Requested output cap\s*4,096 tokens per request/);
+		expect(await screen.findByRole('region', { name: 'Run notices' })).toHaveTextContent('The model reached its output limit');
 		expect(apiInvoke).toHaveBeenCalledWith('get_run_issues', { runId: 'run-1' });
 		await fireEvent.click(screen.getByRole('button', { name: 'Back to History' }));
 		await fireEvent.click(screen.getAllByRole('button', { name: 'View' })[1]);
 		await screen.findByRole('heading', { name: 'Second query' });
-		await waitFor(() => expect(screen.queryByText('Loading model request issues…')).not.toBeInTheDocument());
-		expect(screen.queryByRole('region', { name: 'Model request issues' })).not.toBeInTheDocument();
+		await waitFor(() => expect(apiInvoke).toHaveBeenCalledWith('get_run_issues', { runId: 'run-2' }));
+		expect(screen.queryByRole('region', { name: 'Run notices' })).not.toBeInTheDocument();
 	});
 
 	it('ignores a delayed issue response after the user changes the selected run', async () => {
@@ -55,8 +55,8 @@ describe('history and export errors', () => {
 		await fireEvent.click(screen.getAllByRole('button', { name: 'View' })[1]);
 		finishIssues([llmIssue]);
 		await screen.findByRole('heading', { name: 'Second query' });
-		await waitFor(() => expect(screen.queryByText('Loading model request issues…')).not.toBeInTheDocument());
-		expect(screen.queryByRole('region', { name: 'Model request issues' })).not.toBeInTheDocument();
+		await waitFor(() => expect(apiInvoke).toHaveBeenCalledWith('get_run_issues', { runId: 'run-2' }));
+		expect(screen.queryByRole('region', { name: 'Run notices' })).not.toBeInTheDocument();
 	});
 
 	it('keeps a result-load failure visible inside the selected history entry', async () => {

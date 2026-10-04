@@ -37,6 +37,8 @@ import {
 	askFollowUp as apiAskFollowUp,
 	getRun,
 	getResearchResult,
+	getRunIssues,
+	dismissRunNotices,
 	type StopConditions,
 } from '$lib/api/tauri';
 import { addLog } from '$lib/stores/logs';
@@ -102,6 +104,8 @@ export interface RunState {
 	controlError: string | null;
 	pausedFrom: string | null;
 	llmIssues: LlmIssueEvent[];
+	/** Notice counts the reader marked as read; see `isDismissed`. */
+	noticesDismissed: Record<string, number> | null;
 	activity: LogEntryEvent[];
 	accounting: Accounting | null;
 	/** Stop conditions requested for this run, when known. */
@@ -126,6 +130,7 @@ const initialState: RunState = {
 	controlError: null,
 	pausedFrom: null,
 	llmIssues: [],
+	noticesDismissed: null,
 	activity: [],
 	accounting: null,
 	limits: null,
@@ -491,7 +496,12 @@ export function researchTurnsFrom(
 export async function openConversation(runId: string) {
 	const currentGeneration = ++generation;
 	unsubscribeEvents();
-	const [run, result] = await Promise.all([getRun(runId), getResearchResult(runId)]);
+	const [run, result, issues] = await Promise.all([
+		getRun(runId),
+		getResearchResult(runId),
+		// Notices of earlier questions are helpful but not required to continue.
+		getRunIssues(runId).catch(() => []),
+	]);
 	if (!run) throw new Error('Run not found');
 	const turns = researchTurnsFrom(result, run.query, run.status);
 	const last = result.turns?.at(-1);
@@ -505,8 +515,28 @@ export async function openConversation(runId: string) {
 		researchSteps: result.steps,
 		researchAnswer: result.answer_markdown,
 		limits: last?.limits && Object.keys(last.limits).length ? last.limits : null,
+		llmIssues: issues,
+		noticesDismissed: parseDismissed(run.dismissed_notices),
 	});
 	await subscribeEvents(currentGeneration, []);
+}
+
+export function parseDismissed(raw: string | null | undefined): Record<string, number> | null {
+	if (!raw) return null;
+	try {
+		const value = JSON.parse(raw);
+		return value && typeof value === 'object' ? value : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Marks the run's current notices as read. */
+export async function dismissNotices(dismissed: Record<string, number>) {
+	const runId = get(runState).runId;
+	if (!runId) return;
+	runState.update((s) => (s.runId === runId ? { ...s, noticesDismissed: dismissed } : s));
+	await dismissRunNotices(runId, dismissed);
 }
 
 export function resetRun() {

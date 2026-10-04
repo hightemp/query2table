@@ -234,6 +234,7 @@ pub struct RunInfo {
     pub stats: Option<String>,
     pub error: Option<String>,
     pub created_at: i64,
+    pub dismissed_notices: Option<String>,
 }
 
 #[tauri::command]
@@ -251,6 +252,7 @@ pub async fn get_run(
         stats: r.stats,
         error: r.error,
         created_at: r.created_at,
+        dismissed_notices: r.dismissed_notices,
     }))
 }
 
@@ -271,6 +273,7 @@ pub async fn list_runs(
         stats: r.stats,
         error: r.error,
         created_at: r.created_at,
+        dismissed_notices: r.dismissed_notices,
     }).collect())
 }
 
@@ -303,9 +306,43 @@ pub async fn get_run_logs(
 pub async fn get_run_issues(state: State<'_, AppState>, run_id: String) -> Result<Vec<LlmIssueEvent>, String> {
     let repo = Repository::new(state.db.pool().clone());
     let details = repo.get_run_llm_issue_details(&run_id).await.map_err(|e| e.to_string())?;
-    Ok(details.into_iter().filter_map(|detail| {
-        serde_json::from_str(&detail).ok().map(|issue| LlmIssueEvent { run_id: run_id.clone(), issue })
-    }).collect())
+    Ok(issues_from_details(&run_id, details))
+}
+
+/// Stored issues, latest first, as events in the order they happened.
+fn issues_from_details(run_id: &str, details: Vec<String>) -> Vec<LlmIssueEvent> {
+    let mut issues: Vec<_> = details
+        .into_iter()
+        .filter_map(|detail| {
+            serde_json::from_str(&detail).ok().map(|issue| LlmIssueEvent { run_id: run_id.to_string(), issue })
+        })
+        .collect();
+    issues.reverse();
+    issues
+}
+
+const MAX_DISMISSED_KINDS: usize = 500;
+
+fn dismissal_json(dismissed: &std::collections::HashMap<String, u32>) -> Result<String, String> {
+    if dismissed.len() > MAX_DISMISSED_KINDS || dismissed.keys().any(|key| key.len() > 1000) {
+        return Err("Too many notices to dismiss".into());
+    }
+    let ordered: std::collections::BTreeMap<_, _> = dismissed.iter().collect();
+    serde_json::to_string(&ordered).map_err(|e| e.to_string())
+}
+
+/// Marks a run's current notices as read; a new kind of notice or a growing count shows them again.
+#[tauri::command]
+pub async fn dismiss_run_notices(
+    state: State<'_, AppState>,
+    run_id: String,
+    dismissed: std::collections::HashMap<String, u32>,
+) -> Result<(), String> {
+    let json = dismissal_json(&dismissed)?;
+    Repository::new(state.db.pool().clone())
+        .set_run_dismissed_notices(&run_id, &json)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Serialize)]
@@ -728,6 +765,35 @@ mod control_tests {
         controller.active.lock().await.insert("finished".into(), tx);
         drop(rx);
         assert!(controller.send("finished", PipelineCommand::Cancel).await.is_err());
+    }
+}
+
+#[cfg(test)]
+mod notice_tests {
+    use super::*;
+
+    #[test]
+    fn issues_are_returned_oldest_first_with_unreadable_rows_skipped() {
+        // The repository returns the latest issues first.
+        let details = vec![
+            r#"{"code":"timeout","provider":"p","model":"m","stage":null,"message":"second","max_tokens":1,"prompt_tokens":null,"completion_tokens":null,"reasoning_tokens":null,"retry_after_ms":null,"attempt":2,"max_attempts":4,"will_retry":false}"#.to_string(),
+            "not json".to_string(),
+            r#"{"code":"timeout","provider":"p","model":"m","stage":null,"message":"first","max_tokens":1,"prompt_tokens":null,"completion_tokens":null,"reasoning_tokens":null,"retry_after_ms":null,"attempt":1,"max_attempts":4,"will_retry":true}"#.to_string(),
+        ];
+        let issues = issues_from_details("run", details);
+        let messages: Vec<_> = issues.iter().map(|i| i.issue.message.as_str()).collect();
+        assert_eq!(messages, ["first", "second"]);
+    }
+
+    #[test]
+    fn dismissals_are_validated_before_saving() {
+        assert_eq!(
+            dismissal_json(&std::collections::HashMap::from([("cost:unknown".to_string(), 2u32)])).unwrap(),
+            r#"{"cost:unknown":2}"#
+        );
+        let huge: std::collections::HashMap<String, u32> =
+            (0..600).map(|i| (format!("llm:{i}"), 1)).collect();
+        assert!(dismissal_json(&huge).is_err());
     }
 }
 

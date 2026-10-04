@@ -59,7 +59,7 @@ async fn reported_charges_survive_truncation_empty_malformed_and_error_responses
         let budget = BudgetTracker::new(1.0);
         let manager = manager(&server, &budget);
         if let Ok(response) = manager.complete(vec![Message::user("test")], true).await {
-            manager.report_invalid_response("test", "Invalid role shape", &response);
+            manager.report_invalid_response("test", "Invalid role shape", &response, query2table_lib::providers::llm::IssueOutcome::Skipped);
         }
         let stats = budget.snapshot();
         assert_eq!(stats.llm_calls, 1);
@@ -467,4 +467,24 @@ async fn research_does_not_buy_a_final_answer_after_reaching_its_budget() {
     assert_eq!(pipeline.run().await.unwrap(),PipelineState::Completed);
     let run=repo.get_run("research-cost").await.unwrap().unwrap();let stats:serde_json::Value=serde_json::from_str(run.stats.as_ref().unwrap()).unwrap();
     assert_eq!(stats["accounting"]["llm_calls"],1);assert_eq!(stats["accounting"]["reported_usd"],0.01);
+}
+
+#[tokio::test]
+async fn a_follow_up_records_which_question_an_unreadable_reply_belonged_to() {
+    use query2table_lib::{storage::{db::Database,repository::Repository},orchestrator::{pipeline::{PipelineConfig,PipelineState},research_pipeline::ResearchPipeline}};
+    use std::collections::HashMap;
+    let server=MockServer::start().await;
+    let reply=|content:&str| ResponseTemplate::new(200).set_body_json(json!({"choices":[{"message":{"content":content}}],"usage":{"prompt_tokens":5,"completion_tokens":3}}));
+    Mock::given(method("POST")).and(path("/v1/chat/completions")).respond_with(reply("not a tool call")).up_to_n_times(1).with_priority(1).mount(&server).await;
+    Mock::given(method("POST")).and(path("/v1/chat/completions")).respond_with(reply("{\"action\":\"answer\",\"markdown\":\"Done.\"}")).with_priority(2).mount(&server).await;
+    let pool=sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+    let db=Database::with_pool(pool.clone()).await;db.migrate().await.unwrap();let repo=Arc::new(Repository::new(pool));
+    repo.create_run_with_type("talk","First question","{}","research").await.unwrap();
+    let settings=HashMap::from([("llm_provider".into(),"openai_compatible".into()),("openai_base_url".into(),format!("{}/v1",server.uri())),("openai_model".into(),"test-model".into()),("brave_api_key".into(),"test-key".into())]);
+    let (pipeline,_commands)=ResearchPipeline::follow_up("talk".into(),"Second question".into(),1,vec![],PipelineConfig::from_settings(&settings),repo.clone(),None);
+    assert_eq!(pipeline.run().await.unwrap(),PipelineState::Completed);
+    let issues=repo.get_run_llm_issue_details("talk").await.unwrap();
+    assert_eq!(issues.len(),1);
+    let issue:query2table_lib::providers::llm::LlmIssue=serde_json::from_str(&issues[0]).unwrap();
+    assert_eq!((issue.code.as_str(),issue.stage.as_deref(),issue.outcome.as_deref(),issue.turn_index),("invalid_response",Some("research"),Some("continued"),Some(1)));
 }

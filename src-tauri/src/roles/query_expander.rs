@@ -55,7 +55,7 @@ impl QueryExpander {
         let expanded: ExpandedQueries = serde_json::from_str(&response.content)
             .map_err(|e| {
                 let message = format!("Failed to parse expanded queries: {e}");
-                llm.report_invalid_response("query_expander", &message, &response);
+                llm.report_invalid_response("query_expander", &message, &response, crate::providers::llm::IssueOutcome::Stopped);
                 LlmError::ParseError(message)
             })?;
 

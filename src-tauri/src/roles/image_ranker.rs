@@ -84,7 +84,7 @@ impl ImageRanker {
             };
 
             let scores = Self::parse_scores(&response.content, chunk.len()).unwrap_or_else(|e| {
-                llm.report_invalid_response("image_ranker", &format!("Invalid relevance scores: {e}. This image batch was skipped."), &response);
+                llm.report_invalid_response("image_ranker", &format!("Invalid relevance scores: {e}. This image batch was skipped."), &response, crate::providers::llm::IssueOutcome::Skipped);
                 vec![0.0; chunk.len()]
             });
 

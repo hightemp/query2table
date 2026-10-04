@@ -184,6 +184,11 @@ export async function getRunIssues(runId: string): Promise<LlmIssueEvent[]> {
 	return invoke('get_run_issues', { runId });
 }
 
+/** Remembers how many of each kind of notice the reader has seen. */
+export async function dismissRunNotices(runId: string, dismissed: Record<string, number>): Promise<void> {
+	return invoke('dismiss_run_notices', { runId, dismissed });
+}
+
 // --- History data fetching ---
 
 export interface RunSchemaInfo {

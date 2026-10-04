@@ -20,8 +20,9 @@ export interface StepView {
 	/** One line describing the step. */
 	summary: string;
 	domain: string | null;
-	/** Page text saved by older runs; shown only on request. */
+	/** Page text saved by older runs, or a raw error; shown only on request. */
 	rawText: string | null;
+	rawKind: 'page' | 'details';
 }
 
 const READ_COUNT = /^Read page \(\d+ characters of content\)\.?$/;
@@ -48,13 +49,21 @@ export function pageLabel(url: URL): string {
 	return readable ? `${host} › ${readable.split('/').slice(0, 3).join('/')}` : host;
 }
 
+/** How the research pipeline records a model reply it could not use. */
+const INVALID_REPLY = /^The model produced an invalid response:/;
+
 export function describeStep(step: ResearchStep, index: number): StepView {
 	const url = parseUrl(step.url);
 	const domain = url ? displayHost(url.hostname) : null;
 	const content = step.content.trim();
 	let summary = content;
 	let rawText: string | null = null;
-	if (step.step_type === 'fetch') {
+	let label = STEP_LABELS[step.step_type] ?? step.step_type;
+	if (step.step_type === 'error' && INVALID_REPLY.test(content)) {
+		label = 'Unreadable reply';
+		summary = 'The model’s reply could not be read. The agent asked again and continued.';
+		rawText = step.content;
+	} else if (step.step_type === 'fetch') {
 		if (!content || READ_COUNT.test(content)) summary = url ? pageLabel(url) : 'Page';
 		else if (content.includes('\n') || content.length > 300) {
 			// Older runs stored the page text itself; its first line is the page title.
@@ -65,10 +74,11 @@ export function describeStep(step: ResearchStep, index: number): StepView {
 	return {
 		step,
 		number: index + 1,
-		label: STEP_LABELS[step.step_type] ?? step.step_type,
+		label,
 		summary,
 		domain,
 		rawText,
+		rawKind: step.step_type === 'fetch' ? 'page' : 'details',
 	};
 }
 

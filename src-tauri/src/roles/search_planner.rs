@@ -68,12 +68,12 @@ impl SearchPlanner {
         let plan: SearchPlan = serde_json::from_str(&response.content)
             .map_err(|e| {
                 let message = format!("Failed to parse search plan: {e}");
-                llm.report_invalid_response("search_planner", &message, &response);
+                llm.report_invalid_response("search_planner", &message, &response, crate::providers::llm::IssueOutcome::Stopped);
                 LlmError::ParseError(message)
             })?;
 
         if plan.queries.is_empty() {
-            llm.report_invalid_response("search_planner", "Search plan has no queries", &response);
+            llm.report_invalid_response("search_planner", "Search plan has no queries", &response, crate::providers::llm::IssueOutcome::Stopped);
             return Err(LlmError::ParseError("Search plan has no queries".to_string()));
         }
 

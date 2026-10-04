@@ -154,8 +154,53 @@ impl LlmUsage {
     }
 }
 
+/// What a failed request meant for the run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IssueOutcome {
+    /// Another attempt follows.
+    Retrying,
+    /// A later attempt of the same request succeeded.
+    Recovered,
+    /// The step worked around it without losing anything.
+    Continued,
+    /// A simpler method replaced the model's work.
+    Fallback,
+    /// Part of the result was dropped.
+    Skipped,
+    /// The run ended at this step.
+    Stopped,
+}
+
+impl IssueOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Retrying => "retrying",
+            Self::Recovered => "recovered",
+            Self::Continued => "continued",
+            Self::Fallback => "fallback",
+            Self::Skipped => "skipped",
+            Self::Stopped => "stopped",
+        }
+    }
+
+    /// What a stage does once a request has finally failed.
+    pub fn after_failure(stage: Option<&str>, code: &str) -> Option<Self> {
+        if code == "budget_limit" {
+            return Some(Self::Stopped);
+        }
+        match stage? {
+            "interpreter" | "planner" | "schema_planner" | "search_planner" | "query_expander"
+            | "setup" => Some(Self::Stopped),
+            "extractor" | "link_ranker" => Some(Self::Skipped),
+            "image_ranker" | "image_search_planner" | "link_search_planner" => Some(Self::Fallback),
+            "research" => Some(Self::Continued),
+            _ => None,
+        }
+    }
+}
+
 /// A bounded, secret-free diagnostic emitted for every failed provider attempt.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LlmIssue {
     pub code: String,
     pub provider: String,
@@ -170,6 +215,18 @@ pub struct LlmIssue {
     pub attempt: u32,
     pub max_attempts: u32,
     pub will_retry: bool,
+    /// See [`IssueOutcome`]; missing in issues recorded before outcomes existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<String>,
+    /// Shared by the attempts of one request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call_id: Option<String>,
+    /// Research conversation turn the request belonged to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_index: Option<u32>,
+    /// Unix time in milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<i64>,
 }
 
 /// Response from a chat completion.

@@ -55,12 +55,12 @@ impl SchemaPlanner {
         let schema: ProposedSchema = serde_json::from_str(&response.content)
             .map_err(|e| {
                 let message = format!("Failed to parse schema: {e}");
-                llm.report_invalid_response("planner", &message, &response);
+                llm.report_invalid_response("planner", &message, &response, crate::providers::llm::IssueOutcome::Stopped);
                 LlmError::ParseError(message)
             })?;
 
         if schema.columns.is_empty() {
-            llm.report_invalid_response("planner", "Schema has no columns", &response);
+            llm.report_invalid_response("planner", "Schema has no columns", &response, crate::providers::llm::IssueOutcome::Stopped);
             return Err(LlmError::ParseError("Schema has no columns".to_string()));
         }
 

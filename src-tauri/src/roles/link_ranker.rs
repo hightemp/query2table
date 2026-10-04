@@ -99,6 +99,7 @@ impl LinkRanker {
                 "link_ranker",
                 &format!("Invalid relevance score: {e}. The page was scored as irrelevant."),
                 &response,
+                crate::providers::llm::IssueOutcome::Fallback,
             );
             PageScore { relevance: 0.0, description: String::new(), reason: String::new() }
         });

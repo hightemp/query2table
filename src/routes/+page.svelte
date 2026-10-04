@@ -9,6 +9,7 @@
 		confirmCurrentSchema,
 		resetRun,
 		askFollowUp,
+		dismissNotices,
 	} from '$lib/stores/run';
 	import type { RunInfo, SchemaColumn } from '$lib/types';
 	import { listRuns } from '$lib/api/tauri';
@@ -16,7 +17,6 @@
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
 	import CostSummary from '$lib/components/run/CostSummary.svelte';
-	import CostWarnings from '$lib/components/run/CostWarnings.svelte';
 	import ProgressBar from '$lib/components/run/ProgressBar.svelte';
 	import RunProgress from '$lib/components/run/RunProgress.svelte';
 	import RunControls from '$lib/components/run/RunControls.svelte';
@@ -26,7 +26,7 @@
 	import LinkList from '$lib/components/run/LinkList.svelte';
 	import ResearchView from '$lib/components/run/ResearchView.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
-	import LlmIssues from '$lib/components/run/LlmIssues.svelte';
+	import RunNotices from '$lib/components/run/RunNotices.svelte';
 	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import {
@@ -521,18 +521,25 @@
 					runType={$runState.runType}
 					paused={$runState.status === 'paused'}
 				/>{/if}
-			<CostWarnings accounting={$runState.accounting} />
 		</div>
-		{#if $runState.error || $runState.controlError || $runState.llmIssues.length}
-			<div class="run-notices">
+		{#if $runState.error || $runState.controlError}
+			<div class="run-errors">
 				{#if $runState.error}<ErrorNotice error={$runState.error} />{/if}
 				{#if $runState.controlError}<ErrorNotice
 						error={$runState.controlError}
 						context="control"
 					/>{/if}
-				<LlmIssues issues={$runState.llmIssues} runStatus={$runState.status} />
 			</div>
 		{/if}
+		<RunNotices
+			issues={$runState.llmIssues}
+			accounting={$runState.accounting}
+			runStatus={$runState.status}
+			turnCount={$runState.researchTurns.length}
+			dismissed={$runState.noticesDismissed}
+			ondismiss={(dismissed) =>
+				dismissNotices(dismissed).catch((error) => toast(errorText(error), 'error'))}
+		/>
 		{#if isSchemaReview || isSchemaPaused}
 			<div class="schema-workspace" hidden={!isSchemaReview}>
 				<SchemaEditor
@@ -901,7 +908,7 @@
 	.summary-cost {
 		margin-left: auto;
 	}
-	.run-notices {
+	.run-errors {
 		max-height: 28vh;
 		overflow: auto;
 		flex-shrink: 0;

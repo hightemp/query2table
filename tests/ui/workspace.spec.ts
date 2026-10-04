@@ -438,8 +438,10 @@ test('Actual accounting updates are shown even before results and distinguish pa
 	};
 	await emit(page, 'run:accounting', { run_id: 'live', accounting });
 	await expect(page.locator('.cost-summary > summary')).toContainText('Partial cost $0.2500');
-	await expect(page.locator('.cost-warning')).toContainText('unknown cost');
-	await expect(page.locator('.cost-warning')).toContainText('Brave Search: 1');
+	const notices = page.getByRole('region', { name: 'Run notices' });
+	await expect(notices).toContainText('1 request with unknown cost');
+	await notices.getByRole('button', { name: /1 notice/ }).click();
+	await expect(notices).toContainText('Brave Search: 1');
 	await page.locator('.cost-summary > summary').click();
 	await expect(page.locator('.cost-details')).toContainText('10 input');
 	await expect(page.locator('.cost-details')).toContainText('20 output');

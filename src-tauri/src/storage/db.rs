@@ -319,6 +319,11 @@ impl Database {
             .execute(&self.pool)
             .await
             .ok(); // ok() — ignore error if column already exists
+        // Notices the reader marked as read (see `set_run_dismissed_notices`).
+        sqlx::query("ALTER TABLE runs ADD COLUMN dismissed_notices TEXT")
+            .execute(&self.pool)
+            .await
+            .ok(); // ok() — ignore error if column already exists
         // Research runs saved before conversations become one-turn conversations.
         sqlx::query(
             "INSERT INTO research_turns (id, run_id, turn_index, question, answer_markdown, status, created_at)

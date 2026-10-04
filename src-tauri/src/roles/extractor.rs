@@ -94,7 +94,7 @@ impl Extractor {
         let parsed: LlmResponse = serde_json::from_str(&response.content)
             .map_err(|e| {
                 let message = format!("Failed to parse extraction result: {e}");
-                llm.report_invalid_response("extractor", &message, &response);
+                llm.report_invalid_response("extractor", &message, &response, crate::providers::llm::IssueOutcome::Skipped);
                 LlmError::ParseError(message)
             })?;
 

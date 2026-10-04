@@ -29,6 +29,17 @@ describe('research steps', () => {
 		expect(describeStep(step({ step_type: 'error', content: 'Timeout' }), 2).label).toBe('Request issue');
 	});
 
+	it('explains an unreadable model reply and keeps the raw error behind details', () => {
+		const content =
+			'The model produced an invalid response: Parse error: Could not parse a research action: expected value at line 1 column 1';
+		const view = describeStep(step({ step_type: 'error', content }), 3);
+		expect(view.label).toBe('Unreadable reply');
+		expect(view.summary).toBe('The model’s reply could not be read. The agent asked again and continued.');
+		expect(view.rawText).toBe(content);
+		expect(view.rawKind).toBe('details');
+		expect(describeStep(step({ step_type: 'fetch', content: 'Title\n' + 'x'.repeat(400), url: 'https://a.example' }), 0).rawKind).toBe('page');
+	});
+
 	it('shows the page title or address for read pages instead of a character count', () => {
 		const counted = describeStep(
 			step({ step_type: 'fetch', content: 'Read page (8000 characters of content).', url: 'https://www.proxy-seller.me/malaysia/' }),

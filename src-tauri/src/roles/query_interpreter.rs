@@ -50,7 +50,7 @@ impl QueryInterpreter {
         let mut intent: QueryIntent = serde_json::from_str(&response.content)
             .map_err(|e| {
                 let message = format!("Failed to parse query intent: {e}");
-                llm.report_invalid_response("interpreter", &message, &response);
+                llm.report_invalid_response("interpreter", &message, &response, crate::providers::llm::IssueOutcome::Stopped);
                 LlmError::ParseError(message)
             })?;
 

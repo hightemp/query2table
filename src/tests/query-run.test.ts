@@ -57,18 +57,17 @@ describe('query page run feedback', () => {
 		status('running');
 		render(QueryPage);
 		callbacks.get('run:llm_issue')?.({ payload: llmIssue });
-		expect(await screen.findByRole('region', { name: 'Model request issues' })).toHaveTextContent(
-			'The model reached its output limit'
-		);
+		const strip = await screen.findByRole('region', { name: 'Run notices' });
+		expect(strip).toHaveTextContent('The model reached its output limit');
+		// The run carries on; the notice does not interrupt it.
 		expect(get(runState).status).toBe('running');
 		status('completed');
-		await waitFor(() =>
-			expect(screen.getByRole('region', { name: 'Model request issues' })).toHaveTextContent(
-				'The run completed'
-			)
+		await fireEvent.click(screen.getByRole('button', { name: /1 notice/ }));
+		expect(screen.getByRole('article', { name: 'The model reached its output limit' })).toHaveTextContent(
+			'The run stopped at this step.'
 		);
 		await fireEvent.click(screen.getByRole('button', { name: 'New query' }));
-		expect(screen.queryByRole('region', { name: 'Model request issues' })).not.toBeInTheDocument();
+		expect(screen.queryByRole('region', { name: 'Run notices' })).not.toBeInTheDocument();
 	});
 
 	it('shows query expansion as the active phase when its log arrives', async () => {

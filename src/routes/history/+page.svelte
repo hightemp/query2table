@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import CostSummary from '$lib/components/run/CostSummary.svelte';
-	import CostWarnings from '$lib/components/run/CostWarnings.svelte';
 	import { storedCosts } from '$lib/utils/costs';
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import { debugUi } from '$lib/utils/diagnostics';
@@ -14,6 +13,7 @@
 		getLinkResults,
 		getResearchResult,
 		getRunIssues,
+		dismissRunNotices,
 	} from '$lib/api/tauri';
 	import type {
 		RunInfo,
@@ -24,7 +24,8 @@
 		LlmIssueEvent,
 	} from '$lib/types';
 	import type { RunRow, ResearchTurnState } from '$lib/stores/run';
-	import { askFollowUp, openConversation, researchTurnsFrom } from '$lib/stores/run';
+	import { askFollowUp, openConversation, parseDismissed, researchTurnsFrom } from '$lib/stores/run';
+	import { toast } from '$lib/stores/toasts';
 	import type { StopConditions } from '$lib/api/tauri';
 	import { goto } from '$app/navigation';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
@@ -34,7 +35,7 @@
 	import LinkList from '$lib/components/run/LinkList.svelte';
 	import ResearchView from '$lib/components/run/ResearchView.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
-	import LlmIssues from '$lib/components/run/LlmIssues.svelte';
+	import RunNotices from '$lib/components/run/RunNotices.svelte';
 	import { errorText, presentError } from '$lib/utils/errors';
 	import { statusLabel, statusTone } from '$lib/utils/status';
 	import { RowSelection } from '$lib/utils/rowSelection.svelte';
@@ -78,6 +79,19 @@
 	let viewIssues = $state<LlmIssueEvent[]>([]);
 	let issueError = $state('');
 	let issuesLoading = $state(false);
+	let viewDismissed = $state<Record<string, number> | null>(null);
+	async function dismissViewNotices(dismissed: Record<string, number>) {
+		if (!viewingRun) return;
+		const runId = viewingRun.id;
+		viewDismissed = dismissed;
+		// Keep the list in step so reopening the run shows it dismissed.
+		runs = runs.map((run) => (run.id === runId ? { ...run, dismissed_notices: JSON.stringify(dismissed) } : run));
+		try {
+			await dismissRunNotices(runId, dismissed);
+		} catch (e) {
+			toast(errorText(e), 'error');
+		}
+	}
 	let viewRequest = 0;
 	const selection = new RowSelection();
 	let selectedRow = $derived(viewRows.find((row) => row.id === selection.id) ?? null);
@@ -109,6 +123,7 @@
 		const request = ++viewRequest;
 		viewLoading = true;
 		viewingRun = run;
+		viewDismissed = parseDismissed(run.dismissed_notices);
 		viewSchema = [];
 		viewRows = [];
 		viewImages = [];
@@ -266,14 +281,23 @@
 		</div>
 
 		<CostSummary accounting={costs.accounting} legacy={costs.legacy} inline />
-		<CostWarnings accounting={costs.accounting} />
-		<div class="history-notices">
-			{#if error}<ErrorNotice {error} context="history" />{/if}
-			{#if viewingRun.error}<ErrorNotice error={viewingRun.error} />{/if}
-			{#if issuesLoading}<p>Loading model request issues…</p>{/if}
-			{#if issueError}<ErrorNotice error={issueError} context="history" />{/if}
-			<LlmIssues issues={viewIssues} runStatus={viewingRun.status} />
-		</div>
+		{#if error || viewingRun.error || issueError}
+			<div class="history-notices">
+				{#if error}<ErrorNotice {error} context="history" />{/if}
+				{#if viewingRun.error}<ErrorNotice error={viewingRun.error} />{/if}
+				{#if issueError}<ErrorNotice error={issueError} context="history" />{/if}
+			</div>
+		{/if}
+		{#if !issuesLoading}
+			<RunNotices
+				issues={viewIssues}
+				accounting={costs.accounting}
+				runStatus={viewingRun.status}
+				turnCount={viewResearchTurns.length}
+				dismissed={viewDismissed}
+				ondismiss={dismissViewNotices}
+			/>
+		{/if}
 
 		{#if showExport}
 			<ExportDialog

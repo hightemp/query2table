@@ -80,7 +80,7 @@ Rules:
 
         let action = Self::parse_action(&response.content).map_err(|_| {
             let message = "The model response did not contain a valid research action".to_string();
-            llm.report_invalid_response("research", &message, &response);
+            llm.report_invalid_response("research", &message, &response, crate::providers::llm::IssueOutcome::Continued);
             message
         })?;
         Ok((action, response.prompt_tokens, response.completion_tokens))

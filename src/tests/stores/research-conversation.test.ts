@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { askFollowUp, openConversation, resetRun, runState, startNewRun } from '$lib/stores/run';
+import { askFollowUp, dismissNotices, openConversation, resetRun, runState, startNewRun } from '$lib/stores/run';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
@@ -20,7 +20,9 @@ describe('research conversations', () => {
 		apiInvoke.mockReset().mockImplementation(async (command) => {
 			if (command === 'start_run') return { run_id: 'run-1' } as never;
 			if (command === 'get_run')
-				return { id: 'run-1', query: 'Find proxies', status: 'completed', run_type: 'research', stats: null, error: null, created_at: 1 } as never;
+				return { id: 'run-1', query: 'Find proxies', status: 'completed', run_type: 'research', stats: null, error: null, created_at: 1, dismissed_notices: '{"cost:unknown":1}' } as never;
+			if (command === 'get_run_issues')
+				return [{ run_id: 'run-1', code: 'invalid_response', stage: 'research', turn_index: 0, outcome: 'continued' }] as never;
 			if (command === 'get_research_result')
 				return {
 					answer_markdown: 'Use Proxy-Seller.',
@@ -41,6 +43,23 @@ describe('research conversations', () => {
 		});
 	});
 	afterEach(resetRun);
+
+	it('keeps notices of earlier questions and remembers their dismissal', async () => {
+		await openConversation('run-1');
+		expect(get(runState).llmIssues).toMatchObject([{ code: 'invalid_response', turn_index: 0 }]);
+		expect(get(runState).noticesDismissed).toEqual({ 'cost:unknown': 1 });
+
+		await askFollowUp('Which are cheapest?', limits);
+		expect(get(runState).llmIssues).toHaveLength(1);
+
+		await dismissNotices({ 'llm:x': 2 });
+		expect(get(runState).noticesDismissed).toEqual({ 'llm:x': 2 });
+		expect(apiInvoke).toHaveBeenCalledWith('dismiss_run_notices', { runId: 'run-1', dismissed: { 'llm:x': 2 } });
+
+		await startNewRun('Other', 'research', limits);
+		expect(get(runState).noticesDismissed).toBeNull();
+		expect(get(runState).llmIssues).toEqual([]);
+	});
 
 	it('groups live steps and the answer into the first turn', async () => {
 		await startNewRun('Find proxies', 'research', limits);

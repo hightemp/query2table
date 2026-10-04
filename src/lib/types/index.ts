@@ -74,6 +74,8 @@ export interface RunInfo {
 	stats: string | null;
 	error: string | null;
 	created_at: number;
+	/** JSON map of dismissed notice kinds to counts. */
+	dismissed_notices?: string | null;
 }
 
 export interface RunLogEntry {
@@ -221,7 +223,22 @@ export interface LlmIssueEvent {
 	attempt: number;
 	max_attempts: number;
 	will_retry: boolean;
+	/** What the failure meant for the result; missing in runs recorded before outcomes. */
+	outcome?: LlmIssueOutcome | null;
+	/** Shared by the attempts of one request. */
+	call_id?: string | null;
+	/** Research conversation turn the request belonged to. */
+	turn_index?: number | null;
+	/** Unix time in milliseconds. */
+	at?: number | null;
 }
+
+/**
+ * retrying: another attempt follows. recovered: a later attempt succeeded.
+ * continued: the step worked around it with no loss. fallback: a simpler method was used.
+ * skipped: part of the result was dropped. stopped: the run ended at this step.
+ */
+export type LlmIssueOutcome = 'retrying' | 'recovered' | 'continued' | 'fallback' | 'skipped' | 'stopped';
 
 // --- Image Search types ---
 
