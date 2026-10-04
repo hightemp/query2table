@@ -10,7 +10,7 @@
 	import { formatUsd } from '$lib/utils/stopConditions';
 
 	const DEFAULT_LIMITS: Required<StopConditions> = {
-		target_row_count: 16,
+		target_row_count: 100,
 		max_budget_usd: 1,
 		max_duration_seconds: 600,
 	};

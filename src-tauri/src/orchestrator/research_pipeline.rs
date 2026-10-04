@@ -20,9 +20,9 @@ use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
 
 /// Maximum number of agent tool-call iterations per research run.
 /// Upper bound for the steps of one research turn, whatever the run asks for.
-pub const MAX_RESEARCH_STEPS: u32 = 50;
+pub const MAX_RESEARCH_STEPS: u32 = 200;
 
-/// Steps allowed for a turn: the run's "Max steps" stop condition, within 1..=50.
+/// Steps allowed for a turn: the run's "Max steps" stop condition, within 1..=200.
 pub fn max_steps(config: &PipelineConfig) -> u32 {
     (config.stop.target_row_count as u32).clamp(1, MAX_RESEARCH_STEPS)
 }
@@ -467,7 +467,9 @@ mod tests {
         assert_eq!(max_steps(&config), 8);
         config.stop.target_row_count = 0;
         assert_eq!(max_steps(&config), 1);
+        config.stop.target_row_count = 150;
+        assert_eq!(max_steps(&config), 150);
         config.stop.target_row_count = 500;
-        assert_eq!(max_steps(&config), MAX_RESEARCH_STEPS);
+        assert_eq!(max_steps(&config), 200);
     }
 }

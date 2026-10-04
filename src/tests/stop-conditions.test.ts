@@ -85,7 +85,7 @@ describe('run configuration check', () => {
 });
 
 describe('research step limit', () => {
-	it('has its own remembered value, 16 by default, up to 50', async () => {
+	it('has its own remembered value, 100 by default, up to 200', async () => {
 		const { stopInputFromSettings, parseStopConditions, stopSettingKeys } = await import(
 			'$lib/utils/stopConditions'
 		);
@@ -96,10 +96,10 @@ describe('research step limit', () => {
 			['max_budget_usd', '2.5'],
 			['max_duration_seconds', '1800'],
 		]);
-		expect(stopInputFromSettings(settings, 'research').target).toBe('16');
+		expect(stopInputFromSettings(settings, 'research').target).toBe('100');
 		expect(stopInputFromSettings(new Map([...settings, ['research_max_steps', '24']]), 'research').target).toBe('24');
 		expect(stopInputFromSettings(settings, 'images').target).toBe('120');
-		expect(parseStopConditions({ target: '51', budget: '1', duration: '10' }, 'research').errors.target).toMatch('1 to 50');
-		expect(parseStopConditions({ target: '50', budget: '1', duration: '10' }, 'research').conditions?.target_row_count).toBe(50);
+		expect(parseStopConditions({ target: '201', budget: '1', duration: '10' }, 'research').errors.target).toMatch('1 to 200');
+		expect(parseStopConditions({ target: '200', budget: '1', duration: '10' }, 'research').conditions?.target_row_count).toBe(200);
 	});
 });

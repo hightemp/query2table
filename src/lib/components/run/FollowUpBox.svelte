@@ -28,7 +28,7 @@
 	let sending = $state(false);
 	let error = $state('');
 	let editLimits = $state(false);
-	let input = $state<StopConditionInput>({ target: '16', budget: '1', duration: '10' });
+	let input = $state<StopConditionInput>({ target: '100', budget: '1', duration: '10' });
 	let edited = $state(false);
 	$effect(() => {
 		if (edited) return;
@@ -113,7 +113,7 @@
 					class="input sm"
 					type="number"
 					min="1"
-					max="50"
+					max="200"
 					value={input.target}
 					oninput={(e) => field('target', e.currentTarget.value)}
 				/></label

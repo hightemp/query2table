@@ -254,7 +254,7 @@ test('A live run shows activity first and switches to the answer when it arrives
 	await expect(page.getByRole('tabpanel', { name: 'Answer' })).toContainText('Платные провайдеры');
 });
 
-const limits = { target_row_count: 16, max_budget_usd: 1, max_duration_seconds: 600 };
+const limits = { target_row_count: 100, max_budget_usd: 1, max_duration_seconds: 600 };
 
 async function finishedLiveResearch(page: Page) {
 	await page.setViewportSize({ width: 1200, height: 800 });
@@ -283,7 +283,7 @@ test('Follow-up questions continue the conversation with its history', async ({ 
 	]);
 	await page.getByRole('button', { name: 'Какие из них дешевле?' }).click();
 	await expect(box).toHaveValue('Какие из них дешевле?');
-	await expect(page.getByRole('button', { name: /Follow-up limits/ })).toContainText('16 steps · $1.00 · 10 min');
+	await expect(page.getByRole('button', { name: /Follow-up limits/ })).toContainText('100 steps · $1.00 · 10 min');
 	await box.press('Control+Enter');
 
 	const [ask] = await calls(page, 'ask_follow_up');
@@ -358,13 +358,13 @@ test('Research has its own step limit and exports the conversation or one turn',
 	await page.setViewportSize({ width: 1200, height: 800 });
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Research', exact: true }).click();
-	await expect(page.getByRole('button', { name: /Stop conditions/ })).toContainText('16 steps');
+	await expect(page.getByRole('button', { name: /Stop conditions/ })).toContainText('100 steps');
 	await page.getByRole('button', { name: 'Table', exact: true }).click();
 	await expect(page.getByRole('button', { name: /Stop conditions/ })).toContainText('50 rows');
 	await page.getByRole('button', { name: 'Research', exact: true }).click();
 	await page.getByLabel('What would you like to find?').fill('Find proxies');
 	await page.getByRole('button', { name: 'Start Research' }).click();
-	expect((await calls(page, 'start_run'))[0].args.stopConditions.target_row_count).toBe(16);
+	expect((await calls(page, 'start_run'))[0].args.stopConditions.target_row_count).toBe(100);
 
 	await viewRun(page, 3);
 	await page.getByRole('button', { name: 'Export' }).click();

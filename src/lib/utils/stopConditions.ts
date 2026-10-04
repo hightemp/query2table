@@ -23,8 +23,8 @@ export function stopSettingKeys(mode: string) {
 		: STOP_SETTING_KEYS;
 }
 
-const RESEARCH_DEFAULT_STEPS = '16';
-const RESEARCH_MAX_STEPS = 50;
+const RESEARCH_DEFAULT_STEPS = '100';
+const RESEARCH_MAX_STEPS = 200;
 
 export const DEFAULT_STOP_INPUT: StopConditionInput = { target: '50', budget: '1.00', duration: '10' };
 
