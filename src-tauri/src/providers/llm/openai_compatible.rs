@@ -53,6 +53,19 @@ impl OpenAiCompatibleProvider {
         self
     }
 
+    /// GET `<base>/<path>` with the API key; errors keep the provider's status codes.
+    pub(super) async fn get_authenticated(&self, path: &str) -> Result<serde_json::Value, LlmError> {
+        let mut request = self
+            .client
+            .get(format!("{}/{}", self.base_url, path))
+            .timeout(std::time::Duration::from_secs(20));
+        if !self.api_key.is_empty() {
+            request = request.bearer_auth(&self.api_key);
+        }
+        let response = request.send().await.map_err(transport_error)?;
+        response_json(response, "").await
+    }
+
     /// Fetch model IDs from an OpenAI-compatible catalog.
     pub async fn list_models(&self) -> Result<Vec<String>, LlmError> {
         debug!(provider = self.name, "Loading model catalog");

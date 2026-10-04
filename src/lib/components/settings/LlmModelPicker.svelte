@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { listOllamaCloudModels, listOpenRouterModels } from '$lib/api/tauri';
+	import {
+		listOllamaCloudModels,
+		listOllamaModels,
+		listOpenAiModels,
+		listOpenRouterModels,
+	} from '$lib/api/tauri';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { errorText } from '$lib/utils/errors';
 
@@ -9,13 +14,16 @@
 		provider,
 		baseUrl = '',
 		apiKey,
+		allowCustom = false,
 		onchange,
 	}: {
 		id: string;
 		value: string;
-		provider: 'ollama_cloud' | 'openrouter';
+		provider: 'ollama_cloud' | 'openrouter' | 'ollama' | 'openai_compatible';
 		baseUrl?: string;
 		apiKey: string;
+		/** Local servers: typed text is the model name, the list only suggests. */
+		allowCustom?: boolean;
 		onchange: (model: string) => void;
 	} = $props();
 
@@ -55,7 +63,9 @@
 		};
 	});
 	const listId = $derived(`${id}-options`);
-	const providerLabel = $derived(provider === 'openrouter' ? 'OpenRouter' : 'Ollama Cloud');
+	const providerLabel = $derived(
+		{ openrouter: 'OpenRouter', ollama_cloud: 'Ollama Cloud', ollama: 'Ollama', openai_compatible: 'Server' }[provider]
+	);
 	const filtered = $derived(
 		models.filter(
 			(model) => !filtering || model.toLowerCase().includes(filter.trim().toLowerCase())
@@ -78,7 +88,11 @@
 				const result =
 					backend === 'openrouter'
 						? await listOpenRouterModels(key)
-						: await listOllamaCloudModels(url, key);
+						: backend === 'ollama'
+							? await listOllamaModels(url)
+							: backend === 'openai_compatible'
+								? await listOpenAiModels(url, key)
+								: await listOllamaCloudModels(url, key);
 				if (current) models = result;
 			} catch (e) {
 				if (current) error = errorText(e);
@@ -155,6 +169,7 @@
 				}}
 				oninput={(event) => {
 					filter = event.currentTarget.value;
+					if (allowCustom) onchange(filter.trim());
 					filtering = true;
 					activeIndex = -1;
 					open = true;

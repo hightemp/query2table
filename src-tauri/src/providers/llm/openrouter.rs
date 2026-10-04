@@ -27,6 +27,16 @@ impl OpenRouterProvider {
         self
     }
 
+    /// Checks the API key without generating anything.
+    pub async fn check_key(&self) -> Result<(), LlmError> {
+        self.inner.get_authenticated("key").await.map(|_| ())
+    }
+
+    /// Model IDs from the catalog this provider talks to.
+    pub async fn models(&self) -> Result<Vec<String>, LlmError> {
+        self.inner.list_models().await
+    }
+
     /// Load the public catalog, including before the user has entered an API key.
     pub async fn list_models(api_key: String) -> Result<Vec<String>, LlmError> {
         OpenAiCompatibleProvider::new(BASE_URL.into(), api_key, true)?

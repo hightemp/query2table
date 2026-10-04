@@ -470,6 +470,22 @@ impl Database {
         Ok(row)
     }
 
+    /// Saves several settings in one transaction: all of them or none.
+    pub async fn set_settings(&self, values: &std::collections::HashMap<String, String>) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        for (key, value) in values {
+            sqlx::query(
+                "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, unixepoch())
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+            )
+            .bind(key)
+            .bind(value)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await
+    }
+
     pub async fn set_setting(&self, key: &str, value: &str) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, unixepoch())

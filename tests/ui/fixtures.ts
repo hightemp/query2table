@@ -132,6 +132,24 @@ export const test = base.extend({
 							if (fixture.failSave) throw new Error('sqlite: database is locked');
 							values[args.key] = args.value;
 							return;
+						case 'update_settings':
+							if (fixture.failSave) throw new Error('sqlite: database is locked');
+							Object.assign(values, args.values);
+							return;
+						case 'test_llm_connection':
+							return { ok: true, message: 'Connected to Ollama Cloud; “deepseek-test” is available.' };
+						case 'test_search_connection':
+							return { ok: true, message: 'Brave Search answered with 1 result.' };
+						case 'test_proxy':
+							return { ok: true, message: 'The proxy works (120 ms).' };
+						case 'list_ollama_models':
+							return ['llama3:latest', 'qwen3:8b'];
+						case 'list_openai_models':
+							return ['local-model'];
+						case 'export_settings':
+							return;
+						case 'read_settings_file':
+							return { llm_temperature: '0.3', max_parallel_fetches: '4' };
 						case 'get_app_paths':
 							return {
 								data_dir: '/home/demo/' + 'long-folder/'.repeat(15),
@@ -253,7 +271,7 @@ export const test = base.extend({
 						case 'export_runs':
 							return args.runIds.map((id: string) => `${args.dir}/${id}.${args.format}`);
 						case 'plugin:dialog|open':
-							return '/tmp/exports';
+							return args?.options?.directory === false ? '/tmp/settings.json' : '/tmp/exports';
 						case 'export_run':
 							return fixture.delayExport
 								? new Promise<void>((resolve) => (fixture.finishExport = resolve))

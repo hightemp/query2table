@@ -14,14 +14,14 @@ for (const [width, height] of [
 				if (collapsed) await page.getByRole('button', { name: 'Toggle sidebar' }).click();
 				for (const logs of [false, true]) {
 					if (logs) await page.getByRole('button', { name: /Logs \(/ }).click();
-					await page.getByRole('link', { name: 'Application files', exact: true }).click();
+					await page.locator('#settings-app').evaluate((section) => section.scrollIntoView());
 					await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
 					await expect(page.getByLabel('Application logs', { exact: true })).toBeVisible();
 					const metrics = await page.evaluate(() => {
 						const scroll = document.querySelector('.settings-scroll')!;
 						const r = scroll.getBoundingClientRect();
 						const logs = document.querySelector('.log-panel')!.getBoundingClientRect();
-						const cards = [...scroll.querySelectorAll('.settings-section,.app-files')];
+						const cards = [...scroll.querySelectorAll('.settings-section')];
 						return {
 							width: innerWidth,
 							documentWidth: document.documentElement.scrollWidth,
@@ -46,11 +46,11 @@ for (const [width, height] of [
 
 test('Settings guard keeps edits and offers save, discard and stay', async ({ page }) => {
 	await page.goto('/settings');
-	await page.getByLabel(/^Max output tokens /).fill('8192');
+	await page.getByRole('spinbutton', { name: 'Temperature', exact: true }).fill('0.3');
 	await page.getByRole('link', { name: 'History', exact: true }).click();
 	await expect(page.getByRole('dialog', { name: 'Unsaved changes' })).toBeVisible();
 	await page.getByRole('button', { name: 'Stay', exact: true }).click();
-	await expect(page.getByLabel(/^Max output tokens /)).toHaveValue('8192');
+	await expect(page.getByRole('spinbutton', { name: 'Temperature', exact: true })).toHaveValue('0.3');
 	await page.evaluate(() => ((window as any).__uiFixture.failSave = true));
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByRole('alert')).toContainText('Local data');
@@ -65,10 +65,10 @@ test('Search fallback can be disabled and remains disabled when Settings is reop
 }) => {
 	await page.setViewportSize({ width: 900, height: 600 });
 	await page.goto('/settings');
-	const fallback = page.getByRole('combobox', { name: /^Use backup search provider / });
+	const fallback = page.getByRole('switch', { name: 'Use the other provider as backup' });
 	await fallback.scrollIntoViewIfNeeded();
-	await expect(fallback).toHaveValue('true');
-	await fallback.selectOption('false');
+	await expect(fallback).toHaveAttribute('aria-checked', 'true');
+	await fallback.click();
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect
 		.poll(() => page.evaluate(() => (window as any).__uiFixture.values.search_fallback_enabled))
@@ -76,10 +76,10 @@ test('Search fallback can be disabled and remains disabled when Settings is reop
 	await page.getByRole('link', { name: 'History', exact: true }).click();
 	await page.getByRole('link', { name: 'Settings', exact: true }).click();
 	await fallback.scrollIntoViewIfNeeded();
-	await expect(fallback).toHaveValue('false');
-	await fallback.selectOption('true');
+	await expect(fallback).toHaveAttribute('aria-checked', 'false');
+	await fallback.click();
 	await page.getByRole('button', { name: 'Discard', exact: true }).click();
-	await expect(fallback).toHaveValue('false');
+	await expect(fallback).toHaveAttribute('aria-checked', 'false');
 });
 
 test('Model menu fits the viewport and keyboard filtering preserves the saved value', async ({
@@ -87,7 +87,7 @@ test('Model menu fits the viewport and keyboard filtering preserves the saved va
 }) => {
 	await page.setViewportSize({ width: 900, height: 600 });
 	await page.goto('/settings');
-	const model = page.getByRole('combobox', { name: /Ollama Cloud Model/ });
+	const model = page.getByRole('combobox', { name: 'Model', exact: true });
 	await model.scrollIntoViewIfNeeded();
 	await model.click();
 	await expect(page.getByRole('option', { name: 'model-0', exact: true })).toBeVisible();
@@ -375,8 +375,8 @@ test('Canonical live rows refresh an open detail panel and remove merged duplica
 
 test('Model tariffs are scoped, validated, saved and restored independently', async ({ page }) => {
 	await page.goto('/settings');
-	await expect(page.getByLabel(/^Brave USD \/ 1,000 requests/)).toHaveValue('0');
-	await expect(page.getByLabel(/^Serper USD \/ 1,000 requests/)).toHaveValue('0');
+	await expect(page.getByLabel('Brave price per 1,000 requests', { exact: true })).toHaveValue('0');
+	await expect(page.getByLabel('Serper price per 1,000 requests', { exact: true })).toHaveValue('0');
 	const custom = page.getByRole('checkbox', {
 		name: 'Use custom rates for this model and endpoint',
 	});
@@ -387,7 +387,7 @@ test('Model tariffs are scoped, validated, saved and restored independently', as
 	await page.getByLabel('Output USD / 1M tokens', { exact: true }).fill('0.60');
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
-	const model = page.getByRole('combobox', { name: /Ollama Cloud Model/ });
+	const model = page.getByRole('combobox', { name: 'Model', exact: true });
 	await model.scrollIntoViewIfNeeded();
 	await model.click();
 	await model.fill('model-0');

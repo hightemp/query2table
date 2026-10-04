@@ -317,6 +317,8 @@ pub fn test_pipeline_config() -> PipelineConfig {
         max_pdf_text_chars: 500_000,
         max_page_size_bytes: 5 * 1024 * 1024,
         suggested_schema: None,
+        fetch_timeout_secs: 15,
+        max_pages_per_query: 100,
     }
 }
 

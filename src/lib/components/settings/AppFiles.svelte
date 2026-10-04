@@ -98,6 +98,7 @@
 						type="text"
 						readonly
 						value={paths[item.key]}
+						title={paths[item.key]}
 						onclick={(e) => e.currentTarget.select()}
 					/>
 					<button

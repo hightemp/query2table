@@ -228,6 +228,50 @@ export function onLlmIssue(cb: (e: LlmIssueEvent) => void): Promise<UnlistenFn> 
 	return listen<LlmIssueEvent>('run:llm_issue', (event) => cb(event.payload));
 }
 
+// --- Settings page ---
+
+/** Saves several settings at once: all of them or none. */
+export async function updateSettings(values: Record<string, string>): Promise<void> {
+	return invoke('update_settings', { values });
+}
+
+export interface ConnectionReport {
+	ok: boolean;
+	message: string;
+}
+
+/** Checks LLM credentials and model with unsaved form values; generates nothing. */
+export async function testLlmConnection(settings: Record<string, string>): Promise<ConnectionReport> {
+	return invoke('test_llm_connection', { settings });
+}
+
+/** Runs one (billable) search with unsaved form values. */
+export async function testSearchConnection(settings: Record<string, string>): Promise<ConnectionReport> {
+	return invoke('test_search_connection', { settings });
+}
+
+export async function testProxy(url: string): Promise<ConnectionReport> {
+	return invoke('test_proxy', { url });
+}
+
+export async function listOllamaModels(baseUrl: string): Promise<string[]> {
+	return invoke('list_ollama_models', { baseUrl });
+}
+
+export async function listOpenAiModels(baseUrl: string, apiKey: string): Promise<string[]> {
+	return invoke('list_openai_models', { baseUrl, apiKey });
+}
+
+/** Writes settings without API keys or proxies to a JSON file. */
+export async function exportSettings(path: string): Promise<void> {
+	return invoke('export_settings', { path });
+}
+
+/** Settings from a file, to apply as unsaved changes. */
+export async function readSettingsFile(path: string): Promise<Record<string, string>> {
+	return invoke('read_settings_file', { path });
+}
+
 export async function getRunIssues(runId: string): Promise<LlmIssueEvent[]> {
 	return invoke('get_run_issues', { runId });
 }

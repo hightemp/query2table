@@ -28,6 +28,16 @@ impl SearchExecutor {
         queries: &[PlannedSearch],
         search: &SearchManager,
     ) -> Result<CollectedResults, SearchError> {
+        Self::execute_limited(queries, search, None).await
+    }
+
+    /// Like `execute`, keeping at most `max_per_query` new pages from each query
+    /// ("Pages per query" setting).
+    pub async fn execute_limited(
+        queries: &[PlannedSearch],
+        search: &SearchManager,
+        max_per_query: Option<usize>,
+    ) -> Result<CollectedResults, SearchError> {
         debug!(query_count = queries.len(), "Executing search queries");
 
         let mut all_results = Vec::new();
@@ -47,9 +57,14 @@ impl SearchExecutor {
                         results = results.len(),
                         "Search query completed"
                     );
+                    let mut taken = 0;
                     for result in results {
+                        if max_per_query.is_some_and(|max| taken >= max) {
+                            break;
+                        }
                         // Deduplicate by URL
                         if seen_urls.insert(result.url.clone()) {
+                            taken += 1;
                             all_results.push(SearchResultWithQuery {
                                 result,
                                 query_text: query.query_text.clone(),
@@ -93,6 +108,46 @@ impl SearchExecutor {
 mod tests {
     use super::*;
     use crate::providers::search::SearchResult;
+
+    struct FixedSearch;
+
+    #[async_trait::async_trait]
+    impl crate::providers::search::types::SearchProvider for FixedSearch {
+        async fn search(
+            &self,
+            query: crate::providers::search::types::SearchQuery,
+        ) -> Result<Vec<SearchResult>, SearchError> {
+            Ok((0..5)
+                .map(|i| SearchResult {
+                    title: format!("{} {i}", query.query),
+                    url: format!("https://{}.example/{i}", query.query.replace(' ', "-")),
+                    snippet: String::new(),
+                })
+                .collect())
+        }
+        fn provider_name(&self) -> &str {
+            "fixed"
+        }
+        async fn health_check(&self) -> Result<(), SearchError> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn each_query_contributes_at_most_the_pages_per_query_setting() {
+        let search = SearchManager::with_providers(std::sync::Arc::new(FixedSearch), None, Default::default());
+        let planned = |text: &str| PlannedSearch {
+            query_text: text.into(),
+            language: "en".into(),
+            geo_target: None,
+            priority: 1,
+        };
+        let queries = [planned("first"), planned("second")];
+        let limited = SearchExecutor::execute_limited(&queries, &search, Some(2)).await.unwrap();
+        assert_eq!(limited.results.len(), 4);
+        let all = SearchExecutor::execute(&queries, &search).await.unwrap();
+        assert_eq!(all.results.len(), 10);
+    }
 
     #[test]
     fn test_collected_results() {

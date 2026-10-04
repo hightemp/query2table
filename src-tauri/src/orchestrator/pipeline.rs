@@ -45,6 +45,10 @@ pub struct PipelineConfig {
     pub max_page_size_bytes: u64,
     /// Table runs: columns proposed for review instead of planning new ones (Run again).
     pub suggested_schema: Option<Vec<SchemaColumn>>,
+    /// Seconds allowed for loading one page.
+    pub fetch_timeout_secs: u64,
+    /// New pages taken from the results of each search query.
+    pub max_pages_per_query: usize,
 }
 
 impl PipelineConfig {
@@ -97,6 +101,14 @@ impl PipelineConfig {
                 .map(|kb| kb * 1024)
                 .unwrap_or(5 * 1024 * 1024),
             suggested_schema: None,
+            fetch_timeout_secs: settings.get("fetch_timeout_seconds")
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(15)
+                .clamp(1, 300),
+            max_pages_per_query: settings.get("max_pages_per_query")
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|n| *n > 0)
+                .unwrap_or(10),
         }
     }
 }
@@ -382,7 +394,7 @@ impl Pipeline {
         // --- Phase 5: Execute searches ---
         self.log("INFO", "search_executor", &format!("Executing {} search queries via {}...", all_queries.len(), search.primary_name())).await;
 
-        let collected = SearchExecutor::execute(&all_queries, &search)
+        let collected = SearchExecutor::execute_limited(&all_queries, &search, Some(self.config.max_pages_per_query))
             .await
             .map_err(|e| PipelineError::Search(format!("SearchExecutor: {e}")))?;
 
@@ -424,7 +436,11 @@ impl Pipeline {
             f
         } else {
             let rate_limiter = RateLimiter::new(std::time::Duration::from_millis(self.config.rate_limit_ms));
-            Arc::new(HttpFetcher::new(rate_limiter).with_max_body_bytes(self.config.max_page_size_bytes))
+            Arc::new(
+                HttpFetcher::new(rate_limiter)
+                    .with_max_body_bytes(self.config.max_page_size_bytes)
+                    .with_timeout(std::time::Duration::from_secs(self.config.fetch_timeout_secs)),
+            )
         };
 
         // Compute truncation limits (None means no truncation)
@@ -843,5 +859,29 @@ mod tests {
 
         let e = PipelineError::Cancelled;
         assert_eq!(e.to_string(), "Pipeline cancelled");
+    }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+
+    #[test]
+    fn fetch_timeout_and_pages_per_query_come_from_settings() {
+        let defaults = PipelineConfig::from_settings(&HashMap::new());
+        assert_eq!((defaults.fetch_timeout_secs, defaults.max_pages_per_query), (15, 10));
+        let settings = HashMap::from([
+            ("fetch_timeout_seconds".to_string(), "40".to_string()),
+            ("max_pages_per_query".to_string(), "3".to_string()),
+        ]);
+        let config = PipelineConfig::from_settings(&settings);
+        assert_eq!((config.fetch_timeout_secs, config.max_pages_per_query), (40, 3));
+        // Out-of-range values fall back to something usable.
+        let odd = HashMap::from([
+            ("fetch_timeout_seconds".to_string(), "0".to_string()),
+            ("max_pages_per_query".to_string(), "x".to_string()),
+        ]);
+        let config = PipelineConfig::from_settings(&odd);
+        assert_eq!((config.fetch_timeout_secs, config.max_pages_per_query), (1, 10));
     }
 }

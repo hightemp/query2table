@@ -59,7 +59,7 @@ describe('run configuration check', () => {
 			new Map(Object.entries({ ...base, llm_provider: 'openrouter', openrouter_model: '' }))
 		);
 		expect(problems).toEqual([
-			{ message: 'OpenRouter needs API key and model.', section: 'llm' },
+			{ message: 'OpenRouter needs API key and model.', section: 'llm', key: 'openrouter_api_key' },
 		]);
 		expect(
 			configurationProblems(
@@ -80,7 +80,7 @@ describe('run configuration check', () => {
 				})
 			)
 		);
-		expect(problems).toEqual([{ message: 'Serper needs an API key.', section: 'search' }]);
+		expect(problems).toEqual([{ message: 'Serper needs an API key.', section: 'search', key: 'serper_api_key' }]);
 	});
 });
 

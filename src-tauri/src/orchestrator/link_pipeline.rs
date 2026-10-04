@@ -125,7 +125,7 @@ impl LinkPipeline {
             })
             .collect();
 
-        let collected = SearchExecutor::execute(&planned, &search)
+        let collected = SearchExecutor::execute_limited(&planned, &search, Some(self.config.max_pages_per_query))
             .await
             .map_err(|e| format!("Search: {e}"))?;
 
@@ -153,7 +153,9 @@ impl LinkPipeline {
 
         let rate_limiter = RateLimiter::new(std::time::Duration::from_millis(self.config.rate_limit_ms));
         let fetcher = Arc::new(
-            HttpFetcher::new(rate_limiter).with_max_body_bytes(self.config.max_page_size_bytes),
+            HttpFetcher::new(rate_limiter)
+                .with_max_body_bytes(self.config.max_page_size_bytes)
+                .with_timeout(std::time::Duration::from_secs(self.config.fetch_timeout_secs)),
         );
         let max_pdf_chars = if self.config.enable_content_truncation {
             Some(self.config.max_pdf_text_chars)

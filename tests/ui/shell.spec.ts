@@ -172,12 +172,9 @@ test('Ctrl+F focuses the table search and Ctrl+S saves settings', async ({ page 
 	await expect(page.getByRole('searchbox', { name: 'Search results' })).toBeFocused();
 
 	await page.goto('/settings');
-	await page.getByLabel('Temperature').fill('0.4');
+	await page.getByRole('spinbutton', { name: 'Temperature', exact: true }).fill('0.4');
 	await page.keyboard.press('Control+s');
 	await expect(page.getByText('Changes saved', { exact: true })).toBeVisible();
-	const saved = await fixtureCalls(page, 'update_setting');
-	expect(saved.map((c: any) => [c.args.key, c.args.value])).toContainEqual([
-		'llm_temperature',
-		'0.4',
-	]);
+	const [saved] = await fixtureCalls(page, 'update_settings');
+	expect(saved.args.values).toEqual({ llm_temperature: '0.4' });
 });

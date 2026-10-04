@@ -1,18 +1,57 @@
 <script lang="ts">
-	import { settings } from '$lib/stores/settings';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
+	import { open as openFile, save as saveFile } from '@tauri-apps/plugin-dialog';
+	import {
+		SaveIcon,
+		TrashIcon,
+		PlusIcon,
+		SearchIcon,
+		ChevronDownIcon,
+		ChevronRightIcon,
+		RotateCcwIcon,
+		PlugIcon,
+		DownloadIcon,
+		UploadIcon,
+		CircleCheckIcon,
+		TriangleAlertIcon,
+		SunIcon,
+		MoonIcon,
+		MonitorIcon,
+	} from '@lucide/svelte';
+	import { settings } from '$lib/stores/settings';
+	import { setTheme, themePreference, type ThemePreference } from '$lib/stores/ui';
+	import { toast } from '$lib/stores/toasts';
 	import Dialog from '$lib/components/common/Dialog.svelte';
-	import { debugUi } from '$lib/utils/diagnostics';
+	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import LlmModelPicker from '$lib/components/settings/LlmModelPicker.svelte';
 	import ModelPricing from '$lib/components/settings/ModelPricing.svelte';
-	import { validPricingOverrides } from '$lib/utils/pricing';
 	import AppFiles from '$lib/components/settings/AppFiles.svelte';
-	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
-	import { errorText } from '$lib/utils/errors';
+	import SettingField from '$lib/components/settings/SettingField.svelte';
+	import {
+		exportSettings,
+		readSettingsFile,
+		testLlmConnection,
+		testProxy,
+		testSearchConnection,
+		type ConnectionReport,
+	} from '$lib/api/tauri';
+	import {
+		SECTIONS,
+		fieldsIn,
+		isDefault,
+		maskProxyUrl,
+		matchingFields,
+		sectionResetValues,
+		validationErrors,
+		type FieldDef,
+		type SectionId,
+	} from '$lib/settings/schema';
+	import { configurationProblems } from '$lib/utils/runConfig';
+	import { validPricingOverrides } from '$lib/utils/pricing';
+	import { debugUi } from '$lib/utils/diagnostics';
+	import { errorText, presentError } from '$lib/utils/errors';
 	import { hasMod, modKey } from '$lib/utils/shortcuts';
-	import type { SettingGroup, SettingDef } from '$lib/types';
-	import { EyeIcon, EyeOffIcon, SaveIcon, TrashIcon, PlusIcon } from '@lucide/svelte';
 
 	let settingsMap: Map<string, string> = $state(new Map());
 	let dirty = $state(new Set<string>());
@@ -21,504 +60,240 @@
 	let savedFeedback = $state(false);
 	let leaveAction = $state<(() => void | Promise<void>) | null>(null);
 	let allowLeave = false;
-	const sectionNames = [
-		'LLM',
-		'Search',
-		'Execution',
-		'Quality',
-		'Content',
-		'Application',
-		'Network',
-		'Application files',
-	];
-	const sectionIds = [
-		'llm',
-		'search',
-		'execution',
-		'quality',
-		'content',
-		'app',
-		'network',
-		'files',
-	];
 	let saveError = $state('');
-	let showPasswords = $state(new Set<string>());
+	let query = $state('');
+	let advancedOpen = $state<string[]>([]);
+	let activeSection = $state<SectionId>('llm');
+	let scroller = $state<HTMLDivElement>();
+	let searchInput = $state<HTMLInputElement>();
+	let importMessage = $state('');
+	type Check = { running: boolean; report: ConnectionReport | null; error: string };
+	let checks = $state<Record<string, Check>>({});
+	let proxyFocus = $state<number | null>(null);
 
 	const unsubscribe = settings.subscribe((v) => {
 		// Don't overwrite local edits while saving
 		if (saving) return;
 		savedValues = new Map(v);
-		const newMap = new Map(v);
+		const next = new Map(v);
 		// Preserve any unsaved local changes
 		for (const key of dirty) {
-			const localVal = settingsMap.get(key);
-			if (localVal !== undefined) {
-				newMap.set(key, localVal);
-			}
+			const local = settingsMap.get(key);
+			if (local !== undefined) next.set(key, local);
 		}
-		settingsMap = newMap;
+		settingsMap = next;
 	});
-
 	onDestroy(unsubscribe);
 
-	const groups: SettingGroup[] = [
-		{
-			label: 'LLM Provider',
-			description: 'Configure your LLM API connection',
-			settings: [
-				{
-					key: 'llm_provider',
-					label: 'Provider',
-					description: 'Which LLM service to use',
-					type: 'select',
-					options: [
-						{ label: 'OpenRouter', value: 'openrouter' },
-						{ label: 'Ollama (Local)', value: 'ollama' },
-						{ label: 'Ollama Cloud', value: 'ollama_cloud' },
-						{ label: 'OpenAI-compatible (llama.cpp, etc.)', value: 'openai_compatible' },
-					],
-				},
-				{
-					key: 'openrouter_api_key',
-					provider: 'openrouter',
-					label: 'OpenRouter API Key',
-					description: 'Your OpenRouter API key',
-					type: 'password',
-					placeholder: 'sk-or-...',
-				},
-				{
-					key: 'openrouter_model',
-					provider: 'openrouter',
-					label: 'OpenRouter Model',
-					description: 'Search and select a model from the server',
-					type: 'text',
-				},
-				{
-					key: 'ollama_url',
-					provider: 'ollama',
-					label: 'Ollama URL',
-					description: 'Local Ollama server URL',
-					type: 'text',
-					placeholder: 'http://localhost:11434',
-				},
-				{
-					key: 'ollama_model',
-					provider: 'ollama',
-					label: 'Ollama Model',
-					description: 'Local model name',
-					type: 'text',
-					placeholder: 'llama3',
-				},
-				{
-					key: 'ollama_cloud_url',
-					provider: 'ollama_cloud',
-					label: 'Ollama Cloud URL',
-					description: 'Cloud host URL',
-					type: 'text',
-					placeholder: 'https://ollama.com',
-				},
-				{
-					key: 'ollama_cloud_api_key',
-					provider: 'ollama_cloud',
-					label: 'Ollama Cloud API Key',
-					description: 'Required; create a key at ollama.com/settings/keys',
-					type: 'password',
-				},
-				{
-					key: 'ollama_cloud_model',
-					provider: 'ollama_cloud',
-					label: 'Ollama Cloud Model',
-					description: 'Search and select a model from the server',
-					type: 'text',
-				},
-				{
-					key: 'openai_base_url',
-					provider: 'openai_compatible',
-					label: 'API Base URL',
-					description: 'API base including /v1; e.g. http://localhost:8080/v1 for llama.cpp',
-					type: 'text',
-					placeholder: 'http://localhost:8080/v1',
-				},
-				{
-					key: 'openai_api_key',
-					provider: 'openai_compatible',
-					label: 'API Key (optional)',
-					description: 'Leave empty if your server does not require authentication',
-					type: 'password',
-				},
-				{
-					key: 'openai_model',
-					provider: 'openai_compatible',
-					label: 'Model',
-					description:
-						'Required model ID from your server; use the loaded model name or alias in llama.cpp',
-					type: 'text',
-					placeholder: 'Your loaded model ID',
-				},
-				{
-					key: 'openai_json_mode',
-					provider: 'openai_compatible',
-					label: 'JSON Mode',
-					description:
-						'Disable if your server does not support response_format; prompts still request JSON',
-					type: 'select',
-					options: [
-						{ label: 'Enabled', value: 'true' },
-						{ label: 'Disabled', value: 'false' },
-					],
-				},
-				{
-					key: 'llm_temperature',
-					label: 'Temperature',
-					description: 'LLM temperature (0.0 - 1.0)',
-					type: 'number',
-				},
-				{
-					key: 'llm_reasoning_effort',
-					label: 'Thinking / reasoning effort',
-					description:
-						'Controls model thinking before its answer; supported levels depend on the provider and model',
-					type: 'select',
-					options: [
-						{ label: 'Auto', value: 'auto' },
-						{ label: 'Provider default', value: 'default' },
-						{ label: 'Off', value: 'off' },
-						{ label: 'On', value: 'on' },
-						{ label: 'Low', value: 'low' },
-						{ label: 'Medium', value: 'medium' },
-						{ label: 'High', value: 'high' },
-						{ label: 'Max', value: 'max' },
-					],
-				},
-				{
-					key: 'llm_max_tokens',
-					label: 'Max output tokens',
-					description:
-						'Requested output cap per model call, potentially shared by thinking and the answer. Separate from run cost/time limits.',
-					type: 'number',
-				},
-			],
-		},
-		{
-			label: 'Search Provider',
-			description: 'Configure web search APIs',
-			settings: [
-				{
-					key: 'search_provider',
-					label: 'Primary Search',
-					description: 'Which search API to use',
-					type: 'select',
-					options: [
-						{ label: 'Brave Search', value: 'brave' },
-						{ label: 'Serper (Google)', value: 'serper' },
-					],
-				},
-				{
-					key: 'search_results_per_query',
-					label: 'Results per Query',
-					description:
-						'Maximum results requested per search query. Changes apply to new runs after Save. Brave limits each web request to 20 and each image request to 200.',
-					type: 'number',
-				},
-				{
-					key: 'search_fallback_enabled',
-					label: 'Use backup search provider',
-					description:
-						'When enabled, try the other provider after the primary fails, if its API key is saved. Applies to web and image searches in new runs.',
-					type: 'select',
-					options: [
-						{ label: 'Enabled', value: 'true' },
-						{ label: 'Disabled — selected provider only', value: 'false' },
-					],
-				},
-				{
-					key: 'brave_api_key',
-					label: 'Brave Search API Key',
-					description: 'Your Brave Search API key',
-					type: 'password',
-					placeholder: 'BSA...',
-				},
-				{
-					key: 'serper_api_key',
-					label: 'Serper API Key',
-					description: 'Your Serper API key',
-					type: 'password',
-				},
-				{
-					key: 'brave_price_per_1000',
-					label: 'Brave USD / 1,000 requests',
-					description:
-						'Default 0 excludes search charges from estimates. Set your plan’s rate, or leave blank if unknown. Applies to new runs after Save.',
-					type: 'number',
-				},
-				{
-					key: 'serper_price_per_1000',
-					label: 'Serper USD / 1,000 requests',
-					description:
-						'Default 0 excludes search charges from estimates. Set your plan’s rate, or leave blank if unknown. Applies to new runs after Save.',
-					type: 'number',
-				},
-			],
-		},
-		{
-			label: 'Execution',
-			description: 'Pipeline execution parameters',
-			settings: [
-				{
-					key: 'max_parallel_fetches',
-					label: 'Max Parallel Fetches',
-					description: 'Concurrent page fetches (1-20)',
-					type: 'number',
-				},
-				{
-					key: 'fetch_timeout_seconds',
-					label: 'Fetch Timeout (s)',
-					description: 'HTTP fetch timeout in seconds',
-					type: 'number',
-				},
-				{
-					key: 'max_pages_per_query',
-					label: 'Pages per Query',
-					description: 'Max pages to fetch per search query',
-					type: 'number',
-				},
-			],
-		},
-		{
-			label: 'Quality',
-			description: 'Result quality thresholds',
-			settings: [
-				{
-					key: 'precision_recall',
-					label: 'Precision / Recall',
-					description: 'Balance between accuracy and coverage',
-					type: 'select',
-					options: [
-						{ label: 'Favor Recall', value: 'recall' },
-						{ label: 'Balanced', value: 'balanced' },
-						{ label: 'Favor Precision', value: 'precision' },
-					],
-				},
-				{
-					key: 'evidence_strictness',
-					label: 'Evidence Strictness',
-					description: 'How strictly to require source evidence',
-					type: 'select',
-					options: [
-						{ label: 'Low', value: 'low' },
-						{ label: 'Moderate', value: 'moderate' },
-						{ label: 'Strict', value: 'strict' },
-					],
-				},
-				{
-					key: 'dedup_similarity_threshold',
-					label: 'Dedup Threshold',
-					description: 'Similarity threshold for deduplication (0.0-1.0)',
-					type: 'number',
-				},
-			],
-		},
-		{
-			label: 'Content Processing',
-			description: 'Configure document truncation and size limits',
-			settings: [
-				{
-					key: 'enable_content_truncation',
-					label: 'Enable Truncation',
-					description: 'Enable or disable document text truncation',
-					type: 'select',
-					options: [
-						{ label: 'Enabled', value: 'true' },
-						{ label: 'Disabled', value: 'false' },
-					],
-				},
-				{
-					key: 'max_extraction_text_chars',
-					label: 'Max Extraction Text (chars)',
-					description: 'Max characters of page text sent to LLM for extraction',
-					type: 'number',
-				},
-				{
-					key: 'max_pdf_text_chars',
-					label: 'Max PDF Text (chars)',
-					description: 'Max characters extracted from PDF documents',
-					type: 'number',
-				},
-				{
-					key: 'max_page_size_kb',
-					label: 'Max Page Size (KB)',
-					description: 'Max download size for a single page in kilobytes',
-					type: 'number',
-				},
-			],
-		},
-		{
-			label: 'Application',
-			description: 'Desktop behavior',
-			settings: [
-				{
-					key: 'notifications_enabled',
-					label: 'Run notifications',
-					description:
-						'Show a system notification when a run completes or fails while Query2Table is in the background. Applies to new runs after Save.',
-					type: 'select',
-					options: [
-						{ label: 'Enabled', value: 'true' },
-						{ label: 'Disabled', value: 'false' },
-					],
-				},
-				{
-					key: 'show_site_icons',
-					label: 'Site icons',
-					description:
-						'Show website icons next to links. Icons are loaded from icons.duckduckgo.com, which then sees the sites in your results. When disabled, a letter is shown instead.',
-					type: 'select',
-					options: [
-						{ label: 'Show', value: 'true' },
-						{ label: 'Hide', value: 'false' },
-					],
-				},
-			],
-		},
-	];
-
-	function getValue(key: string): string {
-		return (
-			settingsMap.get(key) ??
-			(key === 'llm_reasoning_effort' ? 'auto' : ['search_fallback_enabled', 'notifications_enabled', 'show_site_icons'].includes(key)
-				? 'true'
-				: '')
-		);
+	function value(field: FieldDef | string): string {
+		const key = typeof field === 'string' ? field : field.key;
+		const def = typeof field === 'string' ? '' : field.default;
+		return settingsMap.get(key) ?? def;
 	}
 
-	let activeModel = $derived(
-		settingsMap.get(
-			{
-				openrouter: 'openrouter_model',
-				ollama: 'ollama_model',
-				ollama_cloud: 'ollama_cloud_model',
-				openai_compatible: 'openai_model',
-			}[settingsMap.get('llm_provider') || 'openrouter'] ?? 'openrouter_model'
-		) ?? ''
-	);
-	let isGptOss = $derived(
-		['ollama', 'ollama_cloud'].includes(settingsMap.get('llm_provider') ?? '') &&
-			/(?:^|\/)gpt-oss(?:[:\-]|$)/i.test(activeModel)
-	);
-	let activeProvider = $derived(settingsMap.get('llm_provider') || 'openrouter');
-	let activeEndpoint = $derived(
-		activeProvider === 'openrouter'
-			? 'https://openrouter.ai/api/v1'
-			: activeProvider === 'ollama'
-				? (settingsMap.get('ollama_url') ?? 'http://localhost:11434')
-				: activeProvider === 'ollama_cloud'
-					? (settingsMap.get('ollama_cloud_url') ?? 'https://ollama.com')
-					: (settingsMap.get('openai_base_url') ?? 'http://localhost:8080/v1')
-	);
-	let invalidPricing = $derived(
-		!validPricingOverrides(settingsMap.get('llm_pricing_overrides') ?? '{}') ||
-			['brave_price_per_1000', 'serper_price_per_1000'].some((key) => {
-				const value = settingsMap.get(key) ?? '';
-				return value.trim() !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0);
-			})
-	);
-
-	let invalidReasoning = $derived(
-		isGptOss && ['off', 'max'].includes(getValue('llm_reasoning_effort'))
-	);
-
-	function visibleSettings(group: SettingGroup): SettingDef[] {
-		const provider = settingsMap.get('llm_provider') || 'openrouter';
-		return group.settings.filter((setting) => !setting.provider || setting.provider === provider);
-	}
-
-	function handleChange(key: string, value: string) {
+	function handleChange(key: string, next: string) {
 		saveError = '';
-		settingsMap.set(key, value);
+		settingsMap.set(key, next);
 		settingsMap = new Map(settingsMap);
 		savedFeedback = false;
-		if (value === (savedValues.get(key) ?? '')) dirty.delete(key);
+		if (next === (savedValues.get(key) ?? '')) dirty.delete(key);
 		else dirty.add(key);
 		dirty = new Set(dirty);
 	}
 
-	// --- Proxy management ---
+	// --- Derived state ---
+	let errors = $derived(validationErrors(settingsMap));
+	let problems = $derived(configurationProblems(settingsMap));
+	let provider = $derived(settingsMap.get('llm_provider') || 'openrouter');
+	let modelKey = $derived(
+		({ openrouter: 'openrouter_model', ollama: 'ollama_model', ollama_cloud: 'ollama_cloud_model', openai_compatible: 'openai_model' } as Record<string, string>)[provider] ??
+			'openrouter_model'
+	);
+	let activeModel = $derived(settingsMap.get(modelKey) ?? '');
+	let activeEndpoint = $derived(
+		provider === 'openrouter'
+			? 'https://openrouter.ai/api/v1'
+			: provider === 'ollama'
+				? (settingsMap.get('ollama_url') ?? 'http://localhost:11434')
+				: provider === 'ollama_cloud'
+					? (settingsMap.get('ollama_cloud_url') ?? 'https://ollama.com')
+					: (settingsMap.get('openai_base_url') ?? 'http://localhost:8080/v1')
+	);
+	let isGptOss = $derived(['ollama', 'ollama_cloud'].includes(provider) && /(?:^|\/)gpt-oss(?:[:\-]|$)/i.test(activeModel));
+	let invalidReasoning = $derived(isGptOss && ['off', 'max'].includes(settingsMap.get('llm_reasoning_effort') ?? 'auto'));
+	let invalidPricing = $derived(!validPricingOverrides(settingsMap.get('llm_pricing_overrides') ?? '{}'));
+	// Values saved earlier are flagged but only edited ones block saving.
+	let blocked = $derived(invalidReasoning || invalidPricing || Object.keys(errors).some((key) => dirty.has(key)));
+	let searching = $derived(!!query.trim());
+	let matches = $derived(new Set(matchingFields(query, settingsMap).map((f) => f.key)));
+
+	/** Error marks beat unsaved-change marks in the section list. */
+	function sectionState(id: SectionId): 'error' | 'changed' | undefined {
+		const fields = fieldsIn(id, settingsMap);
+		if (fields.some((f) => errors[f.key]) || (id === 'llm' && (invalidReasoning || invalidPricing))) return 'error';
+		const keys = id === 'network' ? ['proxy_list', 'active_proxy_url'] : id === 'llm' ? [...fields.map((f) => f.key), 'llm_pricing_overrides'] : fields.map((f) => f.key);
+		return keys.some((key) => dirty.has(key)) ? 'changed' : undefined;
+	}
+
+	function visible(field: FieldDef): boolean {
+		return searching ? matches.has(field.key) : true;
+	}
+	function advancedShown(section: SectionId): boolean {
+		if (searching || advancedOpen.includes(section)) return true;
+		// Opens by itself when something inside needs attention.
+		return fieldsIn(section, settingsMap).some(
+			(f) => f.advanced && (errors[f.key] || dirty.has(f.key))
+		);
+	}
+	function toggleAdvanced(section: SectionId) {
+		advancedOpen = advancedOpen.includes(section) ? advancedOpen.filter((s) => s !== section) : [...advancedOpen, section];
+	}
+	function sectionVisible(id: SectionId): boolean {
+		return !searching || fieldsIn(id, settingsMap).some((f) => matches.has(f.key));
+	}
+
+	// --- Navigation ---
+	function goToSection(id: string) {
+		document.getElementById(`settings-${id}`)?.scrollIntoView({ block: 'start' });
+		activeSection = id as SectionId;
+	}
+	function updateActive() {
+		if (!scroller) return;
+		const top = scroller.getBoundingClientRect().top + 48;
+		let current: SectionId = SECTIONS[0].id;
+		for (const section of SECTIONS) {
+			const element = document.getElementById(`settings-${section.id}`);
+			if (element && element.getBoundingClientRect().top <= top) current = section.id;
+		}
+		if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2)
+			current = SECTIONS.filter((s) => sectionVisible(s.id)).at(-1)?.id ?? current;
+		activeSection = current;
+	}
+	async function focusField(key: string, section: string) {
+		const field = fieldsIn(section as SectionId, settingsMap).find((f) => f.key === key);
+		if (field?.advanced && !advancedOpen.includes(section)) advancedOpen = [...advancedOpen, section];
+		query = '';
+		await tick();
+		const element = document.getElementById(key);
+		element?.scrollIntoView({ block: 'center' });
+		element?.focus();
+	}
+
+	// --- Reset ---
+	function resetSection(id: SectionId) {
+		for (const [key, next] of Object.entries(sectionResetValues(id, settingsMap))) handleChange(key, next);
+	}
+
+	// --- Connection checks ---
+	function formValues(): Record<string, string> {
+		return Object.fromEntries(settingsMap);
+	}
+	async function runCheck(name: string, check: () => Promise<ConnectionReport>) {
+		checks = { ...checks, [name]: { running: true, report: null, error: '' } };
+		try {
+			const report = await check();
+			checks = { ...checks, [name]: { running: false, report, error: '' } };
+		} catch (error) {
+			checks = { ...checks, [name]: { running: false, report: null, error: errorText(error) } };
+		}
+	}
+
+	// --- Proxies ---
 	interface ProxyEntry {
 		name: string;
 		url: string;
 	}
-
 	let proxies = $derived.by<ProxyEntry[]>(() => {
-		const raw = settingsMap.get('proxy_list') ?? '[]';
 		try {
-			const parsed = JSON.parse(raw);
-			if (Array.isArray(parsed)) {
+			const parsed = JSON.parse(settingsMap.get('proxy_list') ?? '[]');
+			if (Array.isArray(parsed))
 				return parsed
 					.filter((p) => p && typeof p === 'object')
 					.map((p) => ({ name: String(p.name ?? ''), url: String(p.url ?? '') }));
-			}
 		} catch {
 			// ignore malformed JSON
 		}
 		return [];
 	});
-
 	let activeProxy = $derived(settingsMap.get('active_proxy_url') ?? '');
-
 	function persistProxies(list: ProxyEntry[]) {
 		handleChange('proxy_list', JSON.stringify(list));
 	}
-
-	function addProxy() {
-		persistProxies([...proxies, { name: '', url: '' }]);
+	function updateProxy(index: number, key: 'name' | 'url', next: string) {
+		const previous = proxies[index];
+		persistProxies(proxies.map((p, i) => (i === index ? { ...p, [key]: next } : p)));
+		// Keep the active proxy pointing at the edited entry.
+		if (key === 'url' && previous.url === activeProxy && previous.url) handleChange('active_proxy_url', next);
 	}
-
-	function updateProxy(index: number, field: 'name' | 'url', value: string) {
-		const list = proxies.map((p, i) => (i === index ? { ...p, [field]: value } : p));
-		const removed = proxies[index];
-		persistProxies(list);
-		// If the active proxy URL changed, keep the selection in sync.
-		if (field === 'url' && removed.url === activeProxy) {
-			handleChange('active_proxy_url', value);
-		}
-	}
-
 	function removeProxy(index: number) {
 		const removed = proxies[index];
 		persistProxies(proxies.filter((_, i) => i !== index));
-		if (removed.url === activeProxy) {
-			handleChange('active_proxy_url', '');
+		if (removed.url === activeProxy) handleChange('active_proxy_url', '');
+	}
+
+	// --- Theme ---
+	const themes: { value: ThemePreference; label: string; icon: typeof SunIcon }[] = [
+		{ value: 'light', label: 'Light', icon: SunIcon },
+		{ value: 'dark', label: 'Dark', icon: MoonIcon },
+		{ value: 'system', label: 'System', icon: MonitorIcon },
+	];
+	async function changeTheme(next: ThemePreference) {
+		try {
+			await setTheme(next);
+		} catch {
+			toast('Could not save the theme. Try again.', 'error');
 		}
 	}
 
-	function selectActiveProxy(url: string) {
-		handleChange('active_proxy_url', url);
-	}
-
-	function togglePassword(key: string) {
-		if (showPasswords.has(key)) {
-			showPasswords.delete(key);
-		} else {
-			showPasswords.add(key);
+	// --- Import / export ---
+	async function exportToFile() {
+		try {
+			const path = await saveFile({
+				defaultPath: 'query2table-settings.json',
+				filters: [{ name: 'Settings', extensions: ['json'] }],
+			});
+			if (!path) return;
+			await exportSettings(path);
+			toast('Settings exported. API keys and proxies are not included.', 'success');
+		} catch (error) {
+			toast(errorText(error), 'error');
 		}
-		showPasswords = new Set(showPasswords);
+	}
+	async function importFromFile() {
+		importMessage = '';
+		try {
+			const path = await openFile({
+				directory: false,
+				multiple: false,
+				filters: [{ name: 'Settings', extensions: ['json'] }],
+			});
+			if (!path || Array.isArray(path)) return;
+			const values = await readSettingsFile(path);
+			const entries = Object.entries(values);
+			for (const [key, next] of entries) handleChange(key, next);
+			importMessage = `Imported ${entries.length} ${entries.length === 1 ? 'setting' : 'settings'}. Review them and save.`;
+		} catch (error) {
+			toast(errorText(error), 'error');
+		}
 	}
 
+	// --- Save ---
 	async function saveAll(): Promise<boolean> {
-		if (saving || invalidReasoning || invalidPricing) return false;
+		if (saving || blocked || !dirty.size) return !dirty.size;
 		saving = true;
 		saveError = '';
-		const snapshot = new Map([...dirty].map((key) => [key, settingsMap.get(key) ?? '']));
-		debugUi('settings_save_started', { count: snapshot.size });
+		const snapshot = Object.fromEntries([...dirty].map((key) => [key, settingsMap.get(key) ?? '']));
+		debugUi('settings_save_started', { count: Object.keys(snapshot).length });
 		try {
-			for (const [key, value] of snapshot) {
-				await settings.save(key, value);
-				savedValues.set(key, value);
-				if (settingsMap.get(key) === value) dirty.delete(key);
-				else dirty.add(key);
-				dirty = new Set(dirty);
+			await settings.saveMany(snapshot);
+			for (const [key, saved] of Object.entries(snapshot)) {
+				savedValues.set(key, saved);
+				// An edit made while saving stays unsaved.
+				if (settingsMap.get(key) === saved) dirty.delete(key);
 			}
+			dirty = new Set(dirty);
 			savedFeedback = dirty.size === 0;
+			importMessage = '';
 			debugUi('settings_save_finished', { remaining: dirty.size });
 			return dirty.size === 0;
 		} catch (error) {
@@ -529,13 +304,13 @@
 			saving = false;
 		}
 	}
-
 	function discard() {
 		if (saving) return;
 		settingsMap = new Map(savedValues);
 		dirty = new Set();
 		saveError = '';
 		savedFeedback = false;
+		importMessage = '';
 	}
 	async function leave(save: boolean) {
 		if (save && !(await saveAll())) return;
@@ -556,7 +331,12 @@
 	});
 	onMount(() => {
 		// Links such as /settings#settings-search open the matching section.
-		if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+		if (location.hash) {
+			const id = location.hash.slice(1).replace(/^settings-/, '');
+			// Older links used the previous section names.
+			const moved: Record<string, string> = { execution: 'runs', quality: 'runs', content: 'runs', files: 'app' };
+			document.getElementById(`settings-${moved[id] ?? id}`)?.scrollIntoView();
+		}
 		let disposed = false;
 		let unlisten: (() => void) | undefined;
 		// Browser fixtures have no native window metadata. Register only in the desktop shell.
@@ -582,16 +362,82 @@
 			unlisten?.();
 		};
 	});
+
+	const pickerProviders = ['openrouter_model', 'ollama_model', 'ollama_cloud_model', 'openai_model'];
 </script>
 
 <svelte:window
 	onkeydown={(event) => {
-		if (hasMod(event) && !event.shiftKey && event.key.toLowerCase() === 's') {
+		if (!hasMod(event) || event.shiftKey) return;
+		const key = event.key.toLowerCase();
+		if (key === 's') {
 			event.preventDefault();
 			if (dirty.size) void saveAll();
+		} else if (key === 'f') {
+			event.preventDefault();
+			searchInput?.focus();
 		}
 	}}
 />
+
+{#snippet checkResult(name: string)}
+	{@const check = checks[name]}
+	{#if check?.running}<p class="check" role="status">Checking…</p>
+	{:else if check?.report}<p class="check" class:ok={check.report.ok} class:warn={!check.report.ok} role="status">
+			{#if check.report.ok}<CircleCheckIcon size={15} />{:else}<TriangleAlertIcon size={15} />{/if}{check.report.message}
+		</p>
+	{:else if check?.error}<p class="check fail" role="status">
+			<TriangleAlertIcon size={15} />{presentError(check.error, 'settings').title}. <span class="raw">{check.error}</span>
+		</p>{/if}
+{/snippet}
+
+{#snippet fieldView(field: FieldDef)}
+	<SettingField
+		{field}
+		value={value(field)}
+		error={errors[field.key] ?? null}
+		changed={dirty.has(field.key)}
+		disabledOptions={field.key === 'llm_reasoning_effort' && isGptOss ? ['off', 'max'] : []}
+		onchange={(next) => handleChange(field.key, next)}
+	>
+		{#snippet control()}
+			{#if pickerProviders.includes(field.key)}
+				<LlmModelPicker
+					id={field.key}
+					provider={field.provider ?? 'openrouter'}
+					value={value(field)}
+					baseUrl={field.key === 'ollama_model'
+						? value('ollama_url') || 'http://localhost:11434'
+						: field.key === 'openai_model'
+							? value('openai_base_url') || 'http://localhost:8080/v1'
+							: value('ollama_cloud_url') || 'https://ollama.com'}
+					apiKey={field.key === 'openrouter_model'
+						? value('openrouter_api_key')
+						: field.key === 'openai_model'
+							? value('openai_api_key')
+							: value('ollama_cloud_api_key')}
+					allowCustom={field.key === 'ollama_model' || field.key === 'openai_model'}
+					onchange={(model) => handleChange(field.key, model)}
+				/>
+			{/if}
+		{/snippet}
+		{#snippet help()}
+			{#if field.key === 'llm_reasoning_effort'}
+				<p class="help">
+					Auto turns thinking off for structured Ollama requests (Low for GPT-OSS) and uses the provider default
+					elsewhere. Provider default leaves thinking unchanged.
+				</p>
+				{#if isGptOss}<p class="help">GPT-OSS cannot use Off or Max. Choose Low, Medium or High; Auto uses Low with Ollama.</p>{/if}
+				{#if invalidReasoning}<ErrorNotice
+						error="GPT-OSS does not support the selected reasoning effort. Choose Auto, Provider default, On, Low, Medium, or High."
+						code="unsupported_setting"
+						context="settings"
+					/>{/if}
+			{/if}
+		{/snippet}
+	</SettingField>
+{/snippet}
+
 <div class="settings-page">
 	<header class="page-header settings-header">
 		<div>
@@ -612,450 +458,561 @@
 			<button
 				class="button primary"
 				onclick={() => saveAll()}
-				title={`Save (${modKey}+S)`}
+				title={blocked ? 'Fix the highlighted values to save' : `Save (${modKey}+S)`}
 				aria-keyshortcuts={modKey === '⌘' ? 'Meta+S' : 'Control+S'}
-				disabled={saving || invalidReasoning || invalidPricing || !dirty.size}
+				disabled={saving || blocked || !dirty.size}
 				><SaveIcon size={16} />{saving ? 'Saving…' : 'Save'}</button
 			>
 		</div>
 	</header>
-	<nav class="section-nav" aria-label="Settings sections">
-		{#each sectionNames as name, i}<a
-				href={`#settings-${sectionIds[i]}`}
-				onclick={(event) => {
-					event.preventDefault();
-					document.getElementById(`settings-${sectionIds[i]}`)?.scrollIntoView({ block: 'start' });
-				}}>{name}</a
-			>{/each}
-	</nav>
-	<div class="settings-scroll" tabindex="-1">
-		{#if invalidPricing}<p class="form-warning" role="alert">
-				Enter non-negative prices. Each custom model needs both input and output rates; leave
-				unknown search prices blank.
-			</p>{/if}
-		{#if saveError}<ErrorNotice error={saveError} context="settings" />{/if}
 
-		{#each groups as group, groupIndex}
-			<section class="settings-section" id={`settings-${sectionIds[groupIndex]}`}>
-				<h2>{group.label}</h2>
-				<p class="section-description">{group.description}</p>
+	<div class="toolbar">
+		<label class="search"
+			><SearchIcon size={15} /><input
+				bind:this={searchInput}
+				type="search"
+				class="input sm"
+				placeholder="Search settings…"
+				aria-label="Search settings"
+				bind:value={query}
+			/></label
+		>
+		<div class="readiness" role="status" aria-label="Setup status">
+			{#if !settingsMap.size}
+				<span class="muted">Loading…</span>
+			{:else if problems.length}
+				<TriangleAlertIcon size={15} />
+				{#each problems as problem}<a
+						href={`#${problem.key}`}
+						onclick={(event) => {
+							event.preventDefault();
+							void focusField(problem.key, problem.section);
+						}}>{problem.message}</a
+					>{/each}
+			{:else}<CircleCheckIcon size={15} /><span>Ready for new runs</span>{/if}
+		</div>
+		<div class="file-actions">
+			<button class="button sm ghost" onclick={importFromFile}><UploadIcon size={14} />Import settings…</button>
+			<button class="button sm ghost" onclick={exportToFile}><DownloadIcon size={14} />Export settings…</button>
+		</div>
+	</div>
+	{#if importMessage}<p class="import-message" role="status">{importMessage}</p>{/if}
+	{#if saveError}<ErrorNotice error={saveError} context="settings" />{/if}
 
-				<div class="settings-grid">
-					{#each visibleSettings(group) as setting (setting.key)}
-						<div class="setting-item">
-							<label for={setting.key}>
-								<span class="setting-label">{setting.label}</span>
-								<span class="setting-description">{setting.description}</span>
-							</label>
+	<div class="settings-body">
+		<nav class="section-nav" aria-label="Settings sections">
+			{#each SECTIONS as section (section.id)}
+				<a
+					href={`#settings-${section.id}`}
+					aria-current={activeSection === section.id ? 'true' : undefined}
+					data-state={sectionState(section.id)}
+					onclick={(event) => {
+						event.preventDefault();
+						goToSection(section.id);
+					}}>{section.label}{#if sectionState(section.id)}<span class="marker" aria-hidden="true"></span>{/if}</a
+				>
+			{/each}
+		</nav>
+		<select
+			class="input section-select"
+			aria-label="Settings section"
+			value={activeSection}
+			onchange={(event) => goToSection(event.currentTarget.value)}
+		>
+			{#each SECTIONS as section (section.id)}<option value={section.id}>{section.label}</option>{/each}
+		</select>
 
-							<div class="setting-control">
-								{#if setting.key === 'openrouter_model'}
-									<LlmModelPicker
-										id={setting.key}
-										provider="openrouter"
-										value={getValue(setting.key)}
-										apiKey={getValue('openrouter_api_key')}
-										onchange={(model) => handleChange(setting.key, model)}
+		<div class="settings-scroll" tabindex="-1" bind:this={scroller} onscroll={updateActive}>
+			{#if searching && !matches.size}
+				<p class="no-match">No settings match “{query.trim()}”.</p>
+			{/if}
+			{#each SECTIONS as section (section.id)}
+				{@const fields = fieldsIn(section.id, settingsMap)}
+				{@const advanced = fields.filter((f) => f.advanced && visible(f))}
+				<section class="settings-section" id={`settings-${section.id}`} hidden={!sectionVisible(section.id) && searching}>
+					<div class="section-head">
+						<div>
+							<h2>{section.label}</h2>
+							<p class="section-description">{section.description}</p>
+						</div>
+						<div class="section-actions">
+							{#if section.id === 'llm' || section.id === 'search'}
+								<button
+									class="button sm"
+									disabled={checks[section.id]?.running}
+									onclick={() =>
+										runCheck(section.id, () =>
+											section.id === 'llm' ? testLlmConnection(formValues()) : testSearchConnection(formValues())
+										)}><PlugIcon size={14} />Test connection</button
+								>
+							{/if}
+							{#if Object.keys(sectionResetValues(section.id, settingsMap)).length}
+								<button class="button sm ghost" onclick={() => resetSection(section.id)}
+									><RotateCcwIcon size={14} />Reset section</button
+								>
+							{/if}
+						</div>
+					</div>
+					{#if section.id === 'search'}<p class="note">Uses one search request.</p>{/if}
+					{@render checkResult(section.id)}
+
+					{#each section.groups as group}
+						{@const groupFields = fields.filter((f) => f.group === group && !f.advanced && visible(f))}
+						{@const custom =
+							!searching &&
+							((section.id === 'llm' && group === 'Pricing') ||
+								section.id === 'network' ||
+								(section.id === 'app' && (group === 'Appearance' || group === 'Files')))}
+						{#if groupFields.length || custom}
+							<div class="group">
+								<h3>{group}</h3>
+								{#each groupFields as field (field.key)}{@render fieldView(field)}{/each}
+								{#if custom && section.id === 'llm'}
+									<ModelPricing
+										provider={provider}
+										endpoint={activeEndpoint}
+										model={activeModel}
+										value={settingsMap.get('llm_pricing_overrides') ?? '{}'}
+										onchange={(next) => handleChange('llm_pricing_overrides', next)}
 									/>
-								{:else if setting.key === 'ollama_cloud_model'}
-									<LlmModelPicker
-										id={setting.key}
-										provider="ollama_cloud"
-										value={getValue(setting.key)}
-										baseUrl={settingsMap.get('ollama_cloud_url') ?? 'https://ollama.com'}
-										apiKey={getValue('ollama_cloud_api_key')}
-										onchange={(model) => handleChange(setting.key, model)}
-									/>
-								{:else if setting.type === 'select'}
-									<select
-										id={setting.key}
-										class="input"
-										value={getValue(setting.key)}
-										onchange={(e) =>
-											handleChange(setting.key, (e.target as HTMLSelectElement).value)}
-									>
-										{#each setting.options ?? [] as opt}
-											<option
-												value={opt.value}
-												disabled={setting.key === 'llm_reasoning_effort' &&
-													isGptOss &&
-													['off', 'max'].includes(opt.value)}>{opt.label}</option
-											>
-										{/each}
-									</select>
-									{#if setting.key === 'llm_reasoning_effort'}
-										<p class="reasoning-help">
-											Auto disables thinking for structured Ollama requests (Low for GPT-OSS) and
-											uses the provider default elsewhere. Provider default leaves thinking
-											unchanged. Other choices request that level explicitly. Changes apply after
-											Save and affect new runs.
-										</p>
-										{#if isGptOss}<p class="reasoning-help">
-												GPT-OSS cannot use Off or Max. Choose Low, Medium, or High; Auto uses Low
-												with Ollama.
-											</p>{/if}
-										{#if invalidReasoning}<ErrorNotice
-												error="GPT-OSS does not support the selected reasoning effort. Choose Auto, Provider default, On, Low, Medium, or High."
-												code="unsupported_setting"
-												context="settings"
-											/>{/if}
-									{/if}
-								{:else if setting.type === 'password'}
-									<div class="password-field">
-										<input
-											id={setting.key}
-											class="input"
-											type={showPasswords.has(setting.key) ? 'text' : 'password'}
-											value={getValue(setting.key)}
-											placeholder={setting.placeholder}
-											oninput={(e) =>
-												handleChange(setting.key, (e.target as HTMLInputElement).value)}
-										/>
-										<button
-											class="btn-toggle-pw"
-											onclick={() => togglePassword(setting.key)}
-											type="button"
-											aria-label="Toggle visibility"
-										>
-											{#if showPasswords.has(setting.key)}
-												<EyeOffIcon size={16} />
-											{:else}
-												<EyeIcon size={16} />
-											{/if}
-										</button>
+								{:else if custom && section.id === 'app' && group === 'Appearance'}
+									<div class="theme-row">
+										<span class="theme-label" id="theme-label">Theme</span>
+										<div class="theme-options" role="radiogroup" aria-labelledby="theme-label" aria-label="Theme">
+											{#each themes as theme (theme.value)}
+												{@const Icon = theme.icon}
+												<label class:checked={$themePreference === theme.value}
+													><input
+														type="radio"
+														name="theme"
+														value={theme.value}
+														checked={$themePreference === theme.value}
+														onchange={() => changeTheme(theme.value)}
+													/><Icon size={15} />{theme.label}</label
+												>
+											{/each}
+										</div>
 									</div>
-								{:else if setting.type === 'number'}
-									<input
-										id={setting.key}
-										class="input"
-										type="number"
-										step={setting.key.endsWith('_price_per_1000') ? 'any' : undefined}
-										min={setting.key.endsWith('_price_per_1000')
-											? 0
-											: setting.key === 'search_results_per_query'
-												? 1
-												: undefined}
-										value={getValue(setting.key)}
-										oninput={(e) => handleChange(setting.key, (e.target as HTMLInputElement).value)}
-									/>
-								{:else}
-									<input
-										id={setting.key}
-										class="input"
-										type="text"
-										value={getValue(setting.key)}
-										placeholder={setting.placeholder}
-										oninput={(e) => handleChange(setting.key, (e.target as HTMLInputElement).value)}
-									/>
+								{:else if custom && section.id === 'app' && group === 'Files'}
+									<AppFiles />
+								{:else if custom && section.id === 'network'}
+									<p class="section-description">
+										Route searches and page loads through a proxy. Supports <code>http://</code>, <code>https://</code> and
+										<code>socks5://</code>, optionally with a login: <code>http://user:pass@host:port</code>.
+									</p>
+									<div class="proxy-list">
+										<label class="proxy-radio"
+											><input
+												type="radio"
+												name="active-proxy"
+												checked={activeProxy === ''}
+												onchange={() => handleChange('active_proxy_url', '')}
+											/>Direct connection (no proxy)</label
+										>
+										{#each proxies as proxy, i (i)}
+											<div class="proxy-row">
+												<input
+													type="radio"
+													name="active-proxy"
+													checked={proxy.url !== '' && activeProxy === proxy.url}
+													disabled={proxy.url === ''}
+													onchange={() => handleChange('active_proxy_url', proxy.url)}
+													aria-label="Use this proxy"
+												/>
+												<input
+													class="input proxy-name"
+													aria-label="Proxy name"
+													placeholder="Name (optional)"
+													value={proxy.name}
+													oninput={(e) => updateProxy(i, 'name', e.currentTarget.value)}
+												/>
+												<input
+													class="input proxy-url"
+													aria-label="Proxy URL"
+													placeholder="http://user:pass@host:port"
+													spellcheck="false"
+													value={proxyFocus === i ? proxy.url : maskProxyUrl(proxy.url)}
+													onfocus={() => (proxyFocus = i)}
+													onblur={() => (proxyFocus = null)}
+													oninput={(e) => updateProxy(i, 'url', e.currentTarget.value)}
+												/>
+												<button
+													class="button sm"
+													type="button"
+													disabled={!proxy.url || checks[`proxy-${i}`]?.running}
+													onclick={() => runCheck(`proxy-${i}`, () => testProxy(proxy.url))}>Test proxy</button
+												>
+												<button
+													class="icon-button ghost danger"
+													type="button"
+													onclick={() => removeProxy(i)}
+													aria-label="Remove proxy"><TrashIcon size={16} /></button
+												>
+											</div>
+											{@render checkResult(`proxy-${i}`)}
+										{/each}
+										<button
+											class="button dashed add-proxy"
+											type="button"
+											onclick={() => persistProxies([...proxies, { name: '', url: '' }])}
+											><PlusIcon size={16} />Add proxy</button
+										>
+									</div>
 								{/if}
 							</div>
-						</div>
+						{/if}
 					{/each}
-				</div>
-				{#if groupIndex === 0}<ModelPricing
-						provider={activeProvider}
-						endpoint={activeEndpoint}
-						model={activeModel}
-						value={settingsMap.get('llm_pricing_overrides') ?? '{}'}
-						onchange={(value) => handleChange('llm_pricing_overrides', value)}
-					/>{/if}
-			</section>
-		{/each}
 
-		<section class="settings-section" id="settings-network">
-			<h2>Network / Proxy</h2>
-			<p class="section-description">
-				Configure one or more proxies and pick which one to route all requests through. Supports <code
-					>http://</code
-				>, <code>https://</code> and <code>socks5://</code> URLs, optionally with credentials (e.g.
-				<code>http://user:pass@host:port</code>).
-			</p>
-
-			<div class="proxy-list">
-				<label class="proxy-radio">
-					<input
-						type="radio"
-						name="active-proxy"
-						checked={activeProxy === ''}
-						onchange={() => selectActiveProxy('')}
-					/>
-					<span class="proxy-radio-label">Direct connection (no proxy)</span>
-				</label>
-
-				{#each proxies as proxy, i (i)}
-					<div class="proxy-row">
-						<input
-							type="radio"
-							name="active-proxy"
-							checked={proxy.url !== '' && activeProxy === proxy.url}
-							disabled={proxy.url === ''}
-							onchange={() => selectActiveProxy(proxy.url)}
-							aria-label="Use this proxy"
-						/>
-						<input
-							class="input proxy-name"
-							aria-label="Proxy name"
-							type="text"
-							placeholder="Name (optional)"
-							value={proxy.name}
-							oninput={(e) => updateProxy(i, 'name', (e.target as HTMLInputElement).value)}
-						/>
-						<input
-							class="input proxy-url"
-							aria-label="Proxy URL"
-							type="text"
-							placeholder="http://user:pass@host:port"
-							value={proxy.url}
-							oninput={(e) => updateProxy(i, 'url', (e.target as HTMLInputElement).value)}
-						/>
-						<button
-							class="icon-button ghost danger"
-							type="button"
-							onclick={() => removeProxy(i)}
-							aria-label="Remove proxy"
-						>
-							<TrashIcon size={16} />
-						</button>
-					</div>
-				{/each}
-
-				<button class="button dashed add-proxy" type="button" onclick={addProxy}>
-					<PlusIcon size={16} />
-					Add proxy
-				</button>
-			</div>
-		</section>
-
-		<div id="settings-files"><AppFiles /></div>
+					{#if fields.some((f) => f.advanced) && (!searching || advanced.length)}
+						{@const shown = advancedShown(section.id)}
+						<div class="advanced">
+							{#if !searching}<button
+									class="advanced-toggle"
+									aria-expanded={shown}
+									onclick={() => toggleAdvanced(section.id)}
+									>{#if shown}<ChevronDownIcon size={15} />{:else}<ChevronRightIcon size={15} />{/if}Advanced
+									<span class="muted">({fields.filter((f) => f.advanced).length})</span>
+									{#if fields.some((f) => f.advanced && !isDefault(f, value(f)) && !f.keepOnReset)}<span class="muted"
+											>· changed from defaults</span
+										>{/if}</button
+								>{/if}
+							{#if shown}
+								{#each advanced as field (field.key)}{@render fieldView(field)}{/each}
+							{/if}
+						</div>
+					{/if}
+				</section>
+			{/each}
+		</div>
 	</div>
 </div>
+
 {#if leaveAction}
-	<Dialog
-		title="Unsaved changes"
-		busy={saving}
-		onclose={() => {
-			leaveAction = null;
-		}}
-	>
+	<Dialog title="Unsaved changes" busy={saving} onclose={() => (leaveAction = null)}>
 		<p>Save your changes before leaving Settings?</p>
 		{#if saveError}<ErrorNotice error={saveError} context="settings" />{/if}
 		{#snippet footer()}
-			<button
-				class="button"
-				disabled={saving}
-				onclick={() => {
-					leaveAction = null;
-				}}>Stay</button
-			>
+			<button class="button" disabled={saving} onclick={() => (leaveAction = null)}>Stay</button>
 			<button class="button" disabled={saving} onclick={() => leave(false)}>Discard</button>
-			<button
-				class="button primary"
-				disabled={saving || invalidReasoning || invalidPricing}
-				onclick={() => leave(true)}>Save and leave</button
-			>
+			<button class="button primary" disabled={saving || blocked} onclick={() => leave(true)}>Save and leave</button>
 		{/snippet}
 	</Dialog>
 {/if}
 
 <style>
-	.settings-scroll {
+	.settings-page {
+		display: flex;
+		flex-direction: column;
 		flex: 1;
 		min-height: 0;
-		overflow: auto;
-		scrollbar-gutter: stable;
-		padding: 4px 12px 24px 0;
-		container-type: inline-size;
+		min-width: 0;
+		overflow: hidden;
+		container: settings-page / inline-size;
+	}
+	.settings-header {
+		align-items: center;
+		padding-bottom: 8px;
 	}
 	.save-actions {
 		display: flex;
-		gap: 8px;
 		align-items: center;
 		flex-wrap: wrap;
 		justify-content: flex-end;
+		gap: 8px;
 	}
 	.save-actions span {
 		color: var(--app-muted);
 		font-size: var(--app-text-sm);
-		flex-basis: 100%;
-		text-align: right;
 	}
-	.section-nav {
+	.toolbar {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 4px;
-		padding: 0 0 12px;
+		align-items: center;
+		gap: 8px 16px;
 		flex-shrink: 0;
+		padding-bottom: 10px;
 	}
-	.section-nav a {
-		padding: 5px 9px;
-		border-radius: var(--app-radius-sm);
+	.search {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex: 0 1 280px;
 		color: var(--app-muted);
-		font-size: var(--app-text-md);
-		text-decoration: none;
 	}
-	.section-nav a:hover {
-		background: var(--app-subtle);
-		color: var(--app-accent);
-	}
-	.setting-control {
+	.search input {
+		flex: 1;
 		min-width: 0;
 	}
-	.settings-section,
-	#settings-files {
-		scroll-margin-top: 4px;
-	}
-	@container (max-width: 640px) {
-		.setting-item {
-			grid-template-columns: minmax(0, 1fr);
-			gap: 6px;
-		}
-	}
-
-	.reasoning-help {
-		font-size: var(--app-text-sm);
-		line-height: 1.45;
-		color: var(--app-muted);
-		margin: 6px 0 0;
-	}
-	.settings-page {
-		width: 100%;
-		max-width: 1120px;
-		margin: 0 auto;
+	.readiness {
 		display: flex;
-		flex-direction: column;
-		overflow: hidden;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 10px;
+		flex: 1 1 260px;
+		font-size: var(--app-text-sm);
+	}
+	.readiness :global(svg) {
+		flex-shrink: 0;
+	}
+	.readiness a {
+		color: var(--app-warning);
+		text-decoration: underline;
+	}
+	.readiness:has(a) :global(svg) {
+		color: var(--app-warning);
+	}
+	.readiness:not(:has(a)) :global(svg) {
+		color: var(--app-success);
+	}
+	.file-actions {
+		display: flex;
+		gap: 4px;
+		margin-left: auto;
+	}
+	.import-message {
+		flex-shrink: 0;
+		margin-bottom: 8px;
+		color: var(--app-accent);
+		font-size: var(--app-text-sm);
+	}
+	.settings-body {
+		display: grid;
+		grid-template-columns: 160px minmax(0, 1fr);
+		gap: 0 20px;
 		flex: 1;
 		min-height: 0;
 	}
-
-	.settings-header {
-		padding-bottom: 12px;
+	.section-nav {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding-top: 4px;
 	}
-
-
+	.section-nav a {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px 10px;
+		border-radius: var(--app-radius-sm);
+		color: var(--app-muted);
+		text-decoration: none;
+		font-weight: 500;
+	}
+	.section-nav a:hover {
+		color: var(--app-text);
+		background: var(--app-subtle);
+	}
+	.section-nav a[aria-current='true'] {
+		color: var(--app-accent);
+		background: color-mix(in srgb, var(--app-accent) 12%, transparent);
+	}
+	.marker {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--app-accent);
+	}
+	.section-nav a[data-state='error'] .marker {
+		background: var(--app-danger);
+	}
+	.section-select {
+		display: none;
+	}
+	@container settings-page (max-width: 760px) {
+		.settings-body {
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-rows: auto minmax(0, 1fr);
+			gap: 8px;
+		}
+		.section-nav {
+			display: none;
+		}
+		.section-select {
+			display: block;
+		}
+	}
+	.settings-scroll {
+		min-height: 0;
+		overflow: auto;
+		scrollbar-gutter: stable;
+		padding: 0 12px 24px 0;
+		container: settings / inline-size;
+	}
 	.settings-section {
-		margin-bottom: 32px;
-		padding: 20px;
+		margin-bottom: 20px;
+		padding: 18px 20px 8px;
 		border: 1px solid var(--app-border);
 		border-radius: var(--app-radius-lg);
 		background: var(--app-panel);
+		scroll-margin-top: 4px;
 	}
-
+	.section-head {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 8px 16px;
+	}
+	.section-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
 	h2 {
 		font-size: var(--app-text-xl);
-		font-weight: 600;
-		margin-bottom: 4px;
+		font-weight: 650;
+		margin: 0;
 	}
-
 	.section-description {
+		margin-top: 4px;
 		color: var(--app-muted);
 		font-size: var(--app-text-md);
-		margin-bottom: 16px;
 	}
-
-	.settings-grid {
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
+	.section-description code {
+		font-size: 0.92em;
 	}
-
-	.setting-item {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-		align-items: center;
-		gap: 12px;
-	}
-
-	.setting-item label {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.setting-label {
-		font-weight: 500;
-	}
-
-	.setting-description {
+	.note {
+		margin-top: 6px;
+		color: var(--app-muted);
 		font-size: var(--app-text-sm);
-		color: var(--app-muted);
 	}
-
-
-
-	.password-field {
-		position: relative;
+	.check {
 		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		margin-top: 8px;
+		font-size: var(--app-text-md);
+		overflow-wrap: anywhere;
 	}
-
-	.password-field input {
-		flex: 1;
-		padding-right: 36px;
+	.check :global(svg) {
+		flex-shrink: 0;
+		margin-top: 2px;
 	}
-
-	.btn-toggle-pw {
-		position: absolute;
-		right: 8px;
-		top: 50%;
-		transform: translateY(-50%);
-		border: none;
-		background: transparent;
-		cursor: pointer;
+	.check.ok {
+		color: var(--app-success);
+	}
+	.check.warn,
+	.check.fail {
+		color: var(--app-warning);
+	}
+	.check .raw {
 		color: var(--app-muted);
-		padding: 4px;
-		border-radius: var(--app-radius-sm);
+		font-size: var(--app-text-sm);
 	}
-	.btn-toggle-pw:hover {
-		color: var(--app-text);
+	.group {
+		margin-top: 16px;
 	}
-
+	h3 {
+		margin: 0 0 2px;
+		color: var(--app-muted);
+		font-size: var(--app-text-xs);
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+	.help {
+		margin-top: 6px;
+		color: var(--app-muted);
+		font-size: var(--app-text-sm);
+		line-height: 1.45;
+	}
+	.advanced {
+		margin-top: 12px;
+		border-top: 1px solid var(--app-border);
+		padding: 8px 0;
+	}
+	.advanced-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 0;
+		font-weight: 600;
+	}
+	.muted {
+		color: var(--app-muted);
+		font-weight: 400;
+	}
+	.no-match {
+		padding: 24px;
+		color: var(--app-muted);
+		text-align: center;
+	}
+	.theme-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 24px;
+		padding: 12px 0;
+		border-top: 1px solid var(--app-border);
+	}
+	.theme-label {
+		font-weight: 600;
+	}
+	.theme-options {
+		display: flex;
+		gap: 4px;
+	}
+	.theme-options label {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 12px;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius-pill);
+		cursor: pointer;
+	}
+	.theme-options label.checked {
+		border-color: var(--app-accent);
+		color: var(--app-accent);
+	}
+	/* The radio covers its label invisibly, so the whole pill is the control. */
+	.theme-options input {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+	.theme-options label:has(input:focus-visible) {
+		outline: 2px solid var(--app-accent);
+		outline-offset: 2px;
+	}
 	.proxy-list {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 8px;
+		margin: 12px 0;
 	}
-
 	.proxy-radio {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		cursor: pointer;
 	}
-
-	.proxy-radio-label {
-		font-size: var(--app-text-md);
-	}
-
 	.proxy-row {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 8px;
 	}
-
-
-
 	.proxy-name {
-		flex: 0 0 30%;
+		flex: 0 1 180px;
+		min-width: 0;
 	}
-
 	.proxy-url {
-		flex: 1;
+		flex: 1 1 260px;
+		min-width: 0;
 	}
-
-
 	.add-proxy {
 		align-self: flex-start;
 	}
-	.form-warning {
-		margin-bottom: 12px;
-		color: var(--app-warning);
-		font-size: var(--app-text-md);
+	.settings-section :global(.app-files) {
+		margin: 0;
+		padding: 0;
+		border: 0;
+		background: transparent;
 	}
-
-
-	.section-description code {
-		background: var(--app-subtle);
-		padding: 1px 5px;
-		border-radius: var(--app-radius-sm);
-		font-size: 0.85em;
+	.settings-section :global(.app-files > h2) {
+		display: none;
 	}
 </style>

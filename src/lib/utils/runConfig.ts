@@ -2,6 +2,8 @@ export interface ConfigProblem {
 	message: string;
 	/** Settings section id, used as `/settings#settings-<section>`. */
 	section: 'llm' | 'search';
+	/** The first setting to fill in. */
+	key: string;
 }
 
 const providerNames: Record<string, string> = {
@@ -46,18 +48,17 @@ export function configurationProblems(settings: Map<string, string>): ConfigProb
 	const filled = (key: string) => !!settings.get(key)?.trim();
 
 	const provider = settings.get('llm_provider') || 'openrouter';
-	const missing = (llmRequirements[provider] ?? [])
-		.filter((item) => !filled(item.key))
-		.map((item) => item.label);
+	const missing = (llmRequirements[provider] ?? []).filter((item) => !filled(item.key));
 	if (missing.length)
 		problems.push({
-			message: `${providerNames[provider] ?? provider} needs ${missing.join(' and ')}.`,
+			message: `${providerNames[provider] ?? provider} needs ${missing.map((item) => item.label).join(' and ')}.`,
 			section: 'llm',
+			key: missing[0].key,
 		});
 
 	const search = searchRequirements[settings.get('search_provider') || 'brave'];
 	if (search && !filled(search.key))
-		problems.push({ message: `${search.name} needs an API key.`, section: 'search' });
+		problems.push({ message: `${search.name} needs an API key.`, section: 'search', key: search.key });
 
 	return problems;
 }

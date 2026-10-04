@@ -62,17 +62,24 @@ pub struct HttpFetcher {
     rate_limiter: RateLimiter,
     max_body_bytes: u64,
     ua_index: std::sync::atomic::AtomicUsize,
+    /// Built without the environment or user proxy (tests against local servers).
+    no_proxy: bool,
 }
+
+fn client_builder(timeout: Duration) -> ClientBuilder {
+    ClientBuilder::new()
+        .timeout(timeout)
+        .connect_timeout(timeout.min(Duration::from_secs(8)))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .gzip(true)
+        .brotli(true)
+}
+
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 
 impl HttpFetcher {
     pub fn new(rate_limiter: RateLimiter) -> Self {
-        let builder = ClientBuilder::new()
-            .timeout(Duration::from_secs(20))
-            .connect_timeout(Duration::from_secs(8))
-            .redirect(reqwest::redirect::Policy::limited(5))
-            .gzip(true)
-            .brotli(true);
-        let client = apply_proxy(builder)
+        let client = apply_proxy(client_builder(DEFAULT_TIMEOUT))
             .build()
             .expect("Failed to build HTTP client");
 
@@ -81,18 +88,23 @@ impl HttpFetcher {
             rate_limiter,
             max_body_bytes: 5 * 1024 * 1024, // 5 MB
             ua_index: std::sync::atomic::AtomicUsize::new(0),
+            no_proxy: false,
         }
+    }
+
+    /// Time allowed for one page ("Fetch timeout" setting).
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        let timeout = timeout.max(Duration::from_secs(1));
+        let builder = client_builder(timeout);
+        let builder = if self.no_proxy { builder.no_proxy() } else { apply_proxy(builder) };
+        self.client = builder.build().expect("Failed to build HTTP client");
+        self
     }
 
     /// Create a fetcher that bypasses system proxy settings.
     /// Useful for tests that use local mock servers.
     pub fn new_no_proxy(rate_limiter: RateLimiter) -> Self {
-        let client = ClientBuilder::new()
-            .timeout(Duration::from_secs(20))
-            .connect_timeout(Duration::from_secs(8))
-            .redirect(reqwest::redirect::Policy::limited(5))
-            .gzip(true)
-            .brotli(true)
+        let client = client_builder(DEFAULT_TIMEOUT)
             .no_proxy()
             .build()
             .expect("Failed to build HTTP client");
@@ -102,8 +114,10 @@ impl HttpFetcher {
             rate_limiter,
             max_body_bytes: 5 * 1024 * 1024,
             ua_index: std::sync::atomic::AtomicUsize::new(0),
+            no_proxy: true,
         }
     }
+
 
     /// Set max body size in bytes.
     pub fn with_max_body_bytes(mut self, max: u64) -> Self {
@@ -336,6 +350,22 @@ mod tests {
             Some("gbk")
         );
         assert_eq!(charset_from_content_type("text/html").as_deref(), None);
+    }
+
+    #[tokio::test]
+    async fn the_page_timeout_comes_from_settings() {
+        use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200).set_body_string("<html></html>").set_delay(Duration::from_secs(3)))
+            .mount(&server)
+            .await;
+        let fetcher = HttpFetcher::new_no_proxy(RateLimiter::new(Duration::from_millis(1)))
+            .with_timeout(Duration::from_secs(1));
+        let started = std::time::Instant::now();
+        let error = fetcher.fetch(&server.uri()).await.unwrap_err();
+        assert!(matches!(error, FetchError::Timeout { .. }), "{error:?}");
+        assert!(started.elapsed() < Duration::from_secs(3));
     }
 
     #[test]

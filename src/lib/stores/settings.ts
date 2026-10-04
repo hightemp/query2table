@@ -1,5 +1,10 @@
 import { writable } from 'svelte/store';
-import { getSettings, updateSetting as apiUpdateSetting, type Setting } from '$lib/api/tauri';
+import {
+	getSettings,
+	updateSetting as apiUpdateSetting,
+	updateSettings as apiUpdateSettings,
+	type Setting,
+} from '$lib/api/tauri';
 
 function createSettingsStore() {
 	const { subscribe, set, update } = writable<Map<string, string>>(new Map());
@@ -18,6 +23,14 @@ function createSettingsStore() {
 			await apiUpdateSetting(key, value);
 			update((map) => {
 				map.set(key, value);
+				return new Map(map);
+			});
+		},
+		/** Saves several settings in one transaction. */
+		async saveMany(values: Record<string, string>) {
+			await apiUpdateSettings(values);
+			update((map) => {
+				for (const [key, value] of Object.entries(values)) map.set(key, value);
 				return new Map(map);
 			});
 		},
