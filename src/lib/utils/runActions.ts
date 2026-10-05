@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n';
 import { get } from 'svelte/store';
 import { goto } from '$app/navigation';
 import {
@@ -21,7 +22,6 @@ import { copyWithToast } from '$lib/utils/linkMenu';
 import { runLimits } from '$lib/utils/history';
 import { parseStopConditions, stopInputFromSettings } from '$lib/utils/stopConditions';
 
-const BUSY_MESSAGE = 'A run is in progress. Cancel it or wait until it finishes, then try again.';
 
 /** Limits the run was started with, or the remembered ones for runs saved before limits were. */
 function limitsFor(config: string | undefined, mode: string) {
@@ -33,9 +33,9 @@ function limitsFor(config: string | undefined, mode: string) {
 /** Starts the same query again with its mode and limits; tables offer the earlier schema. */
 export async function runAgain(runId: string) {
 	try {
-		if (runInProgress()) throw new Error(BUSY_MESSAGE);
+		if (runInProgress()) throw new Error(t('runActions.busy'));
 		const run = await getRun(runId);
-		if (!run) throw new Error('This run no longer exists.');
+		if (!run) throw new Error(t('history.notFound'));
 		const schema = run.run_type === 'table' ? ((await getRunSchema(runId))?.columns ?? null) : null;
 		const limits = limitsFor(run.config, run.run_type) ?? undefined;
 		const started = startNewRun(run.query, run.run_type, limits, schema);
@@ -49,9 +49,9 @@ export async function runAgain(runId: string) {
 /** Opens the query form filled in with the run's query, mode and limits. */
 export async function editAndRun(runId: string) {
 	try {
-		if (runInProgress()) throw new Error(BUSY_MESSAGE);
+		if (runInProgress()) throw new Error(t('runActions.busy'));
 		const run = await getRun(runId);
-		if (!run) throw new Error('This run no longer exists.');
+		if (!run) throw new Error(t('history.notFound'));
 		queryDraft.set({ query: run.query, runType: run.run_type, limits: runLimits(run.config) });
 		await goto('/');
 	} catch (error) {
@@ -73,21 +73,21 @@ export function runMenuItems(
 	handlers: RunMenuHandlers
 ): MenuItem[] {
 	const items: MenuItem[] = [];
-	if (handlers.open) items.push({ label: 'Open', icon: ExternalLinkIcon, action: handlers.open });
+	if (handlers.open) items.push({ label: t('runActions.open'), icon: ExternalLinkIcon, action: handlers.open });
 	items.push(
-		{ label: 'Run again', icon: RotateCcwIcon, separator: !!handlers.open, action: () => runAgain(run.id) },
-		{ label: 'Edit and run', icon: SquarePenIcon, action: () => editAndRun(run.id) },
-		{ label: 'Copy query', icon: CopyIcon, action: () => copyWithToast(run.query, 'Query copied.') }
+		{ label: t('runActions.runAgain'), icon: RotateCcwIcon, separator: !!handlers.open, action: () => runAgain(run.id) },
+		{ label: t('runActions.editAndRun'), icon: SquarePenIcon, action: () => editAndRun(run.id) },
+		{ label: t('runActions.copyQuery'), icon: CopyIcon, action: () => copyWithToast(run.query, t('runActions.queryCopied')) }
 	);
-	if (handlers.exportRun) items.push({ label: 'Export…', icon: DownloadIcon, action: handlers.exportRun });
+	if (handlers.exportRun) items.push({ label: t('runActions.export'), icon: DownloadIcon, action: handlers.exportRun });
 	items.push(
-		{ label: 'Rename', icon: PencilIcon, separator: true, action: handlers.rename },
+		{ label: t('runActions.rename'), icon: PencilIcon, separator: true, action: handlers.rename },
 		{
-			label: run.pinned_at ? 'Unpin' : 'Pin',
+			label: run.pinned_at ? t('runActions.unpin') : t('runActions.pin'),
 			icon: run.pinned_at ? PinOffIcon : PinIcon,
 			action: handlers.togglePin,
 		},
-		{ label: 'Delete', icon: TrashIcon, separator: true, action: handlers.remove }
+		{ label: t('runActions.delete'), icon: TrashIcon, separator: true, action: handlers.remove }
 	);
 	return items;
 }

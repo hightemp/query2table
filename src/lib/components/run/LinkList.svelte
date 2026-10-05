@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import type { LinkResult } from '$lib/types';
 	import LinkCard from './LinkCard.svelte';
@@ -28,6 +29,7 @@
 	import { errorText } from '$lib/utils/errors';
 	import {
 		COPY_FORMATS,
+		copyFormatLabel,
 		describeLinks,
 		filterLinks,
 		formatLinks,
@@ -121,7 +123,7 @@
 			await setLinkVisited(view.link.id, visited);
 		} catch (error) {
 			update(view.link.id, { visited_at: previous });
-			toast(`Could not save the visited mark: ${errorText(error)}`, 'error');
+			toast(t('links.visitedFailed', { error: errorText(error) }), 'error');
 		}
 	}
 	async function setHidden(list: LinkView[], hidden: boolean) {
@@ -137,14 +139,14 @@
 			}
 		}
 		if (failed.length) {
-			toast(`Could not ${hidden ? 'hide' : 'show'} ${failed.length} ${failed.length === 1 ? 'link' : 'links'}.`, 'error');
+			toast(t(hidden ? 'links.hideFailed' : 'links.showFailed', { count: failed.length }), 'error');
 			return;
 		}
 		if (hidden)
 			toast(
-				list.length === 1 ? 'Link hidden.' : `${list.length} links hidden.`,
+				t('links.hidden', { count: list.length }),
 				'info',
-				{ label: 'Undo', run: () => setHidden(list, false) }
+				{ label: t('common.undo'), run: () => setHidden(list, false) }
 			);
 	}
 	async function open(list: LinkView[]) {
@@ -163,14 +165,14 @@
 	function copyMenu(point: { x: number; y: number }, list: LinkView[]) {
 		showContextMenu(
 			point,
-			`Copy ${list.length} ${list.length === 1 ? 'link' : 'links'}`,
-			(Object.keys(COPY_FORMATS) as CopyFormat[]).map((format) => ({
-				label: COPY_FORMATS[format],
+			t('links.copyCount', { count: list.length }),
+			COPY_FORMATS.map((format: CopyFormat) => ({
+				label: copyFormatLabel(format),
 				icon: format === 'markdown' ? LinkIcon : CopyIcon,
 				action: () =>
 					copyWithToast(
 						formatLinks(list, format),
-						`Copied ${list.length} ${list.length === 1 ? 'link' : 'links'}.`
+						t('images.linksCopied', { count: list.length })
 					),
 			}))
 		);
@@ -178,32 +180,32 @@
 	function itemsFor(view: LinkView): MenuItem[] {
 		const isSelected = selectedIds.includes(view.link.id);
 		return [
-			{ label: 'Open link', icon: ExternalLinkIcon, action: () => open([view]) },
+			{ label: t('links.open'), icon: ExternalLinkIcon, action: () => open([view]) },
 			{
-				label: 'Copy link',
+				label: t('links.copy'),
 				icon: CopyIcon,
 				separator: true,
-				action: () => copyWithToast(view.link.url, 'Link copied.'),
+				action: () => copyWithToast(view.link.url, t('links.copied')),
 			},
 			{
-				label: 'Copy as Markdown',
+				label: t('links.copyMarkdown'),
 				icon: LinkIcon,
-				action: () => copyWithToast(markdownLink(view.link.title, view.link.url), 'Markdown link copied.'),
+				action: () => copyWithToast(markdownLink(view.link.title, view.link.url), t('links.markdownCopied')),
 			},
 			{
-				label: view.link.visited_at ? 'Mark as not visited' : 'Mark as visited',
+				label: view.link.visited_at ? t('links.markNotVisited') : t('links.markVisited'),
 				icon: view.link.visited_at ? EyeOffIcon : EyeIcon,
 				separator: true,
 				action: () => markVisited(view, !view.link.visited_at),
 			},
 			{
-				label: isSelected ? 'Deselect' : 'Select',
+				label: isSelected ? t('images.deselect') : t('images.select'),
 				icon: isSelected ? SquareIcon : SquareCheckIcon,
 				action: () => toggle(view.link.id),
 			},
 			view.link.hidden
-				? { label: 'Show again', icon: EyeIcon, action: () => setHidden([view], false) }
-				: { label: 'Hide link', icon: EyeOffIcon, action: () => setHidden([view], true) },
+				? { label: t('links.showAgain'), icon: EyeIcon, action: () => setHidden([view], false) }
+				: { label: t('links.hide'), icon: EyeOffIcon, action: () => setHidden([view], true) },
 		];
 	}
 </script>
@@ -218,7 +220,7 @@
 			onopen={() => markVisited(view, true)}
 			ontoggle={() => toggle(view.link.id)}
 			onunhide={() => setHidden([view], false)}
-			onmenu={(point) => showContextMenu(point, `Actions for ${view.link.title || view.link.url}`, itemsFor(view))}
+			onmenu={(point) => showContextMenu(point, t('common.actionsFor', { name: view.link.title || view.link.url }), itemsFor(view))}
 			menuItems={() => itemsFor(view)}
 		/>
 	</div>
@@ -231,77 +233,76 @@
 				><SearchIcon size={16} /><input
 					class="input sm"
 					type="search"
-					placeholder="Search titles, descriptions and URLs…"
-					aria-label="Search links"
+					placeholder={t('links.searchPlaceholder')}
+					aria-label={t('links.search')}
 					bind:value={search}
 				/></label
 			>
-			<select class="input sm" aria-label="Sort links" bind:value={sort}>
-				<option value="relevance">Best match</option>
-				<option value="site">Site</option>
-				<option value="found">Found order</option>
+			<select class="input sm" aria-label={t('links.sort')} bind:value={sort}>
+				<option value="relevance">{t('images.sortBest')}</option>
+				<option value="site">{t('links.sortSite')}</option>
+				<option value="found">{t('images.sortFound')}</option>
 			</select>
-			{#if sites.length > 1}<select class="input sm" aria-label="Site" bind:value={domain}>
-					<option value="">All sites</option>
+			{#if sites.length > 1}<select class="input sm" aria-label={t('links.site')} bind:value={domain}>
+					<option value="">{t('images.allSites')}</option>
 					{#each sites as [name, count]}<option value={name}>{name} ({count})</option>{/each}
 				</select>{/if}
 			<label class="toggle"
-				><input type="checkbox" bind:checked={$groupBySiteSetting} />Group by site</label
+				><input type="checkbox" bind:checked={$groupBySiteSetting} />{t('links.groupBySite')}</label
 			>
 			{#if result.hiddenCount}<label class="toggle"
-					><input type="checkbox" bind:checked={showHidden} />Show hidden ({result.hiddenCount})</label
+					><input type="checkbox" bind:checked={showHidden} />{t('links.showHidden', { count: result.hiddenCount })}</label
 				>{/if}
 			<span class="count link-count" role="status"
-				>{filtered ? `${result.main.length} of ${relevantCount}` : relevantCount} relevant {relevantCount ===
-				1
-					? 'link'
-					: 'links'}</span
+				>{filtered
+					? t('links.relevantOf', { shown: result.main.length, count: relevantCount })
+					: t('links.relevant', { count: relevantCount })}</span
 			>
 			<button
 				class="button ghost sm copy-all"
 				disabled={!shown.length}
 				aria-haspopup="menu"
 				onclick={(event) => copyMenu(menuPointFor(event.currentTarget), shown)}
-				><ClipboardCopyIcon size={15} />Copy all<ChevronDownIcon size={14} /></button
+				><ClipboardCopyIcon size={15} />{t('links.copyAll')}<ChevronDownIcon size={14} /></button
 			>
 		</div>
 		{#if selected.length}
-			<div class="selection-bar" role="region" aria-label="Selected links">
-				<strong>{selected.length} selected</strong>
+			<div class="selection-bar" role="region" aria-label={t('links.selected')}>
+				<strong>{t('common.selectedCount', { count: selected.length })}</strong>
 				{#if shown.some((view) => !selectedIds.includes(view.link.id))}<button
 						class="button ghost sm"
 						onclick={() => (selectedIds = [...new Set([...selectedIds, ...shown.map((view) => view.link.id)])])}
-						>Select all shown</button
+						>{t('images.selectShown')}</button
 					>{/if}
 				<span class="spacer"></span>
 				<button
 					class="button sm"
 					aria-haspopup="menu"
 					onclick={(event) => copyMenu(menuPointFor(event.currentTarget), selected)}
-					><CopyIcon size={14} />Copy<ChevronDownIcon size={14} /></button
+					><CopyIcon size={14} />{t('links.copyShort')}<ChevronDownIcon size={14} /></button
 				>
 				<button class="button sm" onclick={() => requestOpen(selected)}
-					><ExternalLinkIcon size={14} />Open in browser</button
+					><ExternalLinkIcon size={14} />{t('links.openInBrowser')}</button
 				>
 				<button class="button sm" onclick={() => setHidden(selected, true)}
-					><EyeOffIcon size={14} />Hide</button
+					><EyeOffIcon size={14} />{t('links.hideShort')}</button
 				>
-				<button class="icon-button ghost sm" aria-label="Clear selection" onclick={() => (selectedIds = [])}
+				<button class="icon-button ghost sm" aria-label={t('common.clearSelection')} onclick={() => (selectedIds = [])}
 					><XIcon size={14} /></button
 				>
 			</div>
 		{/if}
 	{/if}
 	<div class="link-list" bind:this={scroller}>
-		{#if !links.length}<EmptyState>No relevant links yet.</EmptyState>
+		{#if !links.length}<EmptyState>{t('links.empty')}</EmptyState>
 		{:else if !result.main.length && !result.low.length}<EmptyState>
-				No links match these filters.
+				{t('links.noMatch')}
 				{#snippet action()}<button
 						class="button sm"
 						onclick={() => {
 							search = '';
 							domain = '';
-						}}>Reset filters</button
+						}}>{t('common.resetFilters')}</button
 					>{/snippet}
 			</EmptyState>
 		{:else}
@@ -319,16 +320,15 @@
 				{#each result.main as view (view.link.id)}{@render row(view)}{/each}
 			{/if}
 			{#if !result.main.length}<p class="no-relevant">
-					No links passed the relevance threshold.
+					{t('links.noneRelevant')}
 				</p>{/if}
 			{#if result.low.length}
 				<button class="show-low" aria-expanded={showLow} onclick={() => (showLow = !showLow)}>
 					<ChevronDownIcon size={15} />
-					{showLow ? 'Hide' : 'Show'}
-					{result.low.length} less relevant {result.low.length === 1 ? 'link' : 'links'}
+					{t(showLow ? 'links.hideLow' : 'links.showLow', { count: result.low.length })}
 				</button>
 				{#if showLow}
-					<div class="low-list" aria-label="Less relevant links" role="region">
+					<div class="low-list" aria-label={t('links.lowRegion')} role="region">
 						{#each result.low as view (view.link.id)}{@render row(view)}{/each}
 					</div>
 				{/if}
@@ -339,11 +339,11 @@
 
 {#if confirmOpen}
 	{@const list = confirmOpen}
-	<Dialog title={`Open ${list.length} links?`} onclose={() => (confirmOpen = null)}>
-		<p>Each link opens in a new browser tab.</p>
+	<Dialog title={t('links.openConfirm', { count: list.length })} onclose={() => (confirmOpen = null)}>
+		<p>{t('links.openConfirmText')}</p>
 		{#snippet footer()}
-			<button class="button" onclick={() => (confirmOpen = null)}>Cancel</button>
-			<button class="button primary" onclick={() => open(list)}>Open {list.length} links</button>
+			<button class="button" onclick={() => (confirmOpen = null)}>{t('export.cancel')}</button>
+			<button class="button primary" onclick={() => open(list)}>{t('links.openCount', { count: list.length })}</button>
 		{/snippet}
 	</Dialog>
 {/if}

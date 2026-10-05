@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import type { RunRow } from '$lib/stores/run';
 	import type { RowSource } from '$lib/types';
 	import { getRowSources } from '$lib/api/tauri';
@@ -66,32 +67,32 @@
 </script>
 
 {#snippet navigation()}
-	<span class="position">Row {(position?.index ?? 0) + 1} of {position?.total}</span>
+	<span class="position">{t('row.position', { n: (position?.index ?? 0) + 1, total: position?.total ?? 0 })}</span>
 	<button
 		class="button sm"
 		disabled={!canPrevious}
 		onclick={() => navigate(-1)}
-		title="Previous row (K or Alt+↑)"><ChevronUpIcon size={16} />Previous</button
+		title={t('row.previousHint')}><ChevronUpIcon size={16} />{t('row.previous')}</button
 	>
 	<button
 		class="button sm"
 		disabled={!canNext}
 		onclick={() => navigate(1)}
-		title="Next row (J or Alt+↓)"><ChevronDownIcon size={16} />Next</button
+		title={t('row.nextHint')}><ChevronDownIcon size={16} />{t('row.next')}</button
 	>
 {/snippet}
 
 <svelte:window onkeydown={handleKey} />
 <Dialog
-	title="Row Details"
+	title={t('row.title')}
 	variant="drawer"
 	{onclose}
 	footer={position && onnavigate ? navigation : undefined}
 >
 	<div class="confidence" class:low={row.confidence < 0.6}>
-		<span>Extraction confidence</span><strong>{Math.round(row.confidence * 100)}%</strong>
+		<span>{t('row.confidence')}</span><strong>{Math.round(row.confidence * 100)}%</strong>
 		{#if row.sources !== undefined}<span class="source-count"
-				>{row.sources} {row.sources === 1 ? 'source' : 'sources'}</span
+				>{t('units.source', { count: row.sources })}</span
 			>{/if}
 	</div>
 	<dl>
@@ -99,7 +100,7 @@
 				<dt>
 					<span title={column}>{columnLabel(column)}</span><CopyButton
 						text={formatValue(row.data[column], true)}
-						label={`Copy ${columnLabel(column)}`}
+						label={t('row.copyField', { name: columnLabel(column) })}
 					/>
 				</dt>
 				<dd>
@@ -109,21 +110,21 @@
 				</dd>
 			</div>{/each}
 	</dl>
-	<section aria-label="Row sources">
-		<h3>Sources</h3>
-		{#if loading}<p role="status">Loading sources…</p>
+	<section aria-label={t('row.sources')}>
+		<h3>{t('row.sourcesTitle')}</h3>
+		{#if loading}<p role="status">{t('row.loadingSources')}</p>
 		{:else if error}<ErrorNotice {error} {context} /><button
 				class="button"
 				onclick={() => {
 					retry++;
-				}}>Retry loading sources</button
+				}}>{t('row.retrySources')}</button
 			>
-		{:else if !sources.length}<p class="muted">No sources were saved for this row.</p>
+		{:else if !sources.length}<p class="muted">{t('row.noSources')}</p>
 		{:else}{#each sources as source}<article>
 					<div class="source-heading">
 						<ExternalLink href={source.url} label={source.title || source.url} /><CopyButton
 							text={source.url}
-							label="Copy source URL"
+							label={t('row.copySourceUrl')}
 						/>
 					</div>
 					{#if source.title}<p class="source-url">

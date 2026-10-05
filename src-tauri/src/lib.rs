@@ -19,6 +19,24 @@ pub struct AppState {
     pub db: Arc<Database>,
 }
 
+/// Tray menu items, relabelled when the interface language changes.
+pub struct TrayMenu(pub std::sync::Mutex<Option<(tauri::menu::MenuItem<tauri::Wry>, tauri::menu::MenuItem<tauri::Wry>)>>);
+
+/// Relabels the tray menu for the `ui_language` setting.
+pub fn apply_tray_language(app: &tauri::AppHandle, setting: &str) {
+    use tauri::Manager;
+    let locale = ["LC_ALL", "LC_MESSAGES", "LANG"]
+        .iter()
+        .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()));
+    let (show, quit) = utils::i18n::tray_labels(utils::i18n::resolve_language(Some(setting), locale.as_deref()));
+    if let Some(tray) = app.try_state::<TrayMenu>() {
+        if let Some((show_item, quit_item)) = tray.0.lock().ok().and_then(|items| items.clone()) {
+            let _ = show_item.set_text(show);
+            let _ = quit_item.set_text(quit);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Capture HTTP_PROXY/HTTPS_PROXY for our reqwest clients and strip them
@@ -48,6 +66,13 @@ pub fn run() {
         }
     }
 
+    // The tray menu is built before the frontend loads, in the saved interface language.
+    let tray_lang = runtime.block_on(async {
+        let settings: std::collections::HashMap<String, String> =
+            db.get_all_settings().await.map(|rows| rows.into_iter().collect()).unwrap_or_default();
+        utils::i18n::current_language(&settings)
+    });
+
     let app_state = AppState {
         db: Arc::new(db),
     };
@@ -63,9 +88,11 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(app_state)
         .manage(run_controller)
-        .setup(|app| {
-            let show_item = MenuItemBuilder::with_id("show", "Show Window").build(app)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+        .setup(move |app| {
+            let (show_label, quit_label) = utils::i18n::tray_labels(tray_lang);
+            let show_item = MenuItemBuilder::with_id("show", show_label).build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", quit_label).build(app)?;
+            app.manage(TrayMenu(std::sync::Mutex::new(Some((show_item.clone(), quit_item.clone())))));
             let tray_menu = MenuBuilder::new(app)
                 .item(&show_item)
                 .separator()

@@ -1,3 +1,4 @@
+import { t, type MessageKey } from '$lib/i18n';
 import { marked, type Token, type Tokens } from 'marked';
 import type { ResearchStep } from '$lib/types';
 import { displayHost } from './hosts';
@@ -5,12 +6,7 @@ import { markdownLink } from './linkMenu';
 
 export type StepKind = 'search' | 'fetch' | 'think' | 'error';
 
-const STEP_LABELS: Record<string, string> = {
-	search: 'Search',
-	fetch: 'Read page',
-	think: 'Analysis',
-	error: 'Request issue',
-};
+const STEP_KINDS = ['search', 'fetch', 'think', 'error'];
 
 export interface StepView {
 	step: ResearchStep;
@@ -58,13 +54,13 @@ export function describeStep(step: ResearchStep, index: number): StepView {
 	const content = step.content.trim();
 	let summary = content;
 	let rawText: string | null = null;
-	let label = STEP_LABELS[step.step_type] ?? step.step_type;
+	let label = STEP_KINDS.includes(step.step_type) ? t(`research.step.${step.step_type}` as MessageKey) : step.step_type;
 	if (step.step_type === 'error' && INVALID_REPLY.test(content)) {
-		label = 'Unreadable reply';
-		summary = 'The model’s reply could not be read. The agent asked again and continued.';
+		label = t('research.step.unreadable');
+		summary = t('research.step.unreadableSummary');
 		rawText = step.content;
 	} else if (step.step_type === 'fetch') {
-		if (!content || READ_COUNT.test(content)) summary = url ? pageLabel(url) : 'Page';
+		if (!content || READ_COUNT.test(content)) summary = url ? pageLabel(url) : t('research.page');
 		else if (content.includes('\n') || content.length > 300) {
 			// Older runs stored the page text itself; its first line is the page title.
 			summary = content.split('\n').find((line) => line.trim())?.trim().slice(0, 160) ?? '';
@@ -281,5 +277,5 @@ export function markdownToText(markdown: string): string {
 export function answerWithSources(markdown: string, sources: ResearchSource[]): string {
 	if (!sources.length) return markdown;
 	const list = sources.map((source, i) => `${i + 1}. ${markdownLink(source.title, source.url)}`);
-	return `${markdown.trimEnd()}\n\n## Sources\n\n${list.join('\n')}\n`;
+	return `${markdown.trimEnd()}\n\n## ${t('research.sourcesHeading')}\n\n${list.join('\n')}\n`;
 }

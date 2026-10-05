@@ -19,11 +19,20 @@ use crate::providers::search::types::{SearchProvider, SearchQuery};
 pub struct ConnectionReport {
     /// Everything needed for a run works.
     pub ok: bool,
+    /// English text, used when the interface has no translation for `code`.
     pub message: String,
+    /// Names the message for translation; `params` fill it in.
+    pub code: Option<String>,
+    pub params: HashMap<String, String>,
 }
 
-fn report(ok: bool, message: impl Into<String>) -> ConnectionReport {
-    ConnectionReport { ok, message: message.into() }
+fn report(ok: bool, message: impl Into<String>, code: &str, params: &[(&str, String)]) -> ConnectionReport {
+    ConnectionReport {
+        ok,
+        message: message.into(),
+        code: Some(code.to_string()),
+        params: params.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+    }
 }
 
 /// Ollama lists "llama3:latest" for a model chosen as "llama3".
@@ -35,13 +44,19 @@ fn model_listed(models: &[String], model: &str) -> bool {
 }
 
 fn model_report(models: &[String], model: &str, service: &str) -> ConnectionReport {
+    let params = [("service", service.to_string()), ("model", model.trim().to_string())];
     if model.trim().is_empty() {
-        return report(false, format!("Connected to {service}. Choose a model to finish setup."));
+        return report(false, format!("Connected to {service}. Choose a model to finish setup."), "chooseModel", &params);
     }
     if models.is_empty() || model_listed(models, model) {
-        report(true, format!("Connected to {service}; “{}” is available.", model.trim()))
+        report(true, format!("Connected to {service}; “{}” is available.", model.trim()), "modelAvailable", &params)
     } else {
-        report(false, format!("Connected to {service}, but the model “{}” is not on this server.", model.trim()))
+        report(
+            false,
+            format!("Connected to {service}, but the model “{}” is not on this server.", model.trim()),
+            "modelMissing",
+            &params,
+        )
     }
 }
 
@@ -80,6 +95,7 @@ pub async fn check_llm(
             // The catalog is public and Ollama Cloud has no free way to check a key.
             if result.ok {
                 result.message.push_str(" The API key is checked on the first model request.");
+                result.params.insert("note".into(), "cloudKeyNote".into());
             }
             Ok(result)
         }
@@ -100,6 +116,8 @@ pub async fn check_search_provider(provider: &dyn SearchProvider, name: &str) ->
     Ok(report(
         true,
         format!("{name} answered with {} result{}.", results.len(), if results.len() == 1 { "" } else { "s" }),
+        "searchOk",
+        &[("service", name.to_string()), ("count", results.len().to_string())],
     ))
 }
 
@@ -126,7 +144,8 @@ pub async fn check_proxy(proxy: &str, target: &str) -> Result<ConnectionReport, 
     if !status.is_success() {
         return Err(format!("HTTP {}: the request through the proxy failed.", status.as_u16()));
     }
-    Ok(report(true, format!("The proxy works ({} ms).", started.elapsed().as_millis())))
+    let ms = started.elapsed().as_millis().to_string();
+    Ok(report(true, format!("The proxy works ({ms} ms)."), "proxyOk", &[("ms", ms.clone())]))
 }
 
 #[tauri::command]
@@ -201,11 +220,14 @@ mod tests {
         let found = check_llm(&ok, None).await.unwrap();
         assert!(found.ok, "{found:?}");
         assert!(found.message.contains("“llama3” is available"));
+        assert_eq!(found.code.as_deref(), Some("modelAvailable"));
+        assert_eq!(found.params.get("model").map(String::as_str), Some("llama3"));
         let mut missing = base.clone();
         missing.insert("ollama_model".into(), "mistral".into());
         let report = check_llm(&missing, None).await.unwrap();
         assert!(!report.ok);
         assert!(report.message.contains("“mistral” is not on this server"));
+        assert_eq!(report.code.as_deref(), Some("modelMissing"));
         assert_eq!(list_ollama_models(server.uri()).await.unwrap(), ["llama3:latest", "qwen3:8b"]);
     }
 
@@ -276,7 +298,10 @@ mod tests {
             .await;
         let provider = SerperProvider::new("key").with_base_url(server.uri());
         let report = check_search_provider(&provider, "Serper").await.unwrap();
-        assert_eq!(report, ConnectionReport { ok: true, message: "Serper answered with 1 result.".into() });
+        assert!(report.ok);
+        assert_eq!(report.message, "Serper answered with 1 result.");
+        assert_eq!(report.code.as_deref(), Some("searchOk"));
+        assert_eq!(report.params.get("count").map(String::as_str), Some("1"));
     }
 
     #[tokio::test]
@@ -290,6 +315,8 @@ mod tests {
             .await;
         let report = check_proxy(&server.uri(), "http://probe.invalid/generate_204").await.unwrap();
         assert!(report.ok && report.message.starts_with("The proxy works"), "{report:?}");
+        assert_eq!(report.code.as_deref(), Some("proxyOk"));
+        assert!(report.params.contains_key("ms"));
         let refusing = MockServer::start().await;
         Mock::given(method("GET")).respond_with(ResponseTemplate::new(407)).mount(&refusing).await;
         assert!(check_proxy(&refusing.uri(), "http://probe.invalid/generate_204").await.unwrap_err().contains("407"));

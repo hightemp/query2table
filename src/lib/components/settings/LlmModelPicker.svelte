@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import {
 		listOllamaCloudModels,
 		listOllamaModels,
@@ -64,7 +65,7 @@
 	});
 	const listId = $derived(`${id}-options`);
 	const providerLabel = $derived(
-		{ openrouter: 'OpenRouter', ollama_cloud: 'Ollama Cloud', ollama: 'Ollama', openai_compatible: 'Server' }[provider]
+		{ openrouter: 'OpenRouter', ollama_cloud: 'Ollama Cloud', ollama: 'Ollama', openai_compatible: t('models.server') }[provider]
 	);
 	const filtered = $derived(
 		models.filter(
@@ -161,7 +162,7 @@
 					: undefined}
 				aria-describedby={`${id}-status`}
 				value={open ? filter : value}
-				placeholder="Type to filter models…"
+				placeholder={t('models.placeholder')}
 				onfocus={openList}
 				onclick={openList}
 				onblur={() => {
@@ -178,13 +179,13 @@
 			/>
 			{#if open}
 				<div class="dropdown" style={popupStyle}>
-					{#if loading}<p>Loading models…</p>{:else if error}<p>
-							Could not load models. Close this list and use Refresh to retry.
-						</p>{:else if models.length === 0}<p>No models available.</p>{/if}
+					{#if loading}<p>{t('models.loading')}</p>{:else if error}<p>
+							{t('models.loadFailed')}
+						</p>{:else if models.length === 0}<p>{t('models.none')}</p>{/if}
 					<div
 						id={listId}
 						role="listbox"
-						aria-label={`${providerLabel} models`}
+						aria-label={t('models.list', { provider: providerLabel })}
 						aria-busy={loading}
 					>
 						{#each filtered as model, index (model)}
@@ -201,7 +202,7 @@
 						{/each}
 					</div>
 					{#if !loading && !error && models.length > 0 && filtered.length === 0}
-						<p>No matching models</p>
+						<p>{t('models.noMatch')}</p>
 					{/if}
 				</div>
 			{/if}
@@ -214,14 +215,14 @@
 			}}
 			disabled={loading}
 		>
-			Refresh
+			{t('models.refresh')}
 		</button>
 	</div>
 	<p id={`${id}-status`} role="status">
-		{#if loading}Loading models…
-		{:else if error}The model list could not be loaded.
-		{:else if models.length === 0}The server returned no models.
-		{:else}{models.length} models available. Type to filter, then select a model.
+		{#if loading}{t('models.loading')}
+		{:else if error}{t('models.listFailed')}
+		{:else if models.length === 0}{t('models.serverEmpty')}
+		{:else}{t('models.available', { count: models.length })}
 		{/if}
 	</p>
 	{#if error}<ErrorNotice {error} context="catalog" />{/if}

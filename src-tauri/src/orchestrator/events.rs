@@ -16,6 +16,8 @@ pub struct EventPublisher {
     app: AppHandle,
     run_id: String,
     notifications_enabled: bool,
+    /// Language of the desktop notifications.
+    lang: crate::utils::i18n::Lang,
 }
 
 impl EventPublisher {
@@ -44,11 +46,17 @@ impl EventPublisher {
             tracing::error!(%error, "Failed to publish canonical rows");
         }
     }
-    pub fn new(app: AppHandle, run_id: String, notifications_enabled: bool) -> Self {
+    pub fn new(
+        app: AppHandle,
+        run_id: String,
+        notifications_enabled: bool,
+        lang: crate::utils::i18n::Lang,
+    ) -> Self {
         Self {
             app,
             run_id,
             notifications_enabled,
+            lang,
         }
     }
 
@@ -74,7 +82,7 @@ impl EventPublisher {
 
         // Notify about finished runs only while the user is looking elsewhere.
         // Cancellation is always user-initiated, so it never needs a notification.
-        if let Some((title, body)) = notification_for(status) {
+        if let Some((title, body)) = crate::utils::i18n::run_notification(status, self.lang) {
             if self.notifications_enabled && !self.main_window_focused() {
                 self.send_notification(title, body);
             }
@@ -351,30 +359,10 @@ pub struct ResearchAnswerEvent {
     pub follow_ups: Vec<String>,
 }
 
-/// Title and body of the desktop notification for a run status, if it deserves one.
-fn notification_for(status: &str) -> Option<(&'static str, &'static str)> {
-    match status {
-        "completed" => Some((
-            "Research Complete",
-            "Your query has finished and results are ready.",
-        )),
-        "failed" => Some(("Research Failed", "Your query encountered an error.")),
-        _ => None,
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn notifies_only_about_runs_that_finished_on_their_own() {
-        assert!(notification_for("completed").is_some());
-        assert!(notification_for("failed").is_some());
-        for status in ["cancelled", "running", "paused", "pending", "schema_review"] {
-            assert!(notification_for(status).is_none(), "{status}");
-        }
-    }
 
     #[test]
     fn llm_issue_event_keeps_flat_frontend_contract() {

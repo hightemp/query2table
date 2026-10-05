@@ -40,6 +40,7 @@ query2table/
 │   ├── lib/
 │   │   ├── components/         # UI components (layout, query, results, settings, common)
 │   │   ├── stores/             # Svelte stores (runs, settings, history, ui)
+│   │   ├── i18n/               # Interface languages: en.ts (reference), ru.ts, t() and language choice
 │   │   ├── types/              # TypeScript type definitions
 │   │   └── api/                # Tauri invoke/listen wrappers
 │   └── routes/                 # SvelteKit pages (query, history, settings)
@@ -53,6 +54,11 @@ query2table/
 ├── vite.config.ts              # Vite build configuration
 └── tsconfig.json               # TypeScript configuration
 ```
+
+## Interface language
+All user-visible frontend text goes through `t('key', params)` from `$lib/i18n`; never hard-code UI strings.
+Add every new key to both `src/lib/i18n/en.ts` and `ru.ts` (keys are sorted; plural messages use `{ one, few, many, other }` with a numeric `count` param). `src/tests/i18n.test.ts` checks that both catalogs have the same keys and placeholders.
+The language is the `ui_language` setting (`system`, `en`, `ru`); the backend uses it for notifications and the tray menu (`src-tauri/src/utils/i18n.rs`). Technical details (raw provider errors, logs) and model answers are not translated.
 
 ## Key Entry Points
 | File | Purpose |

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { marked, Renderer } from 'marked';
 	import DOMPurify from 'dompurify';
 	import { openExternal } from '$lib/utils/links';
@@ -42,7 +43,7 @@
 		try {
 			await openExternal(href);
 		} catch {
-			toast('Could not open the link. Copy its address and open it in your browser.', 'error');
+			toast(t('common.openLinkFailed'), 'error');
 		}
 	}
 </script>
@@ -55,7 +56,7 @@
 		const url = webUrl(anchor?.getAttribute('href') ?? '');
 		if (!anchor || !url) return;
 		event.preventDefault();
-		showContextMenu({ x: event.clientX, y: event.clientY }, `Actions for ${url}`, linkMenuItems(url, anchor.textContent ?? ''));
+		showContextMenu({ x: event.clientX, y: event.clientY }, t('common.actionsFor', { name: url }), linkMenuItems(url, anchor.textContent ?? ''));
 	}}
 	role="presentation"
 >

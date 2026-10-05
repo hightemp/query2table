@@ -20,6 +20,7 @@
 		MonitorIcon,
 	} from '@lucide/svelte';
 	import { settings } from '$lib/stores/settings';
+	import { language, setLanguage, t, type LanguagePreference, type MessageKey } from '$lib/i18n';
 	import { setTheme, themePreference, type ThemePreference } from '$lib/stores/ui';
 	import { toast } from '$lib/stores/toasts';
 	import Dialog from '$lib/components/common/Dialog.svelte';
@@ -39,6 +40,9 @@
 	import {
 		SECTIONS,
 		fieldsIn,
+		groupLabel,
+		sectionDescription,
+		sectionLabel,
 		isDefault,
 		maskProxyUrl,
 		matchingFields,
@@ -232,16 +236,33 @@
 	}
 
 	// --- Theme ---
-	const themes: { value: ThemePreference; label: string; icon: typeof SunIcon }[] = [
-		{ value: 'light', label: 'Light', icon: SunIcon },
-		{ value: 'dark', label: 'Dark', icon: MoonIcon },
-		{ value: 'system', label: 'System', icon: MonitorIcon },
+	const themes: { value: ThemePreference; label: MessageKey; icon: typeof SunIcon }[] = [
+		{ value: 'light', label: 'theme.light', icon: SunIcon },
+		{ value: 'dark', label: 'theme.dark', icon: MoonIcon },
+		{ value: 'system', label: 'theme.system', icon: MonitorIcon },
 	];
+	async function changeLanguage(next: LanguagePreference) {
+		try {
+			await setLanguage(next);
+		} catch {
+			toast(t('settings.languageFailed'), 'error');
+		}
+	}
+	/** Connection results with a code are shown in the interface language. */
+	function reportText(report: ConnectionReport): string {
+		if (!report.code) return report.message;
+		const params: Record<string, string | number> = {};
+		for (const [key, text] of Object.entries(report.params ?? {}))
+			params[key] = /^\d+$/.test(text) ? Number(text) : text;
+		if (params.service === 'the server') params.service = t('connection.theServer');
+		const note = report.params?.note === 'cloudKeyNote' ? t('connection.cloudKeyNote') : '';
+		return t(`connection.${report.code}` as MessageKey, params) + note;
+	}
 	async function changeTheme(next: ThemePreference) {
 		try {
 			await setTheme(next);
 		} catch {
-			toast('Could not save the theme. Try again.', 'error');
+			toast(t('theme.saveFailed'), 'error');
 		}
 	}
 
@@ -250,11 +271,11 @@
 		try {
 			const path = await saveFile({
 				defaultPath: 'query2table-settings.json',
-				filters: [{ name: 'Settings', extensions: ['json'] }],
+				filters: [{ name: t('settings.fileFilter'), extensions: ['json'] }],
 			});
 			if (!path) return;
 			await exportSettings(path);
-			toast('Settings exported. API keys and proxies are not included.', 'success');
+			toast(t('settings.exported'), 'success');
 		} catch (error) {
 			toast(errorText(error), 'error');
 		}
@@ -265,13 +286,13 @@
 			const path = await openFile({
 				directory: false,
 				multiple: false,
-				filters: [{ name: 'Settings', extensions: ['json'] }],
+				filters: [{ name: t('settings.fileFilter'), extensions: ['json'] }],
 			});
 			if (!path || Array.isArray(path)) return;
 			const values = await readSettingsFile(path);
 			const entries = Object.entries(values);
 			for (const [key, next] of entries) handleChange(key, next);
-			importMessage = `Imported ${entries.length} ${entries.length === 1 ? 'setting' : 'settings'}. Review them and save.`;
+			importMessage = t('settings.imported', { count: entries.length });
 		} catch (error) {
 			toast(errorText(error), 'error');
 		}
@@ -382,9 +403,9 @@
 
 {#snippet checkResult(name: string)}
 	{@const check = checks[name]}
-	{#if check?.running}<p class="check" role="status">Checking…</p>
+	{#if check?.running}<p class="check" role="status">{t('settings.checking')}</p>
 	{:else if check?.report}<p class="check" class:ok={check.report.ok} class:warn={!check.report.ok} role="status">
-			{#if check.report.ok}<CircleCheckIcon size={15} />{:else}<TriangleAlertIcon size={15} />{/if}{check.report.message}
+			{#if check.report.ok}<CircleCheckIcon size={15} />{:else}<TriangleAlertIcon size={15} />{/if}{reportText(check.report)}
 		</p>
 	{:else if check?.error}<p class="check fail" role="status">
 			<TriangleAlertIcon size={15} />{presentError(check.error, 'settings').title}. <span class="raw">{check.error}</span>
@@ -423,13 +444,10 @@
 		{/snippet}
 		{#snippet help()}
 			{#if field.key === 'llm_reasoning_effort'}
-				<p class="help">
-					Auto turns thinking off for structured Ollama requests (Low for GPT-OSS) and uses the provider default
-					elsewhere. Provider default leaves thinking unchanged.
-				</p>
-				{#if isGptOss}<p class="help">GPT-OSS cannot use Off or Max. Choose Low, Medium or High; Auto uses Low with Ollama.</p>{/if}
+				<p class="help">{t('settings.reasoningHelp')}</p>
+				{#if isGptOss}<p class="help">{t('settings.gptOssHelp')}</p>{/if}
 				{#if invalidReasoning}<ErrorNotice
-						error="GPT-OSS does not support the selected reasoning effort. Choose Auto, Provider default, On, Low, Medium, or High."
+						error={t('settings.gptOssError')}
 						code="unsupported_setting"
 						context="settings"
 					/>{/if}
@@ -441,27 +459,27 @@
 <div class="settings-page">
 	<header class="page-header settings-header">
 		<div>
-			<h1>Settings</h1>
-			<p>Connections and preferences for new runs.</p>
+			<h1>{t('settings.title')}</h1>
+			<p>{t('settings.subtitle')}</p>
 		</div>
 		<div class="save-actions">
 			<span role="status"
 				>{saving
-					? 'Saving changes…'
+					? t('settings.saving')
 					: dirty.size
-						? `${dirty.size} unsaved ${dirty.size === 1 ? 'change' : 'changes'}`
+						? t('settings.unsavedChanges', { count: dirty.size })
 						: savedFeedback
-							? 'Changes saved'
-							: 'All changes saved'}</span
+							? t('settings.saved')
+							: t('settings.allSaved')}</span
 			>
-			<button class="button" onclick={discard} disabled={saving || !dirty.size}>Discard</button>
+			<button class="button" onclick={discard} disabled={saving || !dirty.size}>{t('settings.discard')}</button>
 			<button
 				class="button primary"
 				onclick={() => saveAll()}
-				title={blocked ? 'Fix the highlighted values to save' : `Save (${modKey}+S)`}
+				title={blocked ? t('settings.fixToSave') : t('settings.saveHint', { shortcut: `${modKey}+S` })}
 				aria-keyshortcuts={modKey === '⌘' ? 'Meta+S' : 'Control+S'}
 				disabled={saving || blocked || !dirty.size}
-				><SaveIcon size={16} />{saving ? 'Saving…' : 'Save'}</button
+				><SaveIcon size={16} />{saving ? t('settings.savingShort') : t('settings.save')}</button
 			>
 		</div>
 	</header>
@@ -472,14 +490,14 @@
 				bind:this={searchInput}
 				type="search"
 				class="input sm"
-				placeholder="Search settings…"
-				aria-label="Search settings"
+				placeholder={t('settings.searchPlaceholder')}
+				aria-label={t('settings.search')}
 				bind:value={query}
 			/></label
 		>
-		<div class="readiness" role="status" aria-label="Setup status">
+		<div class="readiness" role="status" aria-label={t('settings.setupStatus')}>
 			{#if !settingsMap.size}
-				<span class="muted">Loading…</span>
+				<span class="muted">{t('settings.loading')}</span>
 			{:else if problems.length}
 				<TriangleAlertIcon size={15} />
 				{#each problems as problem}<a
@@ -489,18 +507,18 @@
 							void focusField(problem.key, problem.section);
 						}}>{problem.message}</a
 					>{/each}
-			{:else}<CircleCheckIcon size={15} /><span>Ready for new runs</span>{/if}
+			{:else}<CircleCheckIcon size={15} /><span>{t('settings.ready')}</span>{/if}
 		</div>
 		<div class="file-actions">
-			<button class="button sm ghost" onclick={importFromFile}><UploadIcon size={14} />Import settings…</button>
-			<button class="button sm ghost" onclick={exportToFile}><DownloadIcon size={14} />Export settings…</button>
+			<button class="button sm ghost" onclick={importFromFile}><UploadIcon size={14} />{t('settings.import')}</button>
+			<button class="button sm ghost" onclick={exportToFile}><DownloadIcon size={14} />{t('settings.export')}</button>
 		</div>
 	</div>
 	{#if importMessage}<p class="import-message" role="status">{importMessage}</p>{/if}
 	{#if saveError}<ErrorNotice error={saveError} context="settings" />{/if}
 
 	<div class="settings-body">
-		<nav class="section-nav" aria-label="Settings sections">
+		<nav class="section-nav" aria-label={t('settings.sections')}>
 			{#each SECTIONS as section (section.id)}
 				<a
 					href={`#settings-${section.id}`}
@@ -509,22 +527,22 @@
 					onclick={(event) => {
 						event.preventDefault();
 						goToSection(section.id);
-					}}>{section.label}{#if sectionState(section.id)}<span class="marker" aria-hidden="true"></span>{/if}</a
+					}}>{sectionLabel(section.id)}{#if sectionState(section.id)}<span class="marker" aria-hidden="true"></span>{/if}</a
 				>
 			{/each}
 		</nav>
 		<select
 			class="input section-select"
-			aria-label="Settings section"
+			aria-label={t('settings.section')}
 			value={activeSection}
 			onchange={(event) => goToSection(event.currentTarget.value)}
 		>
-			{#each SECTIONS as section (section.id)}<option value={section.id}>{section.label}</option>{/each}
+			{#each SECTIONS as section (section.id)}<option value={section.id}>{sectionLabel(section.id)}</option>{/each}
 		</select>
 
 		<div class="settings-scroll" tabindex="-1" bind:this={scroller} onscroll={updateActive}>
 			{#if searching && !matches.size}
-				<p class="no-match">No settings match “{query.trim()}”.</p>
+				<p class="no-match">{t('settings.noMatch', { query: query.trim() })}</p>
 			{/if}
 			{#each SECTIONS as section (section.id)}
 				{@const fields = fieldsIn(section.id, settingsMap)}
@@ -532,8 +550,8 @@
 				<section class="settings-section" id={`settings-${section.id}`} hidden={!sectionVisible(section.id) && searching}>
 					<div class="section-head">
 						<div>
-							<h2>{section.label}</h2>
-							<p class="section-description">{section.description}</p>
+							<h2>{sectionLabel(section.id)}</h2>
+							<p class="section-description">{sectionDescription(section.id)}</p>
 						</div>
 						<div class="section-actions">
 							{#if section.id === 'llm' || section.id === 'search'}
@@ -543,17 +561,17 @@
 									onclick={() =>
 										runCheck(section.id, () =>
 											section.id === 'llm' ? testLlmConnection(formValues()) : testSearchConnection(formValues())
-										)}><PlugIcon size={14} />Test connection</button
+										)}><PlugIcon size={14} />{t('settings.testConnection')}</button
 								>
 							{/if}
 							{#if Object.keys(sectionResetValues(section.id, settingsMap)).length}
 								<button class="button sm ghost" onclick={() => resetSection(section.id)}
-									><RotateCcwIcon size={14} />Reset section</button
+									><RotateCcwIcon size={14} />{t('settings.resetSection')}</button
 								>
 							{/if}
 						</div>
 					</div>
-					{#if section.id === 'search'}<p class="note">Uses one search request.</p>{/if}
+					{#if section.id === 'search'}<p class="note">{t('settings.searchCost')}</p>{/if}
 					{@render checkResult(section.id)}
 
 					{#each section.groups as group}
@@ -565,7 +583,7 @@
 								(section.id === 'app' && (group === 'Appearance' || group === 'Files')))}
 						{#if groupFields.length || custom}
 							<div class="group">
-								<h3>{group}</h3>
+								<h3>{groupLabel(group)}</h3>
 								{#each groupFields as field (field.key)}{@render fieldView(field)}{/each}
 								{#if custom && section.id === 'llm'}
 									<ModelPricing
@@ -577,8 +595,8 @@
 									/>
 								{:else if custom && section.id === 'app' && group === 'Appearance'}
 									<div class="theme-row">
-										<span class="theme-label" id="theme-label">Theme</span>
-										<div class="theme-options" role="radiogroup" aria-labelledby="theme-label" aria-label="Theme">
+										<span class="theme-label" id="theme-label">{t('settings.theme')}</span>
+										<div class="theme-options" role="radiogroup" aria-labelledby="theme-label" aria-label={t('settings.theme')}>
 											{#each themes as theme (theme.value)}
 												{@const Icon = theme.icon}
 												<label class:checked={$themePreference === theme.value}
@@ -588,17 +606,29 @@
 														value={theme.value}
 														checked={$themePreference === theme.value}
 														onchange={() => changeTheme(theme.value)}
-													/><Icon size={15} />{theme.label}</label
+													/><Icon size={15} />{t(theme.label)}</label
 												>
 											{/each}
 										</div>
+									</div>
+									<div class="theme-row">
+										<label class="theme-label" for="ui-language">{t('settings.language')}</label>
+										<select
+											id="ui-language"
+											class="input language"
+											value={language.preference}
+											onchange={(event) => changeLanguage(event.currentTarget.value as LanguagePreference)}
+										>
+											<option value="system">{t('settings.languageSystem')}</option>
+											<option value="en">English</option>
+											<option value="ru">Русский</option>
+										</select>
 									</div>
 								{:else if custom && section.id === 'app' && group === 'Files'}
 									<AppFiles />
 								{:else if custom && section.id === 'network'}
 									<p class="section-description">
-										Route searches and page loads through a proxy. Supports <code>http://</code>, <code>https://</code> and
-										<code>socks5://</code>, optionally with a login: <code>http://user:pass@host:port</code>.
+										{t('settings.proxyHelp')}
 									</p>
 									<div class="proxy-list">
 										<label class="proxy-radio"
@@ -607,7 +637,7 @@
 												name="active-proxy"
 												checked={activeProxy === ''}
 												onchange={() => handleChange('active_proxy_url', '')}
-											/>Direct connection (no proxy)</label
+											/>{t('settings.directConnection')}</label
 										>
 										{#each proxies as proxy, i (i)}
 											<div class="proxy-row">
@@ -617,18 +647,18 @@
 													checked={proxy.url !== '' && activeProxy === proxy.url}
 													disabled={proxy.url === ''}
 													onchange={() => handleChange('active_proxy_url', proxy.url)}
-													aria-label="Use this proxy"
+													aria-label={t('settings.useProxy')}
 												/>
 												<input
 													class="input proxy-name"
-													aria-label="Proxy name"
-													placeholder="Name (optional)"
+													aria-label={t('settings.proxyName')}
+													placeholder={t('settings.proxyNamePlaceholder')}
 													value={proxy.name}
 													oninput={(e) => updateProxy(i, 'name', e.currentTarget.value)}
 												/>
 												<input
 													class="input proxy-url"
-													aria-label="Proxy URL"
+													aria-label={t('settings.proxyUrl')}
 													placeholder="http://user:pass@host:port"
 													spellcheck="false"
 													value={proxyFocus === i ? proxy.url : maskProxyUrl(proxy.url)}
@@ -640,13 +670,13 @@
 													class="button sm"
 													type="button"
 													disabled={!proxy.url || checks[`proxy-${i}`]?.running}
-													onclick={() => runCheck(`proxy-${i}`, () => testProxy(proxy.url))}>Test proxy</button
+													onclick={() => runCheck(`proxy-${i}`, () => testProxy(proxy.url))}>{t('settings.testProxy')}</button
 												>
 												<button
 													class="icon-button ghost danger"
 													type="button"
 													onclick={() => removeProxy(i)}
-													aria-label="Remove proxy"><TrashIcon size={16} /></button
+													aria-label={t('settings.removeProxy')}><TrashIcon size={16} /></button
 												>
 											</div>
 											{@render checkResult(`proxy-${i}`)}
@@ -655,7 +685,7 @@
 											class="button dashed add-proxy"
 											type="button"
 											onclick={() => persistProxies([...proxies, { name: '', url: '' }])}
-											><PlusIcon size={16} />Add proxy</button
+											><PlusIcon size={16} />{t('settings.addProxy')}</button
 										>
 									</div>
 								{/if}
@@ -670,10 +700,10 @@
 									class="advanced-toggle"
 									aria-expanded={shown}
 									onclick={() => toggleAdvanced(section.id)}
-									>{#if shown}<ChevronDownIcon size={15} />{:else}<ChevronRightIcon size={15} />{/if}Advanced
+									>{#if shown}<ChevronDownIcon size={15} />{:else}<ChevronRightIcon size={15} />{/if}{t('settings.advanced')}
 									<span class="muted">({fields.filter((f) => f.advanced).length})</span>
 									{#if fields.some((f) => f.advanced && !isDefault(f, value(f)) && !f.keepOnReset)}<span class="muted"
-											>· changed from defaults</span
+											>{t('settings.changedFromDefaults')}</span
 										>{/if}</button
 								>{/if}
 							{#if shown}
@@ -688,13 +718,13 @@
 </div>
 
 {#if leaveAction}
-	<Dialog title="Unsaved changes" busy={saving} onclose={() => (leaveAction = null)}>
-		<p>Save your changes before leaving Settings?</p>
+	<Dialog title={t('settings.leaveTitle')} busy={saving} onclose={() => (leaveAction = null)}>
+		<p>{t('settings.leaveText')}</p>
 		{#if saveError}<ErrorNotice error={saveError} context="settings" />{/if}
 		{#snippet footer()}
-			<button class="button" disabled={saving} onclick={() => (leaveAction = null)}>Stay</button>
-			<button class="button" disabled={saving} onclick={() => leave(false)}>Discard</button>
-			<button class="button primary" disabled={saving || blocked} onclick={() => leave(true)}>Save and leave</button>
+			<button class="button" disabled={saving} onclick={() => (leaveAction = null)}>{t('settings.stay')}</button>
+			<button class="button" disabled={saving} onclick={() => leave(false)}>{t('settings.discard')}</button>
+			<button class="button primary" disabled={saving || blocked} onclick={() => leave(true)}>{t('settings.saveAndLeave')}</button>
 		{/snippet}
 	</Dialog>
 {/if}
@@ -868,9 +898,7 @@
 		color: var(--app-muted);
 		font-size: var(--app-text-md);
 	}
-	.section-description code {
-		font-size: 0.92em;
-	}
+
 	.note {
 		margin-top: 6px;
 		color: var(--app-muted);
@@ -947,6 +975,10 @@
 	}
 	.theme-label {
 		font-weight: 600;
+	}
+	select.language {
+		width: auto;
+		min-width: 180px;
 	}
 	.theme-options {
 		display: flex;

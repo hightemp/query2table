@@ -1,55 +1,30 @@
 <script lang="ts">
+	import { t, type MessageKey } from '$lib/i18n';
 	import type { LogEntryEvent } from '$lib/types';
 	let {
 		status,
 		runType = 'table',
 		activity = [],
 	}: { status: string; runType?: string; activity?: LogEntryEvent[] } = $props();
-	const common: Record<string, string> = {
-		search_executor: 'Searching the web',
-		fetcher: 'Fetching pages',
-		stopping_controller: 'Finishing the run',
+	const common = ['search_executor', 'fetcher', 'stopping_controller'];
+	/** Log roles that name the current operation in each mode. */
+	const operations: Record<string, string[]> = {
+		table: [...common, 'interpreter', 'planner', 'schema_planner', 'search_planner', 'query_expander', 'extractor', 'deduplicator', 'validator'],
+		images: ['image_pipeline', 'image_searcher', 'image_search_planner', 'image_ranker', 'image_storage', 'stopping_controller'],
+		links: [...common, 'link_pipeline', 'link_search_planner', 'link_ranker', 'link_storage'],
+		research: ['research', ...common],
 	};
-	const operations: Record<string, Record<string, string>> = {
-		table: {
-			...common,
-			interpreter: 'Analyzing query',
-			planner: 'Planning schema',
-			schema_planner: 'Planning schema',
-			search_planner: 'Planning searches',
-			query_expander: 'Expanding searches',
-			extractor: 'Extracting data',
-			deduplicator: 'Deduplicating results',
-			validator: 'Validating results',
-		},
-		images: {
-			image_pipeline: 'Preparing image search',
-			image_searcher: 'Searching images',
-			image_search_planner: 'Planning image searches',
-			image_ranker: 'Ranking images',
-			image_storage: 'Storing images',
-			stopping_controller: 'Finishing the run',
-		},
-		links: {
-			...common,
-			link_pipeline: 'Preparing link search',
-			link_search_planner: 'Planning link searches',
-			link_ranker: 'Ranking links',
-			link_storage: 'Storing links',
-		},
-		research: { research: 'Researching sources', ...common },
-	};
-	let latest = $derived([...activity].reverse().find((entry) => operations[runType]?.[entry.role]));
+	let latest = $derived([...activity].reverse().find((entry) => operations[runType]?.includes(entry.role)));
 	let label = $derived(
 		status === 'schema_review'
-			? 'Waiting for schema confirmation'
+			? t('operation.waitingSchema')
 			: status === 'paused'
-				? 'Paused — resume when ready'
+				? t('operation.paused')
 				: status === 'pending'
-					? 'Preparing your run'
+					? t('operation.preparing')
 					: latest
-						? operations[runType][latest.role]
-						: 'Waiting for activity'
+						? t(`operation.${latest.role === 'schema_planner' ? 'planner' : latest.role}` as MessageKey)
+						: t('operation.waiting')
 	);
 	let running = $derived(status === 'running' || status === 'pending');
 </script>
@@ -57,7 +32,7 @@
 <div class="current-operation">
 	<span class="activity-dot" class:running></span><span role="status">{label}</span>
 	{#if activity.length}<details>
-			<summary>Activity</summary>
+			<summary>{t('operation.activity')}</summary>
 			<div class="activity-popover">
 				{#each activity.slice(-8) as entry}<p>{entry.message}</p>{/each}
 			</div>

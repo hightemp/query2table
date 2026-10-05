@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t, type MessageKey } from '$lib/i18n';
 	import { untrack } from 'svelte';
 	import type { SchemaColumn } from '$lib/types';
 	import { PlusIcon, TrashIcon, CheckIcon } from '@lucide/svelte';
@@ -22,10 +23,10 @@
 		}
 	});
 	let validation = $derived.by(() => {
-		if (!columns.length) return 'Add at least one column.';
+		if (!columns.length) return t('schema.needColumn');
 		const names = columns.map((column) => column.name.trim().toLowerCase());
-		if (names.some((name) => !name)) return 'Give every column a name.';
-		if (new Set(names).size !== names.length) return 'Column names must be unique.';
+		if (names.some((name) => !name)) return t('schema.needNames');
+		if (new Set(names).size !== names.length) return t('schema.uniqueNames');
 		return '';
 	});
 	function confirm() {
@@ -36,38 +37,38 @@
 
 <div class="schema-editor">
 	<header>
-		<h2>Proposed Schema</h2>
-		<p>Review the columns before searching. You can change names, types and descriptions.</p>
+		<h2>{t('schema.title')}</h2>
+		<p>{t('schema.subtitle')}</p>
 	</header>
 	<div class="columns-list">
 		{#each columns as column, i}
 			<div class="column-row">
 				<label
-					>Name<input
+					>{t('schema.name')}<input
 						class="input"
 						bind:value={column.name}
-						placeholder="Column name"
-						aria-label={`Column ${i + 1} name`}
+						placeholder={t('schema.namePlaceholder')}
+						aria-label={t('schema.columnName', { n: i + 1 })}
 						disabled={pending}
 					/></label
 				>
 				<label
-					>Type<select
+					>{t('schema.type')}<select
 						class="input"
 						bind:value={column.type}
-						aria-label={`Column ${i + 1} type`}
+						aria-label={t('schema.columnType', { n: i + 1 })}
 						disabled={pending}
 						>{#each ['text', 'number', 'url', 'date', 'boolean'] as type}<option value={type}
-								>{type}</option
+								>{t(`schema.type.${type}` as MessageKey)}</option
 							>{/each}</select
 					></label
 				>
 				<label class="description"
-					>Description<input
+					>{t('schema.description')}<input
 						class="input"
 						bind:value={column.description}
-						placeholder="Description"
-						aria-label={`Column ${i + 1} description`}
+						placeholder={t('schema.description')}
+						aria-label={t('schema.columnDescription', { n: i + 1 })}
 						disabled={pending}
 					/></label
 				>
@@ -76,7 +77,7 @@
 						type="checkbox"
 						bind:checked={column.required}
 						disabled={pending}
-					/>Required</label
+					/>{t('schema.required')}</label
 				>
 				<button
 					class="icon-button danger"
@@ -84,7 +85,7 @@
 						columns = columns.filter((_, index) => index !== i);
 					}}
 					disabled={pending}
-					aria-label={`Remove column ${i + 1}`}><TrashIcon size={16} /></button
+					aria-label={t('schema.remove', { n: i + 1 })}><TrashIcon size={16} /></button
 				>
 			</div>
 		{/each}
@@ -96,14 +97,14 @@
 			disabled={pending}
 			onclick={() => {
 				columns = [...columns, { name: '', type: 'text', description: '', required: false }];
-			}}><PlusIcon size={16} />Add Column</button
+			}}><PlusIcon size={16} />{t('schema.add')}</button
 		>
 		<div>
 			<button
 				class="button primary"
 				disabled={!!validation || pending}
 				onclick={confirm}
-				><CheckIcon size={16} />{pending ? 'Confirming…' : 'Confirm Schema'}</button
+				><CheckIcon size={16} />{pending ? t('schema.confirming') : t('schema.confirm')}</button
 			>
 		</div>
 	</footer>

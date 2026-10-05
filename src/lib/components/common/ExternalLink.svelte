@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import type { Snippet } from 'svelte';
 	import type { MenuItem } from './ContextMenu.svelte';
 	import { isMenuKey, menuPointFor } from './ContextMenu.svelte';
@@ -27,7 +28,7 @@
 		if (await openLink(href)) onopen?.();
 	}
 	function menu(point: { x: number; y: number }) {
-		showContextMenu(point, `Actions for ${label ?? href}`, menuItems?.() ?? linkMenuItems(href, label));
+		showContextMenu(point, t('common.actionsFor', { name: label ?? href }), menuItems?.() ?? linkMenuItems(href, label));
 	}
 </script>
 

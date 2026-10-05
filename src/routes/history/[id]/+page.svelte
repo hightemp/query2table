@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatDateTime, t, type MessageKey } from '$lib/i18n';
 	import { onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { page } from '$app/state';
@@ -55,7 +56,6 @@
 	import { RowSelection } from '$lib/utils/rowSelection.svelte';
 	import { runMenuItems } from '$lib/utils/runActions';
 
-	const typeNames: Record<string, string> = { table: 'Table', images: 'Images', links: 'Links', research: 'Research' };
 
 	let run = $state<RunInfo | null>(null);
 	let missing = $state(false);
@@ -86,15 +86,13 @@
 	let hasResults = $derived(rows.length > 0 || images.length > 0 || links.length > 0 || !!researchAnswer);
 	let resultLabel = $derived.by(() => {
 		if (!run) return '';
-		const [count, unit] =
-			run.run_type === 'images'
-				? [images.length, 'image']
-				: run.run_type === 'links'
-					? [links.length, 'link']
-					: run.run_type === 'research'
-						? [researchTurns.length > 1 ? researchTurns.length : researchSteps.length, researchTurns.length > 1 ? 'question' : 'step']
-						: [rows.length, 'row'];
-		return `${count} ${unit}${count === 1 ? '' : 's'}`;
+		if (run.run_type === 'images') return t('units.image', { count: images.length });
+		if (run.run_type === 'links') return t('units.link', { count: links.length });
+		if (run.run_type === 'research')
+			return researchTurns.length > 1
+				? t('history.question', { count: researchTurns.length })
+				: t('units.step', { count: researchSteps.length });
+		return t('units.row', { count: rows.length });
 	});
 
 	$effect(() => {
@@ -236,7 +234,7 @@
 		if (!run) return;
 		const current = run;
 		const rect = (event.currentTarget as Element).getBoundingClientRect();
-		showContextMenu({ x: rect.right - 200, y: rect.bottom + 4 }, 'Run actions', runMenuItems(current, {
+		showContextMenu({ x: rect.right - 200, y: rect.bottom + 4 }, t('runActions.menu'), runMenuItems(current, {
 			rename: () => void startRename(),
 			togglePin: async () => {
 				try {
@@ -263,16 +261,16 @@
 
 <div class="run-page">
 	<div class="back">
-		<button class="button sm" onclick={back}><ArrowLeftIcon size={16} />Back to History</button>
+		<button class="button sm" onclick={back}><ArrowLeftIcon size={16} />{t('runPage.back')}</button>
 	</div>
 	{#if missing}
-		<EmptyState>This run no longer exists.</EmptyState>
+		<EmptyState>{t('history.notFound')}</EmptyState>
 	{:else if !run}
-		{#if error}<ErrorNotice {error} context="history" />{:else}<EmptyState role="status">Loading run…</EmptyState>{/if}
+		{#if error}<ErrorNotice {error} context="history" />{:else}<EmptyState role="status">{t('runPage.loading')}</EmptyState>{/if}
 	{:else}
 		{@const current = run}
 		<RunHeader
-			eyebrow={typeNames[current.run_type] ?? current.run_type}
+			eyebrow={['table', 'images', 'links', 'research'].includes(current.run_type) ? t(`mode.${current.run_type}` as MessageKey) : current.run_type}
 			title={current.title || current.query}
 			subtitle={current.title ? current.query : null}
 			level={1}
@@ -281,7 +279,7 @@
 				{#if renaming}<input
 						bind:this={renameInput}
 						class="input rename"
-						aria-label="Run name"
+						aria-label={t('history.runName')}
 						bind:value={renameDraft}
 						onkeydown={(event) => {
 							if (event.key === 'Enter') void finishRename(renameDraft);
@@ -294,15 +292,15 @@
 				{#if current.status !== 'completed'}<Badge tone={statusTone(current.status)}
 						>{statusLabel(current.status)}</Badge
 					>{/if}
-				<span>{new Date(current.created_at * 1000).toLocaleString()}</span>
+				<span>{formatDateTime(current.created_at)}</span>
 				{#if !loading}<span>{resultLabel}</span>{/if}
 				<CostSummary accounting={costs.accounting} legacy={costs.legacy} inline />
 			{/snippet}
 			{#snippet actions()}
 				{#if hasResults}<button class="button sm accent" onclick={() => (showExport = true)}
-						><DownloadIcon size={14} />Export</button
+						><DownloadIcon size={14} />{t('controls.export')}</button
 					>{/if}
-				<button class="icon-button" aria-label="More actions" aria-haspopup="menu" onclick={openMenu}
+				<button class="icon-button" aria-label={t('runPage.moreActions')} aria-haspopup="menu" onclick={openMenu}
 					><EllipsisIcon size={16} /></button
 				>
 			{/snippet}
@@ -337,22 +335,22 @@
 
 		<div class="result">
 			{#if loading}
-				<EmptyState role="status">Loading run results…</EmptyState>
+				<EmptyState role="status">{t('runPage.loadingResults')}</EmptyState>
 			{:else if current.run_type === 'images'}
 				{#if images.length > 0}<ImageGallery {images} />{:else}<EmptyState
-						>No images found for this run.</EmptyState
+						>{t('runPage.noImages')}</EmptyState
 					>{/if}
 			{:else if current.run_type === 'links'}
-				{#if links.length > 0}<LinkList {links} />{:else}<EmptyState>No links found for this run.</EmptyState
+				{#if links.length > 0}<LinkList {links} />{:else}<EmptyState>{t('runPage.noLinks')}</EmptyState
 					>{/if}
 			{:else if current.run_type === 'research'}
 				{#if researchAnswer || researchSteps.length > 0}
 					<ResearchView turns={researchTurns} limits={researchLimits} onask={continueConversation} />
-				{:else}<EmptyState>No research output for this run.</EmptyState>{/if}
+				{:else}<EmptyState>{t('runPage.noResearch')}</EmptyState>{/if}
 			{:else if schema.length > 0 && rows.length > 0}
 				<ResultsTable {schema} {rows} onrowclick={(row, order) => selection.select(row.id, order)} />
 			{:else}
-				<EmptyState>No results found for this run.</EmptyState>
+				<EmptyState>{t('runPage.noResults')}</EmptyState>
 			{/if}
 		</div>
 		{#if selectedRow}

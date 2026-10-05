@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t, type MessageKey } from '$lib/i18n';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
@@ -27,12 +28,12 @@
 	import { errorText, presentError } from '$lib/utils/errors';
 	import { hasMod } from '$lib/utils/shortcuts';
 
-	const TYPES = [
-		{ value: 'all', label: 'All' },
-		{ value: 'table', label: 'Table' },
-		{ value: 'images', label: 'Images' },
-		{ value: 'links', label: 'Links' },
-		{ value: 'research', label: 'Research' },
+	const TYPES: { value: string; label: MessageKey }[] = [
+		{ value: 'all', label: 'history.all' },
+		{ value: 'table', label: 'mode.table' },
+		{ value: 'images', label: 'mode.images' },
+		{ value: 'links', label: 'mode.links' },
+		{ value: 'research', label: 'mode.research' },
 	];
 
 	let list = $state<HTMLDivElement>();
@@ -119,9 +120,9 @@
 			const explained = presentError(error, 'history');
 			// Messages the app wrote itself are clearer than the generic explanation.
 			toast(
-				explained.title === 'An unexpected error occurred'
+				explained.generic
 					? errorText(error)
-					: `Could not delete: ${explained.title.toLowerCase()}.`,
+					: t('history.deleteFailed', { reason: explained.title.toLowerCase() }),
 				'error'
 			);
 		}
@@ -138,7 +139,7 @@
 	}
 
 	function menu(run: HistoryRun, point: { x: number; y: number }) {
-		showContextMenu(point, `Actions for ${run.title || run.query}`, runMenuItems(run, {
+		showContextMenu(point, t('common.actionsFor', { name: run.title || run.query }), runMenuItems(run, {
 			open: () => void goto(`/history/${encodeURIComponent(run.id)}`),
 			exportRun: () => (exportRun = run),
 			rename: () => (renamingId = run.id),
@@ -166,8 +167,8 @@
 <div class="history-page">
 	<header class="page-header">
 		<div>
-			<h1>Run History</h1>
-			<p>Revisit your research and its sources.</p>
+			<h1>{t('history.title')}</h1>
+			<p>{t('history.subtitle')}</p>
 		</div>
 	</header>
 
@@ -177,59 +178,59 @@
 				bind:this={searchInput}
 				type="search"
 				class="input sm"
-				placeholder="Search runs…"
-				aria-label="Search runs"
+				placeholder={t('history.searchPlaceholder')}
+				aria-label={t('history.search')}
 				value={search}
 				oninput={(event) => onSearch(event.currentTarget.value)}
 			/></label
 		>
-		<div class="types" role="group" aria-label="Run type">
+		<div class="types" role="group" aria-label={t('history.runType')}>
 			{#each TYPES as type (type.value)}
 				{@const count = type.value === 'all' ? total : ($history.counts[type.value] ?? 0)}
 				<button
 					class="chip"
 					aria-pressed={$history.filter.runType === type.value}
 					onclick={() => void setHistoryFilter({ runType: type.value })}
-					>{type.label} <span class="count">{count}</span></button
+					>{t(type.label)} <span class="count">{count}</span></button
 				>
 			{/each}
 		</div>
 		<select
 			class="input sm"
-			aria-label="Status"
+			aria-label={t('history.status')}
 			value={$history.filter.status}
 			onchange={(event) => void setHistoryFilter({ status: event.currentTarget.value })}
 		>
-			<option value="any">Any status</option>
-			<option value="completed">Completed</option>
-			<option value="failed">Failed</option>
-			<option value="cancelled">Cancelled</option>
-			<option value="active">In progress</option>
+			<option value="any">{t('history.anyStatus')}</option>
+			<option value="completed">{t('status.completed')}</option>
+			<option value="failed">{t('status.failed')}</option>
+			<option value="cancelled">{t('status.cancelled')}</option>
+			<option value="active">{t('history.inProgress')}</option>
 		</select>
 		<select
 			class="input sm"
-			aria-label="Sort"
+			aria-label={t('history.sort')}
 			value={$history.filter.sort}
 			onchange={(event) => void setHistoryFilter({ sort: event.currentTarget.value as HistorySort })}
 		>
-			<option value="newest">Newest first</option>
-			<option value="oldest">Oldest first</option>
-			<option value="results">Most results</option>
-			<option value="cost">Highest cost</option>
+			<option value="newest">{t('history.newest')}</option>
+			<option value="oldest">{t('history.oldest')}</option>
+			<option value="results">{t('history.mostResults')}</option>
+			<option value="cost">{t('history.highestCost')}</option>
 		</select>
 	</div>
 
 	{#if selected.length}
-		<div class="bulk" role="toolbar" aria-label="Selected runs">
-			<strong>{selected.length} selected</strong>
+		<div class="bulk" role="toolbar" aria-label={t('history.selectedRuns')}>
+			<strong>{t('common.selectedCount', { count: selected.length })}</strong>
 			<button class="button sm" onclick={() => (bulkExport = ordered.filter((r) => selected.includes(r.id)).map((r) => r.id))}
-				><DownloadIcon size={14} />Export…</button
+				><DownloadIcon size={14} />{t('history.export')}</button
 			>
 			<button class="button sm danger" onclick={() => void remove([...selected])}
-				><TrashIcon size={14} />Delete</button
+				><TrashIcon size={14} />{t('history.delete')}</button
 			>
 			<button class="button sm ghost" onclick={() => (selected = [])}
-				><XIcon size={14} />Clear selection</button
+				><XIcon size={14} />{t('common.clearSelection')}</button
 			>
 		</div>
 	{/if}
@@ -238,22 +239,22 @@
 
 	<div class="history-list" class:selecting={selected.length > 0} bind:this={list} onscroll={onScroll}>
 		{#if !$history.loaded}
-			<EmptyState role="status">Loading…</EmptyState>
+			<EmptyState role="status">{t('history.loading')}</EmptyState>
 		{:else if !$history.runs.length}
 			{#if filtered}
 				<EmptyState
-					>No runs match these filters.
-					<button class="button sm" onclick={clearFilters}>Clear filters</button></EmptyState
+					>{t('history.noMatch')}
+					<button class="button sm" onclick={clearFilters}>{t('history.clearFilters')}</button></EmptyState
 				>
 			{:else}
 				<EmptyState
-					>No runs yet. Start a query to see it here.
-					<a class="button sm accent" href="/"><PlusIcon size={14} />New query</a></EmptyState
+					>{t('history.empty')}
+					<a class="button sm accent" href="/"><PlusIcon size={14} />{t('history.newQuery')}</a></EmptyState
 				>
 			{/if}
 		{:else}
 			{#each groups as group, i (group.label ?? i)}
-				<section class="history-group" aria-label={group.label ?? 'Runs'}>
+				<section class="history-group" aria-label={group.label ?? t('history.runs')}>
 					{#if group.label}<h2>{group.label}</h2>{/if}
 					<ul>
 						{#each group.runs as run (run.id)}
@@ -271,7 +272,7 @@
 					</ul>
 				</section>
 			{/each}
-			{#if $history.loading && $history.runs.length}<p class="more" role="status">Loading more…</p>{/if}
+			{#if $history.loading && $history.runs.length}<p class="more" role="status">{t('history.loadingMore')}</p>{/if}
 		{/if}
 	</div>
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { onMount, untrack } from 'svelte';
 	import {
 		runState,
@@ -126,7 +127,7 @@
 			for (const [key, value] of values)
 				if ($settings.get(key) !== value) await settings.save(key, value);
 		} catch {
-			toast('Could not remember these stop conditions for the next run.', 'error');
+			toast(t('query.rememberFailed'), 'error');
 		}
 	}
 
@@ -178,69 +179,26 @@
 		if (isIdle && queryInput) queryInput.focus();
 	});
 
-	const modes = [
-		{
-			value: 'table' as const,
-			label: 'Table',
-			icon: TableIcon,
-			description: 'Find entities and compare their details in a table with sources.',
-			action: 'Build Table',
-			unit: 'rows',
-			targetLabel: 'Target rows',
-			examples: [
-				'Open-source vector databases with license, language and GitHub stars',
-				'EU climate-tech startups founded after 2020 with funding stage and website',
-				'Robotics YouTube channels with language, focus and subscriber count',
-			],
-		},
-		{
-			value: 'images' as const,
-			label: 'Images',
-			icon: ImageIcon,
-			description: 'Find and browse images with links to their original sources.',
-			action: 'Search Images',
-			unit: 'images',
-			targetLabel: 'Max images',
-			examples: [
-				'Brutalist libraries built after 1960',
-				'Hand-drawn maps of fantasy worlds',
-				'Diagrams of the Krebs cycle',
-			],
-		},
-		{
-			value: 'links' as const,
-			label: 'Links',
-			icon: LinkIcon,
-			description: 'Find relevant pages and resources with short descriptions.',
-			action: 'Find Links',
-			unit: 'links',
-			targetLabel: 'Max links',
-			examples: [
-				'Beginner tutorials for Rust async programming',
-				'Public datasets about urban air quality',
-				'Engineering blogs about database migrations at scale',
-			],
-		},
-		{
-			value: 'research' as const,
-			label: 'Research',
-			icon: BrainIcon,
-			description: 'Explore a question and get a written answer with sources.',
-			action: 'Start Research',
-			unit: 'steps',
-			targetLabel: 'Max steps',
-			examples: [
-				'How do heat pumps perform in very cold climates?',
-				'What changed in the EU AI Act between the draft and the final text?',
-				'Which battery chemistries are used in grid storage, and why?',
-			],
-		},
-	];
+	const modeIcons = { table: TableIcon, images: ImageIcon, links: LinkIcon, research: BrainIcon } as const;
+	const modeUnits = { table: 'units.row', images: 'units.image', links: 'units.link', research: 'units.step' } as const;
+	// Rebuilt when the language changes.
+	let modes = $derived(
+		(['table', 'images', 'links', 'research'] as const).map((value) => ({
+			value,
+			label: t(`mode.${value}`),
+			icon: modeIcons[value],
+			description: t(`mode.${value}.description`),
+			action: t(`mode.${value}.action`),
+			unit: modeUnits[value],
+			targetLabel: t(`mode.${value}.target`),
+			examples: [t(`mode.${value}.example1`), t(`mode.${value}.example2`), t(`mode.${value}.example3`)],
+		}))
+	);
 	let mode = $derived(modes.find((item) => item.value === runType) ?? modes[0]);
 	let stopSummary = $derived(
 		stopParsed.conditions
-			? `${stopParsed.conditions.target_row_count} ${mode.unit} · ${formatUsd(stopParsed.conditions.max_budget_usd)} · ${formatMinutes(stopParsed.conditions.max_duration_seconds)}`
-			: 'Check the values'
+			? `${t(mode.unit, { count: stopParsed.conditions.target_row_count })} · ${formatUsd(stopParsed.conditions.max_budget_usd)} · ${formatMinutes(stopParsed.conditions.max_duration_seconds)}`
+			: t('query.checkValues')
 	);
 
 	let recentRuns = $state<RunInfo[]>([]);
@@ -310,7 +268,7 @@
 					openai_compatible: 'openai_model',
 				} as Record<string, string>
 			)[provider]
-		) || 'No model selected'
+		) || t('query.noModel')
 	);
 </script>
 
@@ -318,13 +276,13 @@
 	{#if isIdle}
 		<header class="page-header">
 			<div>
-				<h1>New Research Query</h1>
-				<p>Turn a question into useful, sourced results.</p>
+				<h1>{t('query.title')}</h1>
+				<p>{t('query.subtitle')}</p>
 			</div>
 		</header>
 		<div class="query-scroll">
 			<form class="query-form" onsubmit={handleSubmit} novalidate>
-				<div class="mode-toggle" role="group" aria-label="Result format">
+				<div class="mode-toggle" role="group" aria-label={t('query.resultFormat')}>
 					{#each modes as item}<button
 							type="button"
 							class="mode-btn"
@@ -336,13 +294,13 @@
 						>{/each}
 				</div>
 				<p class="mode-description">{mode.description}</p>
-				<label class="query-label" for="research-query">What would you like to find?</label>
+				<label class="query-label" for="research-query">{t('query.label')}</label>
 				<textarea
 					id="research-query"
 					class="input query-input"
 					bind:this={queryInput}
 					bind:value={query}
-					placeholder="e.g. Find YouTube channels about building robots, with their language, focus and website…"
+					placeholder={t('query.placeholder')}
 					rows={5}
 					onkeydown={(event) => {
 						if (event.key === 'Enter' && hasMod(event)) {
@@ -351,8 +309,8 @@
 						}
 					}}></textarea>
 				{#if !query.trim()}
-					<div class="examples" aria-label="Example queries" role="group">
-						<span>Try:</span>
+					<div class="examples" aria-label={t('query.examples')} role="group">
+						<span>{t('query.try')}</span>
 						{#each mode.examples as example}<button
 								type="button"
 								class="chip"
@@ -363,17 +321,17 @@
 				<div class="connection-summary">
 					<span>{providerNames[provider] ?? provider}</span><span class="model-name" title={model}
 						>{model}</span
-					><a href="/settings#settings-llm">Configure</a>
+					><a href="/settings#settings-llm">{t('query.configure')}</a>
 				</div>
 				{#if configProblems.length}
 					<div class="config-problems" role="alert">
 						<TriangleAlertIcon size={16} />
 						<div>
-							<p class="config-title">Finish setup before starting a run</p>
+							<p class="config-title">{t('query.finishSetup')}</p>
 							<ul>
 								{#each configProblems as problem}<li>
 										{problem.message}
-										<a href={`/settings#settings-${problem.section}`}>Open settings</a>
+										<a href={`/settings#settings-${problem.section}`}>{t('query.openSettings')}</a>
 									</li>{/each}
 							</ul>
 						</div>
@@ -390,7 +348,7 @@
 				>
 					{#if showStopConditions}<ChevronUpIcon size={16} />{:else}<ChevronDownIcon
 							size={16}
-						/>{/if}Stop conditions
+						/>{/if}{t('query.stopConditions')}
 					<span class:invalid={stopInvalid}>{stopSummary}</span>
 				</button>
 				{#if showStopConditions}
@@ -416,7 +374,7 @@
 									>{/if}</label
 							>
 							<label for="maxBudget"
-								>Max cost (USD)<input
+								>{t('query.maxCost')}<input
 									id="maxBudget"
 									class="input"
 									type="number"
@@ -435,7 +393,7 @@
 									>{/if}</label
 							>
 							<label for="maxDuration"
-								>Max duration (min)<input
+								>{t('query.maxDuration')}<input
 									id="maxDuration"
 									class="input"
 									type="number"
@@ -455,9 +413,7 @@
 							>
 						</div>
 						<p class="budget-help" id="budget-help">
-							The run stops at whichever limit it reaches first. The cost limit covers reported or
-							estimated charges; unpriced requests and requests already in flight can exceed it.
-							These values are remembered for the next run.
+							{t('query.budgetHelp')}
 						</p>
 					</div>
 				{/if}
@@ -474,7 +430,7 @@
 			</form>
 			{#if recentRuns.length}
 				<section class="recent" aria-labelledby="recent-title">
-					<h2 id="recent-title"><HistoryIcon size={15} />Recent queries</h2>
+					<h2 id="recent-title"><HistoryIcon size={15} />{t('query.recent')}</h2>
 					<ul>
 						{#each recentRuns as run (run.id)}
 							{@const runMode = modes.find((item) => item.value === run.run_type)}
@@ -491,7 +447,7 @@
 	{/if}
 	{#if showResults}
 		<RunHeader
-			eyebrow={modes.find((item) => item.value === $runState.runType)?.label ?? 'Results'}
+			eyebrow={modes.find((item) => item.value === $runState.runType)?.label ?? t('query.results')}
 			title={$runState.query}
 		>
 			{#snippet actions()}
@@ -566,7 +522,7 @@
 				/>
 			</div>
 			{#if isSchemaPaused}<EmptyState role="status"
-					>Schema review is paused. Resume to continue editing.</EmptyState
+					>{t('query.schemaPaused')}</EmptyState
 				>{/if}
 		{:else}
 			<div class="result-workspace">
@@ -604,28 +560,27 @@
 		/>{/if}
 	{#if confirmCancel && (isActive || isSchemaReview)}
 		<Dialog
-			title="Cancel this run?"
+			title={t('query.cancelTitle')}
 			onclose={() => {
 				confirmCancel = false;
 			}}
 		>
 			<p>
-				The run stops making new requests. Results found so far are kept and stay available in
-				History.
+				{t('query.cancelText')}
 			</p>
 			{#snippet footer()}
 				<button
 					class="button"
 					onclick={() => {
 						confirmCancel = false;
-					}}>Keep running</button
+					}}>{t('query.keepRunning')}</button
 				>
 				<button
 					class="button danger outline"
 					onclick={() => {
 						confirmCancel = false;
 						void cancelCurrentRun();
-					}}>Cancel run</button
+					}}>{t('query.cancelRun')}</button
 				>
 			{/snippet}
 		</Dialog>

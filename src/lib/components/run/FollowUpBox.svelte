@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { SendIcon, ChevronDownIcon, ChevronUpIcon } from '@lucide/svelte';
 	import type { StopConditions } from '$lib/api/tauri';
 	import { hasMod, modKey } from '$lib/utils/shortcuts';
@@ -41,8 +42,8 @@
 	let parsed = $derived(parseStopConditions(input, 'research'));
 	let summary = $derived(
 		parsed.conditions
-			? `${parsed.conditions.target_row_count} steps · ${formatUsd(parsed.conditions.max_budget_usd)} · ${formatMinutes(parsed.conditions.max_duration_seconds)}`
-			: 'Check the values'
+			? `${t('units.step', { count: parsed.conditions.target_row_count })} · ${formatUsd(parsed.conditions.max_budget_usd)} · ${formatMinutes(parsed.conditions.max_duration_seconds)}`
+			: t('query.checkValues')
 	);
 	let canSend = $derived(!!question.trim() && !disabled && !sending && !!parsed.conditions);
 
@@ -65,9 +66,9 @@
 	}
 </script>
 
-<section class="follow-up" aria-label="Follow-up question">
+<section class="follow-up" aria-label={t('followUp.region')}>
 	{#if suggestions.length && !disabled}
-		<div class="suggestions" role="group" aria-label="Suggested questions">
+		<div class="suggestions" role="group" aria-label={t('followUp.suggested')}>
 			{#each suggestions as suggestion}<button
 					class="chip"
 					type="button"
@@ -79,8 +80,8 @@
 		<textarea
 			class="input"
 			rows="2"
-			aria-label="Ask a follow-up"
-			placeholder={disabled ? 'Answering…' : 'Ask a follow-up…'}
+			aria-label={t('followUp.ask')}
+			placeholder={disabled ? t('followUp.answering') : t('followUp.placeholder')}
 			{disabled}
 			bind:value={question}
 			onkeydown={(event) => {
@@ -90,7 +91,7 @@
 				}
 			}}></textarea>
 		<button class="button primary" disabled={!canSend} onclick={send} aria-keyshortcuts="Control+Enter"
-			><SendIcon size={15} />Ask</button
+			><SendIcon size={15} />{t('followUp.send')}</button
 		>
 	</div>
 	<div class="meta">
@@ -98,18 +99,18 @@
 			class="limits-toggle"
 			type="button"
 			aria-expanded={editLimits}
-			aria-label={`Follow-up limits: ${summary}`}
+			aria-label={t('followUp.limits', { summary })}
 			onclick={() => (editLimits = !editLimits)}
 			>{#if editLimits}<ChevronUpIcon size={14} />{:else}<ChevronDownIcon size={14} />{/if}<span
 				class:invalid={!parsed.conditions}>{summary}</span
 			></button
 		>
-		<span class="hint" aria-hidden="true">{modKey}+Enter to ask</span>
+		<span class="hint" aria-hidden="true">{t('followUp.hint', { shortcut: `${modKey}+Enter` })}</span>
 	</div>
 	{#if editLimits}
 		<div class="limits">
 			<label
-				>Max steps<input
+				>{t('mode.research.target')}<input
 					class="input sm"
 					type="number"
 					min="1"
@@ -119,7 +120,7 @@
 				/></label
 			>
 			<label
-				>Max cost (USD)<input
+				>{t('query.maxCost')}<input
 					class="input sm"
 					type="number"
 					min="0.01"
@@ -129,7 +130,7 @@
 				/></label
 			>
 			<label
-				>Max duration (min)<input
+				>{t('query.maxDuration')}<input
 					class="input sm"
 					type="number"
 					min="1"

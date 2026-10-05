@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { ImageOffIcon, CheckIcon } from '@lucide/svelte';
 	import type { ImageView } from '$lib/utils/images';
 	import { isMenuKey, menuPointFor } from '$lib/components/common/ContextMenu.svelte';
@@ -55,7 +56,7 @@
 	<button
 		class="preview"
 		onclick={onpreview}
-		aria-label={`Preview ${view.title}`}
+		aria-label={t('images.previewOne', { title: view.title })}
 		aria-haspopup="menu"
 		onkeydown={(event) => {
 			if (onmenu && isMenuKey(event)) {
@@ -77,13 +78,13 @@
 					attempt += 1;
 				}}
 			/>{:else}<span class="unavailable"
-				><ImageOffIcon size={22} /><span>{view.domain || 'Preview unavailable'}</span></span
+				><ImageOffIcon size={22} /><span>{view.domain || t('images.unavailable')}</span></span
 			>{/if}
 		<span class="caption">
 			<span class="title">{view.title}</span>
 			<span class="meta"
 				>{[view.domain, size, showRelevance && view.image.relevance_score !== null
-						? `${Math.round(view.image.relevance_score * 100)}% match`
+						? t('images.match', { percent: Math.round(view.image.relevance_score * 100) })
 						: null]
 					.filter(Boolean)
 					.join(' · ')}</span
@@ -95,7 +96,7 @@
 			type="checkbox"
 			checked={selected}
 			onchange={ontoggle}
-			aria-label={`Select ${view.title}`}
+			aria-label={t('images.selectOne', { title: view.title })}
 		/><span aria-hidden="true"><CheckIcon size={14} /></span>
 	</label>
 </div>

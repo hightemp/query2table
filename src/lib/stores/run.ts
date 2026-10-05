@@ -1,3 +1,4 @@
+import { t, type MessageKey } from '$lib/i18n';
 import { writable, get } from 'svelte/store';
 import type {
 	SchemaColumn,
@@ -422,7 +423,7 @@ async function requestControl(action: RunControl, send: (runId: string) => Promi
 			get(runState).status === 'failed'
 		)
 			return;
-		const message = `Could not ${action.replace('_', ' ')}: ${String(error)}`;
+		const message = t(`controls.failed.${action}` as MessageKey, { error: String(error) });
 		runState.update((s) => ({ ...s, controlPending: null, controlError: message }));
 		addLog({ timestamp: new Date().toISOString(), level: 'ERROR', message: `[run] ${message}` });
 	}
@@ -447,9 +448,9 @@ export function confirmCurrentSchema(columns: SchemaColumn[]) {
 /** Asks a follow-up question in the open research conversation. */
 export async function askFollowUp(question: string, stopConditions: StopConditions) {
 	const state = get(runState);
-	if (!state.runId || state.runType !== 'research') throw new Error('No research conversation is open.');
+	if (!state.runId || state.runType !== 'research') throw new Error(t('conversation.noneOpen'));
 	if (!TERMINAL.includes(state.status))
-		throw new Error('This conversation is still answering a question.');
+		throw new Error(t('conversation.busy'));
 	const index = state.researchTurns.length;
 	runState.update((s) => ({
 		...s,

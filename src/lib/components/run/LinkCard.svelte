@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { CopyIcon, EllipsisIcon, EyeIcon } from '@lucide/svelte';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
 	import type { MenuItem } from '$lib/components/common/ContextMenu.svelte';
 	import { menuPointFor } from '$lib/components/common/ContextMenu.svelte';
 	import SiteIcon from './SiteIcon.svelte';
-	import { TIER_LABELS, type LinkView } from '$lib/utils/linkResults';
+	import { tierLabel, type LinkView } from '$lib/utils/linkResults';
 	import { copyWithToast } from '$lib/utils/linkMenu';
 
 	let {
@@ -37,7 +38,7 @@
 		link.relevance_score === null ? null : Math.round(link.relevance_score * 100)
 	);
 	let tierTitle = $derived(
-		[percent === null ? null : `${percent}% match`, link.reason].filter(Boolean).join(' — ')
+		[percent === null ? null : t('links.matchPercent', { percent }), link.reason].filter(Boolean).join(' — ')
 	);
 	let longText = $derived(link.description.length > 160 || !!link.reason);
 </script>
@@ -60,7 +61,7 @@
 			type="checkbox"
 			checked={selected}
 			onchange={ontoggle}
-			aria-label={`Select ${link.title || link.url}`}
+			aria-label={t('links.selectOne', { title: link.title || link.url })}
 		/></label
 	>
 	<div class="body">
@@ -69,10 +70,10 @@
 			<span class="site" title={link.url}
 				>{view.domain}{#if view.path}<span class="path">{` › ${view.path}`}</span>{/if}</span
 			>
-			{#if visited}<span class="visited-mark" title="Opened before"
-					><EyeIcon size={12} />Visited</span
+			{#if visited}<span class="visited-mark" title={t('links.openedBefore')}
+					><EyeIcon size={12} />{t('links.visited')}</span
 				>{/if}
-			{#if view.tier}<span class="tier {view.tier}" title={tierTitle}>{TIER_LABELS[view.tier]}</span
+			{#if view.tier}<span class="tier {view.tier}" title={tierTitle}>{tierLabel(view.tier)}</span
 				>{/if}
 		</div>
 		<h3>
@@ -91,11 +92,11 @@
 					class:expanded
 					aria-expanded={expanded}
 					onclick={() => (expanded = !expanded)}
-					title={expanded ? 'Show less' : 'Show more'}
+					title={expanded ? t('common.showLess') : t('common.showMore')}
 				>
 					<span class="text">{link.description}</span>
 					{#if expanded && link.reason}<span class="reason"
-							><strong>Why it matches:</strong> {link.reason}</span
+							><strong>{t('links.why')}</strong> {link.reason}</span
 						>{/if}
 				</button>
 			{:else}
@@ -103,23 +104,23 @@
 			{/if}
 		{/if}
 		{#if link.hidden}<p class="hidden-note">
-				Hidden from results and exports. <button class="button ghost sm" onclick={onunhide}
-					>Show again</button
+				{t('links.hiddenNote')} <button class="button ghost sm" onclick={onunhide}
+					>{t('links.showAgain')}</button
 				>
 			</p>{/if}
 	</div>
 	<div class="actions">
 		<button
 			class="icon-button ghost sm"
-			aria-label={`Copy link of ${link.title || link.url}`}
-			title="Copy link"
-			onclick={() => copyWithToast(link.url, 'Link copied.')}><CopyIcon size={15} /></button
+			aria-label={t('links.copyLinkOf', { title: link.title || link.url })}
+			title={t('links.copy')}
+			onclick={() => copyWithToast(link.url, t('links.copied'))}><CopyIcon size={15} /></button
 		>
 		<button
 			class="icon-button ghost sm"
-			aria-label={`More actions for ${link.title || link.url}`}
+			aria-label={t('links.moreActionsFor', { title: link.title || link.url })}
 			aria-haspopup="menu"
-			title="More actions"
+			title={t('links.moreActions')}
 			onclick={(event) => onmenu(menuPointFor(event.currentTarget))}
 			><EllipsisIcon size={15} /></button
 		>

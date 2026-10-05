@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { intlLocale, t } from '$lib/i18n';
 	import type { Accounting, LlmIssueEvent } from '$lib/types';
 	import {
 		InfoIcon,
@@ -9,7 +10,7 @@
 		XIcon,
 	} from '@lucide/svelte';
 	import {
-		STAGE_LABELS,
+		stageLabel,
 		buildNotices,
 		dismissalOf,
 		isDismissed,
@@ -42,43 +43,40 @@
 	let quiet = $derived(isDismissed(notices, dismissed));
 	let SummaryIcon = $derived(icons[summary.level]);
 
-	function count(value: number) {
-		return value.toLocaleString('en-US');
-	}
 	function time(at: number | null | undefined) {
-		return at ? new Date(at).toLocaleTimeString() : null;
+		return at ? new Date(at).toLocaleTimeString(intlLocale()) : null;
 	}
 	function technicalLine(notice: Notice) {
 		const last = notice.attempts.at(-1)!;
-		return [last.provider, last.model, last.stage ? (STAGE_LABELS[last.stage] ?? last.stage) : null]
+		return [last.provider, last.model, last.stage ? stageLabel(last.stage) : null]
 			.filter(Boolean)
 			.join(' · ');
 	}
 	function levelName(level: NoticeLevel) {
-		return { info: 'Note', warning: 'Warning', error: 'Error' }[level];
+		return t(`notices.level.${level}`);
 	}
 </script>
 
 {#if notices.length}
 	<section
 		class="run-notices"
-		aria-label="Run notices"
+		aria-label={t('notices.region')}
 		data-level={summary.level}
 		data-dismissed={quiet ? 'true' : undefined}
 	>
 		<div class="strip">
 			<button class="toggle" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
 				<SummaryIcon size={15} />
-				<strong>{summary.count} {summary.count === 1 ? 'notice' : 'notices'}</strong>
+				<strong>{t('notices.count', { count: summary.count })}</strong>
 				<span class="summary-text" role="status">{summary.text}</span>
-				{#if quiet}<span class="dismissed-label">· dismissed</span>{/if}
+				{#if quiet}<span class="dismissed-label">{t('notices.dismissed')}</span>{/if}
 				{#if expanded}<ChevronUpIcon size={15} />{:else}<ChevronDownIcon size={15} />{/if}
 			</button>
 			{#if ondismiss && !quiet}
 				<button
 					class="icon-button dismiss"
-					aria-label="Dismiss notices"
-					title="Mark these notices as read"
+					aria-label={t('notices.dismiss')}
+					title={t('notices.dismissHint')}
 					onclick={() => ondismiss(dismissalOf(notices))}><XIcon size={15} /></button
 				>
 			{/if}
@@ -95,39 +93,39 @@
 								<strong>{notice.title}</strong>
 								{#if notice.count > 1}<span class="badge">×{notice.count}</span>{/if}
 								{#if turnCount > 1 && notice.turnIndex !== null}<span class="badge"
-										>Question {notice.turnIndex + 1}</span
+										>{t('notices.question', { n: notice.turnIndex + 1 })}</span
 									>{/if}
 							</p>
 							<p>{notice.consequence}</p>
 							{#if notice.action}<a href={notice.action.href}>{notice.action.label}</a>{/if}
 							{#if last}
 								<details>
-									<summary>Technical details</summary>
+									<summary>{t('common.technicalDetails')}</summary>
 									<p class="technical">{technicalLine(notice)}</p>
 									<dl>
 										<div>
-											<dt>Requested output cap</dt>
-											<dd>{count(last.max_tokens)} tokens per request</dd>
+											<dt>{t('notices.outputCap')}</dt>
+											<dd>{t('notices.tokensPerRequest', { count: last.max_tokens })}</dd>
 										</div>
 										{#if last.prompt_tokens !== null}<div>
-												<dt>Reported input</dt>
-												<dd>{count(last.prompt_tokens)} tokens</dd>
+												<dt>{t('notices.reportedInput')}</dt>
+												<dd>{t('notices.tokens', { count: last.prompt_tokens })}</dd>
 											</div>{/if}
 										{#if last.completion_tokens !== null}<div>
-												<dt>Reported output</dt>
-												<dd>{count(last.completion_tokens)} tokens</dd>
+												<dt>{t('notices.reportedOutput')}</dt>
+												<dd>{t('notices.tokens', { count: last.completion_tokens })}</dd>
 											</div>{/if}
 										{#if last.reasoning_tokens !== null}<div>
-												<dt>Reported thinking</dt>
-												<dd>{count(last.reasoning_tokens)} tokens</dd>
+												<dt>{t('notices.reportedThinking')}</dt>
+												<dd>{t('notices.tokens', { count: last.reasoning_tokens })}</dd>
 											</div>{/if}
 									</dl>
 									<ul class="attempts">
 										{#each notice.attempts as attempt}
 											<li>
 												{attempt.outcome === 'recovered'
-													? `Attempt ${attempt.attempt} succeeded`
-													: `Attempt ${attempt.attempt} of ${attempt.max_attempts}`}{#if time(attempt.at)}{' · '}{time(
+													? t('notices.attemptSucceeded', { n: attempt.attempt })
+													: t('notices.attemptOf', { n: attempt.attempt, total: attempt.max_attempts })}{#if time(attempt.at)}{' · '}{time(
 														attempt.at
 													)}{/if}{#if attempt.outcome !== 'recovered'}{' · '}{attempt.message}{/if}
 											</li>

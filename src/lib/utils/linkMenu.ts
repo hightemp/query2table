@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n';
 import { CopyIcon, ExternalLinkIcon, LinkIcon } from '@lucide/svelte';
 import type { MenuItem } from '$lib/components/common/ContextMenu.svelte';
 import { copyText } from '$lib/api/tauri';
@@ -9,7 +10,7 @@ export async function openLink(url: string) {
 		await openExternal(url);
 		return true;
 	} catch {
-		toast('Could not open this link. Copy its address and open it in your browser.', 'error');
+		toast(t('links.openFailed'), 'error');
 		return false;
 	}
 }
@@ -19,7 +20,7 @@ export async function copyWithToast(text: string, message: string) {
 		await copyText(text);
 		toast(message, 'success');
 	} catch {
-		toast('Could not copy. Select the text and copy it manually.', 'error');
+		toast(t('common.copyFailed'), 'error');
 	}
 }
 
@@ -32,12 +33,12 @@ export function markdownLink(title: string, url: string) {
 /** Menu for any external link in the app. */
 export function linkMenuItems(url: string, title = ''): MenuItem[] {
 	return [
-		{ label: 'Open link', icon: ExternalLinkIcon, action: () => void openLink(url) },
-		{ label: 'Copy link', icon: CopyIcon, separator: true, action: () => copyWithToast(url, 'Link copied.') },
+		{ label: t('links.open'), icon: ExternalLinkIcon, action: () => void openLink(url) },
+		{ label: t('links.copy'), icon: CopyIcon, separator: true, action: () => copyWithToast(url, t('links.copied')) },
 		{
-			label: 'Copy as Markdown',
+			label: t('links.copyMarkdown'),
 			icon: LinkIcon,
-			action: () => copyWithToast(markdownLink(title, url), 'Markdown link copied.'),
+			action: () => copyWithToast(markdownLink(title, url), t('links.markdownCopied')),
 		},
 	];
 }

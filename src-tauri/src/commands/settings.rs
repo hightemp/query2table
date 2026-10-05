@@ -134,6 +134,7 @@ pub async fn get_setting(
 
 #[tauri::command]
 pub async fn update_setting(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     key: String,
     value: String,
@@ -145,6 +146,9 @@ pub async fn update_setting(
         .await
         .map_err(|e| e.to_string())?;
 
+    if key == "ui_language" {
+        crate::apply_tray_language(&app, &value);
+    }
     // Apply the selected proxy immediately so subsequent requests use it.
     if key == "active_proxy_url" {
         let url = if value.trim().is_empty() {
@@ -161,11 +165,15 @@ pub async fn update_setting(
 /// Saves the edited settings in one transaction, after checking every value.
 #[tauri::command]
 pub async fn update_settings(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     values: std::collections::HashMap<String, String>,
 ) -> Result<(), String> {
     validate_settings(&values)?;
     state.db.set_settings(&values).await.map_err(|e| e.to_string())?;
+    if let Some(language) = values.get("ui_language") {
+        crate::apply_tray_language(&app, language);
+    }
     if let Some(url) = values.get("active_proxy_url") {
         crate::providers::http::set_runtime_proxy((!url.trim().is_empty()).then(|| url.clone()));
     }

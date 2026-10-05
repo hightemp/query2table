@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import type { Snippet } from 'svelte';
 
 	let {
@@ -35,7 +36,7 @@
 		{#if title.length > 90 && !heading}<button
 				class="query-expand"
 				onclick={() => (expanded = !expanded)}
-				aria-expanded={expanded}>{expanded ? 'Show less' : 'Show full query'}</button
+				aria-expanded={expanded}>{expanded ? t('common.showLess') : t('header.showFull')}</button
 			>{/if}
 		{#if subtitle}<p class="subtitle">{subtitle}</p>{/if}
 		{#if meta}<div class="meta">{@render meta()}</div>{/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import type { ResearchStep } from '$lib/types';
 	import { SearchIcon, FileTextIcon, LightbulbIcon, TriangleAlertIcon } from '@lucide/svelte';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
@@ -17,10 +18,10 @@
 	let current = $derived.by(() => {
 		const last = views.at(-1);
 		if (!running) return null;
-		if (!last) return 'Starting research…';
-		if (last.step.step_type === 'search') return `Searching: ${last.summary}`;
-		if (last.step.step_type === 'fetch') return `Reading ${last.domain ?? last.summary}`;
-		return 'Analyzing findings…';
+		if (!last) return t('research.starting');
+		if (last.step.step_type === 'search') return t('research.searching', { query: last.summary });
+		if (last.step.step_type === 'fetch') return t('research.reading', { page: last.domain ?? last.summary });
+		return t('research.analyzing');
 	});
 	function toggle(list: string[], id: string) {
 		return list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
@@ -47,7 +48,7 @@
 
 {#if current}<p class="current-step" role="status"><span class="pulse"></span>{current}</p>{/if}
 {#if !views.length}
-	<p class="empty">No research steps yet.</p>
+	<p class="empty">{t('research.noSteps')}</p>
 {:else}
 	<ol class="steps">
 		{#each views as view (view.step.id)}
@@ -76,15 +77,15 @@
 									class="button ghost sm"
 									aria-expanded={open}
 									onclick={() => (expanded = toggle(expanded, view.step.id))}
-									>{open ? 'Show less' : 'Show more'}</button
+									>{open ? t('common.showLess') : t('common.showMore')}</button
 								>{/if}
 							{#if view.rawText}<button
 									class="button ghost sm"
 									aria-expanded={rawShown.includes(view.step.id)}
 									onclick={() => (rawShown = toggle(rawShown, view.step.id))}
 									>{rawShown.includes(view.step.id)
-											? view.rawKind === 'page' ? 'Hide page text' : 'Hide details'
-											: view.rawKind === 'page' ? 'Show page text' : 'Show details'}</button
+											? view.rawKind === 'page' ? t('research.hidePageText') : t('research.hideDetails')
+											: view.rawKind === 'page' ? t('research.showPageText') : t('research.showDetails')}</button
 								>{/if}
 						</div>
 					{/if}

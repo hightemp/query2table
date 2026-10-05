@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n';
 import { get, writable } from 'svelte/store';
 import type { HistoryFilter, HistoryRun } from '$lib/types';
 import {
@@ -98,10 +99,6 @@ export function setHistoryFilter(patch: Partial<HistoryFilter>) {
 	return load(0);
 }
 
-function plural(count: number) {
-	return count === 1 ? '1 run' : `${count} runs`;
-}
-
 /** Removes runs at once; Undo restores them, otherwise they are purged after the toast. */
 export async function deleteWithUndo(ids: string[]) {
 	await deleteRuns(ids);
@@ -111,8 +108,8 @@ export async function deleteWithUndo(ids: string[]) {
 	const timer = setTimeout(() => {
 		if (!undone) void purgeRuns(ids).catch(() => {}); // purged on the next start otherwise
 	}, UNDO_MS);
-	toast(`${plural(ids.length)} deleted`, 'info', {
-		label: 'Undo',
+	toast(t('history.deleted', { count: ids.length }), 'info', {
+		label: t('common.undo'),
 		run: async () => {
 			undone = true;
 			clearTimeout(timer);

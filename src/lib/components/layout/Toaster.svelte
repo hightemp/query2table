@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { XIcon, CircleCheckIcon, CircleAlertIcon, InfoIcon } from '@lucide/svelte';
 	import { toasts, dismissToast } from '$lib/stores/toasts';
 	const icons = { info: InfoIcon, success: CircleCheckIcon, error: CircleAlertIcon };
@@ -18,7 +19,7 @@
 						void action.run();
 					}}>{action.label}</button
 				>{/if}
-			<button class="icon-button ghost sm" aria-label="Dismiss" onclick={() => dismissToast(item.id)}
+			<button class="icon-button ghost sm" aria-label={t('common.dismiss')} onclick={() => dismissToast(item.id)}
 				><XIcon size={14} /></button
 			>
 		</div>

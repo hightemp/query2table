@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { untrack } from 'svelte';
 	import { save } from '@tauri-apps/plugin-dialog';
 	import { DownloadIcon } from '@lucide/svelte';
@@ -28,15 +29,15 @@
 	let savedPath = $state('');
 	let options = $derived(
 		runType === 'research'
-			? [{ value: 'md' as const, label: 'Markdown', description: 'Answer document with sources' }]
+			? [{ value: 'md' as const, label: t('export.markdown'), description: t('export.markdownDescription') }]
 			: [
-					{ value: 'csv' as const, label: 'CSV', description: 'For spreadsheets and data tools' },
+					{ value: 'csv' as const, label: 'CSV', description: t('export.csvDescription') },
 					{
 						value: 'json' as const,
 						label: 'JSON',
-						description: 'Structured data with original values',
+						description: t('export.jsonDescription'),
 					},
-					{ value: 'xlsx' as const, label: 'Excel', description: 'An Excel workbook' },
+					{ value: 'xlsx' as const, label: t('export.excel'), description: t('export.excelDescription') },
 				]
 	);
 	async function handleExport() {
@@ -63,13 +64,13 @@
 	}
 </script>
 
-<Dialog title={savedPath ? 'Export complete' : 'Export Results'} busy={exporting} {onclose}>
+<Dialog title={savedPath ? t('export.complete') : t('export.title')} busy={exporting} {onclose}>
 	{#if savedPath}<div role="status">
-			<p>Your results were saved.</p>
+			<p>{t('export.saved')}</p>
 			<p class="saved-path">{savedPath}</p>
 		</div>
 	{:else}<fieldset disabled={exporting}>
-			<legend>Format</legend>{#each options as option}<label
+			<legend>{t('export.format')}</legend>{#each options as option}<label
 					class:selected={format === option.value}
 					><input type="radio" name="format" value={option.value} bind:group={format} /><span
 						><strong>{option.label}</strong><small>{option.description}</small></span
@@ -78,22 +79,22 @@
 		</fieldset>
 		{#if runType === 'research'}
 			<label class="turn-choice"
-				>Export<select class="input" bind:value={turnChoice} disabled={exporting}>
-					<option value="all">Whole conversation</option>
+				>{t('export.what')}<select class="input" bind:value={turnChoice} disabled={exporting}>
+					<option value="all">{t('export.wholeConversation')}</option>
 					{#each turns as turn (turn.index)}<option value={String(turn.index)}
-							>Question {turn.index + 1}: {turn.question}</option
+							>{t('export.question', { n: turn.index + 1, question: turn.question })}</option
 						>{/each}
 				</select></label
 			>
 		{/if}{/if}
 	{#if error}<ErrorNotice {error} context="export" />{/if}
 	{#snippet footer()}
-		{#if savedPath}<button class="button primary" onclick={onclose}>Done</button>{:else}<button
+		{#if savedPath}<button class="button primary" onclick={onclose}>{t('export.done')}</button>{:else}<button
 				class="button"
 				onclick={onclose}
-				disabled={exporting}>Cancel</button
+				disabled={exporting}>{t('export.cancel')}</button
 			><button class="button primary" onclick={handleExport} disabled={exporting}
-				><DownloadIcon size={16} />{exporting ? 'Exporting…' : 'Export'}</button
+				><DownloadIcon size={16} />{exporting ? t('export.exporting') : t('export.export')}</button
 			>{/if}
 	{/snippet}
 </Dialog>

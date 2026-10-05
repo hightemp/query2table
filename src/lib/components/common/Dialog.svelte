@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { onMount, type Snippet } from 'svelte';
 	import { XIcon } from '@lucide/svelte';
 	let {
@@ -58,7 +59,7 @@
 	<div class="dialog-frame">
 		<header>
 			<h2 id={titleId}>{title}</h2>
-			<button class="icon-button" disabled={busy} onclick={dismiss} aria-label="Close"
+			<button class="icon-button" disabled={busy} onclick={dismiss} aria-label={t('common.close')}
 				><XIcon size={18} /></button
 			>
 		</header>

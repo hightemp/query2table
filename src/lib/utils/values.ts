@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n';
 export function formatValue(value: unknown, detailed = false): string {
 	if (value === null || value === undefined || value === '') return '—';
 	if (Array.isArray(value))
@@ -75,7 +76,7 @@ export function formatCell(value: unknown, type: string): string {
 	}
 	if (type === 'boolean') {
 		const flag = parseBoolean(value);
-		if (flag !== null) return flag ? 'Yes' : 'No';
+		if (flag !== null) return flag ? t('common.yes') : t('common.no');
 	}
 	if (type === 'date') {
 		const date = parseDate(value);

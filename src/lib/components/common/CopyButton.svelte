@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { copyText } from '$lib/api/tauri';
 	import { toast } from '$lib/stores/toasts';
 	import { CopyIcon, CheckIcon } from '@lucide/svelte';
-	let { text, label = 'Copy value' }: { text: string; label?: string } = $props();
+	let { text, label = '' }: { text: string; label?: string } = $props();
 	let copied = $state(false);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
@@ -17,15 +18,15 @@
 			clearTimeout(timer);
 			timer = setTimeout(() => (copied = false), 2000);
 		} catch {
-			toast('Could not copy. Select the text and copy it manually.', 'error');
+			toast(t('common.copyFailed'), 'error');
 		}
 	}
 </script>
 
 <button
 	class="icon-button"
-	aria-label={copied ? 'Copied' : label}
-	title={copied ? 'Copied' : label}
+	aria-label={copied ? t('common.copied') : label || t('common.copy')}
+	title={copied ? t('common.copied') : label || t('common.copy')}
 	onclick={copy}
 	>{#if copied}<CheckIcon size={15} />{:else}<CopyIcon size={15} />{/if}</button
 >

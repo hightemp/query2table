@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n';
 import type { ImageResult } from '$lib/types';
 import { webUrl } from './values';
 import { displayHost, hostname } from './hosts';
@@ -39,7 +40,7 @@ export function describeImage(image: ImageResult, index: number): ImageView {
 	return {
 		image,
 		index,
-		title: image.title.trim() || domain || 'Image',
+		title: image.title.trim() || domain || t('images.untitled'),
 		original,
 		page,
 		domain,

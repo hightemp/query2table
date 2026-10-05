@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import {
 		PauseIcon,
 		PlayIcon,
@@ -51,42 +52,42 @@
 
 	{#if isActive}
 		{#if status === 'running' || status === 'pending' || status === 'schema_review'}
-			<button class="button sm" onclick={onpause} aria-label="Pause" disabled={!!pending}>
+			<button class="button sm" onclick={onpause} aria-label={t('controls.pause')} disabled={!!pending}>
 				<PauseIcon size={16} />
-				{pending === 'pause' ? 'Pausing…' : 'Pause'}
+				{pending === 'pause' ? t('controls.pausing') : t('controls.pause')}
 			</button>
 		{:else if status === 'paused'}
-			<button class="button sm" onclick={onresume} aria-label="Resume" disabled={!!pending}>
+			<button class="button sm" onclick={onresume} aria-label={t('controls.resume')} disabled={!!pending}>
 				<PlayIcon size={16} />
-				{pending === 'resume' ? 'Resuming…' : 'Resume'}
+				{pending === 'resume' ? t('controls.resuming') : t('controls.resume')}
 			</button>
 		{/if}
 		<button
 			class="button sm danger outline"
 			onclick={oncancel}
-			aria-label="Cancel"
+			aria-label={t('controls.cancel')}
 			disabled={pending === 'cancel'}
 		>
 			<XCircleIcon size={16} />
-			{pending === 'cancel' ? 'Cancelling…' : 'Cancel'}
+			{pending === 'cancel' ? t('controls.cancelling') : t('controls.cancel')}
 		</button>
 	{/if}
 
 	{#if isFinished}
 		{#if onedit}
-			<button class="button sm" onclick={onedit} title="Change the query and run it again">
+			<button class="button sm" onclick={onedit} title={t('controls.editQueryHint')}>
 				<PencilIcon size={16} />
-				Edit query
+				{t('controls.editQuery')}
 			</button>
 		{/if}
-		<button class="button sm" onclick={onreset} aria-label="New query">
+		<button class="button sm" onclick={onreset} aria-label={t('controls.newQuery')}>
 			<RotateCcwIcon size={16} />
-			New query
+			{t('controls.newQuery')}
 		</button>
 		{#if showExport && onexport}
-			<button class="button sm accent" onclick={onexport} aria-label="Export">
+			<button class="button sm accent" onclick={onexport} aria-label={t('controls.export')}>
 				<DownloadIcon size={16} />
-				Export
+				{t('controls.export')}
 			</button>
 		{/if}
 	{/if}

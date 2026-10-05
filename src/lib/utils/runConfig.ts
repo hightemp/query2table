@@ -1,3 +1,4 @@
+import { t, type MessageKey } from '$lib/i18n';
 export interface ConfigProblem {
 	message: string;
 	/** Settings section id, used as `/settings#settings-<section>`. */
@@ -14,22 +15,22 @@ const providerNames: Record<string, string> = {
 };
 
 /** Settings each LLM provider needs before a run can start. Mirrors the backend checks. */
-const llmRequirements: Record<string, { key: string; label: string }[]> = {
+const llmRequirements: Record<string, { key: string; label: MessageKey }[]> = {
 	openrouter: [
-		{ key: 'openrouter_api_key', label: 'API key' },
-		{ key: 'openrouter_model', label: 'model' },
+		{ key: 'openrouter_api_key', label: 'config.apiKey' },
+		{ key: 'openrouter_model', label: 'config.model' },
 	],
 	ollama: [
-		{ key: 'ollama_url', label: 'server URL' },
-		{ key: 'ollama_model', label: 'model' },
+		{ key: 'ollama_url', label: 'config.serverUrl' },
+		{ key: 'ollama_model', label: 'config.model' },
 	],
 	ollama_cloud: [
-		{ key: 'ollama_cloud_api_key', label: 'API key' },
-		{ key: 'ollama_cloud_model', label: 'model' },
+		{ key: 'ollama_cloud_api_key', label: 'config.apiKey' },
+		{ key: 'ollama_cloud_model', label: 'config.model' },
 	],
 	openai_compatible: [
-		{ key: 'openai_base_url', label: 'API base URL' },
-		{ key: 'openai_model', label: 'model' },
+		{ key: 'openai_base_url', label: 'config.baseUrl' },
+		{ key: 'openai_model', label: 'config.model' },
 	],
 };
 
@@ -51,14 +52,17 @@ export function configurationProblems(settings: Map<string, string>): ConfigProb
 	const missing = (llmRequirements[provider] ?? []).filter((item) => !filled(item.key));
 	if (missing.length)
 		problems.push({
-			message: `${providerNames[provider] ?? provider} needs ${missing.map((item) => item.label).join(' and ')}.`,
+			message: t('config.needs', {
+				provider: providerNames[provider] ?? provider,
+				items: missing.map((item) => t(item.label)).join(t('config.and')),
+			}),
 			section: 'llm',
 			key: missing[0].key,
 		});
 
 	const search = searchRequirements[settings.get('search_provider') || 'brave'];
 	if (search && !filled(search.key))
-		problems.push({ message: `${search.name} needs an API key.`, section: 'search', key: search.key });
+		problems.push({ message: t('config.searchKey', { name: search.name }), section: 'search', key: search.key });
 
 	return problems;
 }

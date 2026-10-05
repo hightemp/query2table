@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { FolderOpenIcon } from '@lucide/svelte';
 	import Dialog from '$lib/components/common/Dialog.svelte';
@@ -17,7 +18,7 @@
 		error = '';
 		exporting = true;
 		try {
-			const dir = await open({ directory: true, title: 'Choose a folder for the exported runs' });
+			const dir = await open({ directory: true, title: t('bulk.chooseFolder') });
 			if (!dir || Array.isArray(dir)) return;
 			const written = await exportRuns(runIds, dir, format);
 			result = { dir, count: written.length };
@@ -29,32 +30,30 @@
 	}
 </script>
 
-<Dialog title="Export runs" busy={exporting} {onclose}>
+<Dialog title={t('bulk.title')} busy={exporting} {onclose}>
 	{#if result}
 		<p role="status">
-			Exported {result.count}
-			{result.count === 1 ? 'file' : 'files'} to <span class="path">{result.dir}</span>
+			{t('bulk.exported', { count: result.count })} <span class="path">{result.dir}</span>
 		</p>
 	{:else}
 		<p>
-			{runIds.length === 1 ? 'The selected run is' : `${runIds.length} selected runs are`} saved one file
-			each, named after the query and date.
+			{t('bulk.description', { count: runIds.length })}
 		</p>
 		<label class="field"
-			>Format for tables, links and images<select class="input" bind:value={format} disabled={exporting}>
+			>{t('bulk.format')}<select class="input" bind:value={format} disabled={exporting}>
 				<option value="csv">CSV</option>
 				<option value="json">JSON</option>
-				<option value="xlsx">Excel</option>
+				<option value="xlsx">{t('export.excel')}</option>
 			</select></label
 		>
-		<p class="note">Research conversations are saved as Markdown.</p>
+		<p class="note">{t('bulk.markdownNote')}</p>
 	{/if}
 	{#if error}<ErrorNotice {error} context="export" />{/if}
 	{#snippet footer()}
-		{#if result}<button class="button primary" onclick={onclose}>Done</button>
-		{:else}<button class="button" disabled={exporting} onclick={onclose}>Cancel</button
+		{#if result}<button class="button primary" onclick={onclose}>{t('export.done')}</button>
+		{:else}<button class="button" disabled={exporting} onclick={onclose}>{t('export.cancel')}</button
 			><button class="button primary" disabled={exporting} onclick={handleExport}
-				><FolderOpenIcon size={16} />{exporting ? 'Exporting…' : 'Choose folder and export'}</button
+				><FolderOpenIcon size={16} />{exporting ? t('export.exporting') : t('bulk.export')}</button
 			>{/if}
 	{/snippet}
 </Dialog>

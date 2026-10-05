@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import type { ImageResult } from '$lib/types';
 	import ImageCard from './ImageCard.svelte';
 	import {
@@ -147,17 +148,17 @@
 		const url = view.original ?? view.page ?? view.image.thumbnail_url;
 		try {
 			await copyText(url);
-			toast(view.original ? 'Image link copied.' : 'Page link copied.', 'success');
+			toast(view.original ? t('images.imageLinkCopied') : t('images.pageLinkCopied'), 'success');
 		} catch {
-			toast('Could not copy the link.', 'error');
+			toast(t('images.copyFailed'), 'error');
 		}
 	}
 	async function copyLinks(list: ImageView[]) {
 		try {
 			await copyText(list.map((view) => view.original ?? view.page ?? view.image.thumbnail_url).join('\n'));
-			toast(`Copied ${list.length} ${list.length === 1 ? 'link' : 'links'}.`, 'success');
+			toast(t('images.linksCopied', { count: list.length }), 'success');
 		} catch {
-			toast('Could not copy the links.', 'error');
+			toast(t('images.linksCopyFailed'), 'error');
 		}
 	}
 	async function saveOne(view: ImageView) {
@@ -166,7 +167,7 @@
 		try {
 			const path = await save({
 				defaultPath: `${imageFileName(view)}.${extension}`,
-				filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'svg'] }],
+				filters: [{ name: t('images.filterName'), extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'svg'] }],
 			});
 			if (!path) return;
 			saving = true;
@@ -175,9 +176,9 @@
 				view.image.thumbnail_url || null,
 				path
 			);
-			toast(`Saved ${written}`, 'success');
+			toast(t('images.savedOne', { path: written }), 'success');
 		} catch (error) {
-			toast(`Could not save the image: ${errorText(error)}`, 'error');
+			toast(t('images.saveOneFailed', { error: errorText(error) }), 'error');
 		} finally {
 			saving = false;
 		}
@@ -187,7 +188,7 @@
 		try {
 			const directory = await open({
 				directory: true,
-				title: `Choose a folder for ${selected.length} ${selected.length === 1 ? 'image' : 'images'}`,
+				title: t('images.chooseFolder', { count: selected.length }),
 			});
 			if (!directory || Array.isArray(directory)) return;
 			saving = true;
@@ -201,14 +202,16 @@
 			);
 			if (result.failed.length)
 				toast(
-					`Saved ${result.saved.length} of ${selected.length} images. Not saved: ${result.failed
-						.map(([name]) => name)
-						.join(', ')}`,
+					t('images.savedPartly', {
+						saved: result.saved.length,
+						total: selected.length,
+						names: result.failed.map(([name]) => name).join(', '),
+					}),
 					'error'
 				);
-			else toast(`Saved ${result.saved.length} images to ${directory}`, 'success');
+			else toast(t('images.savedAll', { count: result.saved.length, dir: directory }), 'success');
 		} catch (error) {
-			toast(`Could not save the images: ${errorText(error)}`, 'error');
+			toast(t('images.saveFailed', { error: errorText(error) }), 'error');
 		} finally {
 			saving = false;
 		}
@@ -218,7 +221,7 @@
 		try {
 			await openExternal(url);
 		} catch {
-			toast('Could not open this link. Copy its address and open it in your browser.', 'error');
+			toast(t('links.openFailed'), 'error');
 		}
 	}
 	async function copy(url: string, message: string) {
@@ -226,14 +229,14 @@
 			await copyText(url);
 			toast(message, 'success');
 		} catch {
-			toast('Could not copy the link.', 'error');
+			toast(t('images.copyFailed'), 'error');
 		}
 	}
 	function menuItems(view: ImageView): MenuItem[] {
 		const isSelected = selectedIds.includes(view.image.id);
 		const items: MenuItem[] = [
 			{
-				label: 'Preview',
+				label: t('images.preview'),
 				icon: MaximizeIcon,
 				action: () => {
 					previewId = view.image.id;
@@ -241,27 +244,27 @@
 			},
 		];
 		if (view.original)
-			items.push({ label: 'Open original', icon: ExternalLinkIcon, action: () => openLink(view.original!) });
+			items.push({ label: t('images.openOriginal'), icon: ExternalLinkIcon, action: () => openLink(view.original!) });
 		if (view.page)
-			items.push({ label: 'Open source page', icon: ExternalLinkIcon, action: () => openLink(view.page!) });
+			items.push({ label: t('images.openSource'), icon: ExternalLinkIcon, action: () => openLink(view.page!) });
 		if (view.original)
 			items.push({
-				label: 'Copy image link',
+				label: t('images.copyImageLink'),
 				icon: CopyIcon,
 				separator: true,
-				action: () => copy(view.original!, 'Image link copied.'),
+				action: () => copy(view.original!, t('images.imageLinkCopied')),
 			});
 		if (view.page)
 			items.push({
-				label: 'Copy page link',
+				label: t('images.copyPageLink'),
 				icon: LinkIcon,
 				separator: !view.original,
-				action: () => copy(view.page!, 'Page link copied.'),
+				action: () => copy(view.page!, t('images.pageLinkCopied')),
 			});
 		items.push(
-			{ label: 'Save image…', icon: DownloadIcon, separator: true, disabled: saving, action: () => saveOne(view) },
+			{ label: t('images.saveImage'), icon: DownloadIcon, separator: true, disabled: saving, action: () => saveOne(view) },
 			{
-				label: isSelected ? 'Deselect' : 'Select',
+				label: isSelected ? t('images.deselect') : t('images.select'),
 				icon: isSelected ? SquareIcon : SquareCheckIcon,
 				action: () => toggle(view.image.id),
 			}
@@ -294,72 +297,73 @@
 				><SearchIcon size={16} /><input
 					class="input sm"
 					type="search"
-					placeholder="Search titles and sites…"
-					aria-label="Search images"
+					placeholder={t('images.searchPlaceholder')}
+					aria-label={t('images.search')}
 					bind:value={search}
 				/></label
 			>
-			<select class="input sm" aria-label="Sort images" bind:value={sort}>
-				<option value="relevance">Best match</option>
-				<option value="size">Largest first</option>
-				<option value="found">Found order</option>
+			<select class="input sm" aria-label={t('images.sort')} bind:value={sort}>
+				<option value="relevance">{t('images.sortBest')}</option>
+				<option value="size">{t('images.sortLargest')}</option>
+				<option value="found">{t('images.sortFound')}</option>
 			</select>
-			{#if domains.length > 1}<select class="input sm" aria-label="Source site" bind:value={domain}>
-					<option value="">All sites</option>
+			{#if domains.length > 1}<select class="input sm" aria-label={t('images.site')} bind:value={domain}>
+					<option value="">{t('images.allSites')}</option>
 					{#each domains as [name, count]}<option value={name}>{name} ({count})</option>{/each}
 				</select>{/if}
-			<select class="input sm" aria-label="Minimum size" bind:value={minSide}>
-				<option value={0}>Any size</option>
+			<select class="input sm" aria-label={t('images.minSize')} bind:value={minSide}>
+				<option value={0}>{t('images.anySize')}</option>
 				<option value={1000}>≥ 1000 px</option>
 				<option value={2000}>≥ 2000 px</option>
 			</select>
 			<span class="count" role="status"
-				>{filtered ? `${shown.length} of ${images.length}` : images.length}
-				{images.length === 1 ? 'image' : 'images'}</span
+				>{filtered
+					? t('images.countOf', { shown: shown.length, count: images.length })
+					: t('images.count', { count: images.length })}</span
 			>
 			<div class="view-toggle">
 				<button
 					class="icon-button ghost sm"
-					aria-label="Grid view"
+					aria-label={t('images.gridView')}
 					aria-pressed={$viewMode === 'grid'}
 					onclick={() => viewMode.set('grid')}><Grid2x2 size={16} /></button
 				><button
 					class="icon-button ghost sm"
-					aria-label="List view"
+					aria-label={t('images.listView')}
 					aria-pressed={$viewMode === 'list'}
 					onclick={() => viewMode.set('list')}><List size={16} /></button
 				>
 			</div>
 		</div>
 		{#if selected.length}
-			<div class="selection-bar" role="region" aria-label="Selected images">
-				<strong>{selected.length} selected</strong>
+			<div class="selection-bar" role="region" aria-label={t('images.selected')}>
+				<strong>{t('common.selectedCount', { count: selected.length })}</strong>
 				{#if shown.some((view) => !selectedIds.includes(view.image.id))}<button
 						class="button ghost sm"
-						onclick={selectShown}>Select all shown</button
+						onclick={selectShown}>{t('images.selectShown')}</button
 					>{/if}
 				<span class="spacer"></span>
 				<button class="button sm" onclick={() => copyLinks(selected)}
-					><CopyIcon size={14} />Copy links</button
+					><CopyIcon size={14} />{t('images.copyLinks')}</button
 				>
 				<button class="button sm primary" disabled={saving} onclick={saveSelected}
-					><DownloadIcon size={14} />{saving ? 'Saving…' : 'Save to folder…'}</button
+					><DownloadIcon size={14} />{saving ? t('images.saving') : t('images.saveToFolder')}</button
 				>
-				<button class="icon-button ghost sm" aria-label="Clear selection" onclick={() => (selectedIds = [])}
+				<button class="icon-button ghost sm" aria-label={t('common.clearSelection')} onclick={() => (selectedIds = [])}
 					><XIcon size={14} /></button
 				>
 			</div>
 		{/if}
 	{/if}
 	<div class="gallery-scroll">
-		{#if !images.length}<EmptyState>No images found yet.</EmptyState>
+		{#if !images.length}<EmptyState>{t('images.empty')}</EmptyState>
 		{:else if !shown.length}<EmptyState>
-				No images match these filters.
-				{#snippet action()}<button class="button sm" onclick={resetFilters}>Reset filters</button
+				{t('images.noMatch')}
+				{#snippet action()}<button class="button sm" onclick={resetFilters}>{t('common.resetFilters')}</button
 					>{/snippet}
 			</EmptyState>
 		{:else if $viewMode === 'grid'}
-			<div class="justified" role="list" aria-label="Images">
+			<div class="justified" role="list" aria-label={t('mode.images')}>
 				{#each shown as view (view.image.id)}<ImageCard
 						{view}
 						{showRelevance}
@@ -375,13 +379,13 @@
 			<table class="image-list">
 				<thead>
 					<tr>
-						<th class="check-cell"><span class="sr-only">Selected</span></th>
-						<th><span class="sr-only">Thumbnail</span></th>
-						<th>Title</th>
-						<th>Site</th>
-						<th class="numeric">Size</th>
-						{#if showRelevance}<th class="numeric">Match</th>{/if}
-						<th><span class="sr-only">Actions</span></th>
+						<th class="check-cell"><span class="sr-only">{t('images.colSelected')}</span></th>
+						<th><span class="sr-only">{t('images.colThumbnail')}</span></th>
+						<th>{t('images.colTitle')}</th>
+						<th>{t('images.colSite')}</th>
+						<th class="numeric">{t('images.colSize')}</th>
+						{#if showRelevance}<th class="numeric">{t('images.colMatch')}</th>{/if}
+						<th><span class="sr-only">{t('images.colActions')}</span></th>
 					</tr>
 				</thead>
 				<tbody>
@@ -398,13 +402,13 @@
 									type="checkbox"
 									checked={selectedIds.includes(view.image.id)}
 									onchange={() => toggle(view.image.id)}
-									aria-label={`Select ${view.title}`}
+									aria-label={t('images.selectOne', { title: view.title })}
 								/></td
 							>
 							<td class="thumb-cell"
 								><button
 									class="thumb"
-									aria-label={`Preview ${view.title}`}
+									aria-label={t('images.previewOne', { title: view.title })}
 									aria-haspopup="menu"
 									onclick={() => (previewId = view.image.id)}
 									onkeydown={(event) => {
@@ -431,12 +435,12 @@
 							<td class="actions"
 								><button
 									class="icon-button ghost sm"
-									aria-label={`Copy link of ${view.title}`}
-									title="Copy link"
+									aria-label={t('images.copyLinkOf', { title: view.title })}
+									title={t('images.copyLink')}
 									onclick={() => copyLink(view)}><CopyIcon size={14} /></button
 								>{#if view.page}<ExternalLink href={view.page}
 										><ExternalLinkIcon size={14} /><span class="sr-only"
-											>Open source page of {view.title}</span
+											>{t('images.openSourceOf', { title: view.title })}</span
 										></ExternalLink
 									>{/if}</td
 							>
@@ -451,7 +455,7 @@
 	<ContextMenu
 		x={menu.x}
 		y={menu.y}
-		label={`Actions for ${menu.view.title}`}
+		label={t('common.actionsFor', { name: menu.view.title })}
 		items={menuItems(menu.view)}
 		onclose={() => (menu = null)}
 	/>
@@ -465,13 +469,13 @@
 		}}
 	>
 		<div class="preview-body">
-			{#if loading}<p role="status">Loading image…</p>{:else if failed}<EmptyState role="status">
-					This image could not be displayed. Try again or open the source page.
+			{#if loading}<p role="status">{t('images.loading')}</p>{:else if failed}<EmptyState role="status">
+					{t('images.loadFailed')}
 					{#snippet action()}<button
 							class="button"
 							onclick={() => {
 								retry++;
-							}}>Retry image</button
+							}}>{t('images.retry')}</button
 						>{/snippet}
 				</EmptyState>{:else if source}<img
 					src={source}
@@ -486,30 +490,30 @@
 			<span>{[preview.domain, size(preview)].filter((part) => part && part !== '—').join(' · ')}</span>
 			{#if !loading && !failed && fromThumbnail}<span class="thumbnail-note"
 					>{preview.original
-						? 'The original could not be loaded; showing the search thumbnail.'
-						: 'Showing the search thumbnail; the original file is not known for this result.'}</span
+						? t('images.thumbnailFallback')
+						: t('images.thumbnailOnly')}</span
 				>{/if}
 		</div>
 		{#snippet footer()}
 			<div class="preview-links">
-				{#if preview.page}<ExternalLink href={preview.page} label="Source page" />{/if}
-				{#if preview.original}<ExternalLink href={preview.original} label="Open original" />{/if}
+				{#if preview.page}<ExternalLink href={preview.page} label={t('images.sourcePage')} />{/if}
+				{#if preview.original}<ExternalLink href={preview.original} label={t('images.openOriginal')} />{/if}
 			</div>
 			<button class="button sm" onclick={() => copyLink(preview!)}
-				><CopyIcon size={14} />Copy link</button
+				><CopyIcon size={14} />{t('images.copyLink')}</button
 			>
 			<button class="button sm" disabled={saving} onclick={() => saveOne(preview!)}
-				><DownloadIcon size={14} />{saving ? 'Saving…' : 'Save image…'}</button
+				><DownloadIcon size={14} />{saving ? t('images.saving') : t('images.saveImage')}</button
 			>
 			<span class="muted">{previewIndex + 1} / {shown.length}</span>
 			<button
 				class="icon-button"
-				aria-label="Previous image"
+				aria-label={t('images.previous')}
 				disabled={previewIndex === 0}
 				onclick={() => move(-1)}><ChevronLeft size={18} /></button
 			><button
 				class="icon-button"
-				aria-label="Next image"
+				aria-label={t('images.next')}
 				disabled={previewIndex === shown.length - 1}
 				onclick={() => move(1)}><ChevronRight size={18} /></button
 			>

@@ -5,7 +5,7 @@ import type { LlmIssueCode } from '$lib/types';
 describe('error explanations', () => {
 	it.each<[LlmIssueCode, string, string]>([
 		['output_limit', 'output limit', 'Max output tokens'],
-		['context_limit', 'context limit', 'Content Processing'],
+		['context_limit', 'context limit', 'Page text sent to the model'],
 		['rate_limit', 'limited requests', 'retry interval'],
 		['quota', 'allowance', 'run budget'],
 		['auth', 'authenticate', 'API key'],

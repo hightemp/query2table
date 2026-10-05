@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t, type MessageKey } from '$lib/i18n';
 	import { onMount } from 'svelte';
 	import {
 		getAppPaths,
@@ -19,26 +20,26 @@
 	const locations: {
 		location: AppLocation;
 		key: keyof AppPaths;
-		label: string;
-		description: string;
+		label: MessageKey;
+		description: MessageKey;
 	}[] = [
 		{
 			location: 'data',
 			key: 'data_dir',
-			label: 'Application data',
-			description: 'Settings, history, results, and sources are stored in data.db here.',
+			label: 'files.data',
+			description: 'files.dataDescription',
 		},
 		{
 			location: 'database',
 			key: 'database_file',
-			label: 'Settings database',
-			description: 'The SQLite file containing saved application data.',
+			label: 'files.database',
+			description: 'files.databaseDescription',
 		},
 		{
 			location: 'logs',
 			key: 'log_dir',
-			label: 'Application logs',
-			description: 'Diagnostic log files.',
+			label: 'files.logs',
+			description: 'files.logsDescription',
 		},
 	];
 
@@ -70,7 +71,7 @@
 			if (action === 'copy') await copyAppPath(location);
 			else await openAppFolder(location);
 			if (active)
-				feedback = action === 'copy' ? `${label} path copied.` : `${label} folder opened.`;
+				feedback = action === 'copy' ? t('files.copied', { name: label }) : t('files.opened', { name: label });
 		} catch (e) {
 			if (active) error = errorText(e);
 		} finally {
@@ -80,17 +81,16 @@
 </script>
 
 <section class="app-files" aria-labelledby="app-files-title">
-	<h2 id="app-files-title">Application files</h2>
+	<h2 id="app-files-title">{t('files.title')}</h2>
 	<p>
-		Settings are updated automatically at startup. New options receive defaults; saved values are
-		kept.
+		{t('files.intro')}
 	</p>
-	{#if loading}<p role="status">Loading file locations…</p>{/if}
+	{#if loading}<p role="status">{t('files.loading')}</p>{/if}
 	{#if paths}
 		{#each locations as item}
 			<div class="file-location">
-				<label for={`app-path-${item.location}`}>{item.label}</label>
-				<p class="description">{item.description}</p>
+				<label for={`app-path-${item.location}`}>{t(item.label)}</label>
+				<p class="description">{t(item.description)}</p>
 				<div class="path-controls">
 					<input
 						id={`app-path-${item.location}`}
@@ -105,19 +105,19 @@
 						type="button"
 						class="button"
 						disabled={busy !== null}
-						aria-label={`Copy ${item.label} path`}
-						onclick={() => act(item.location, item.label, 'copy')}
+						aria-label={t('files.copyPath', { name: t(item.label) })}
+						onclick={() => act(item.location, t(item.label), 'copy')}
 					>
-						{busy === `${item.location}-copy` ? 'Copying…' : 'Copy path'}
+						{busy === `${item.location}-copy` ? t('files.copying') : t('files.copyPathShort')}
 					</button>
 					<button
 						type="button"
 						class="button"
 						disabled={busy !== null}
-						aria-label={`Open ${item.label} folder`}
-						onclick={() => act(item.location, item.label, 'open')}
+						aria-label={t('files.openFolder', { name: t(item.label) })}
+						onclick={() => act(item.location, t(item.label), 'open')}
 					>
-						{busy === `${item.location}-open` ? 'Opening…' : 'Open folder'}
+						{busy === `${item.location}-open` ? t('files.opening') : t('files.openFolderShort')}
 					</button>
 				</div>
 			</div>
@@ -127,7 +127,7 @@
 	{#if error}
 		<ErrorNotice {error} context="app_files" />
 		{#if !paths && !loading}<button type="button" class="button" onclick={load}
-				>Retry loading paths</button
+				>{t('files.retry')}</button
 			>{/if}
 	{/if}
 </section>

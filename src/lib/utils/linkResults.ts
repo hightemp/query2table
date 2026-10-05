@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n';
 import type { LinkResult } from '$lib/types';
 import { displayHost } from './hosts';
 import { markdownLink } from './linkMenu';
@@ -16,11 +17,9 @@ export interface LinkView {
 	tier: MatchTier | null;
 }
 
-export const TIER_LABELS: Record<MatchTier, string> = {
-	best: 'Best match',
-	good: 'Good match',
-	partial: 'Partial match',
-};
+export function tierLabel(tier: MatchTier): string {
+	return t(`links.tier.${tier}`);
+}
 
 export function tierOf(score: number | null): MatchTier | null {
 	if (score === null) return null;
@@ -139,11 +138,11 @@ export function siteCounts(views: LinkView[]): [string, number][] {
 
 export type CopyFormat = 'urls' | 'markdown' | 'titled';
 
-export const COPY_FORMATS: Record<CopyFormat, string> = {
-	urls: 'URLs, one per line',
-	markdown: 'Markdown list',
-	titled: 'Title — URL',
-};
+export const COPY_FORMATS: CopyFormat[] = ['urls', 'markdown', 'titled'];
+
+export function copyFormatLabel(format: CopyFormat): string {
+	return t(`links.format.${format}`);
+}
 
 export function formatLinks(views: LinkView[], format: CopyFormat): string {
 	return views

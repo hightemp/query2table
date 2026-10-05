@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import {
 		logs,
@@ -50,9 +51,6 @@
 	function clampHeight(value: number) {
 		const max = Math.max(MIN_HEIGHT, Math.round(viewportHeight * 0.6));
 		return Math.min(max, Math.max(MIN_HEIGHT, Math.round(value)));
-	}
-	function plural(count: number, word: string) {
-		return `${count} ${word}${count === 1 ? '' : 's'}`;
 	}
 	let height = $derived($logPanelHeight === null ? null : clampHeight($logPanelHeight));
 
@@ -106,19 +104,16 @@
 	async function copyLogs() {
 		try {
 			await copyText(formatLogs(filteredLogs));
-			toast(
-				`Copied ${filteredLogs.length} log ${filteredLogs.length === 1 ? 'entry' : 'entries'}.`,
-				'success'
-			);
+			toast(t('logs.copied', { count: filteredLogs.length }), 'success');
 		} catch {
-			toast('Could not copy the logs. Open the log folder to read the full log files.', 'error');
+			toast(t('logs.copyFailed'), 'error');
 		}
 	}
 	async function openLogFolder() {
 		try {
 			await openAppFolder('logs');
 		} catch {
-			toast('Could not open the log folder. Find its path in Settings → Application files.', 'error');
+			toast(t('logs.openFolderFailed'), 'error');
 		}
 	}
 </script>
@@ -136,11 +131,11 @@
 			class="resize-handle"
 			role="separator"
 			aria-orientation="horizontal"
-			aria-label="Resize logs"
+			aria-label={t('logs.resize')}
 			aria-valuemin={MIN_HEIGHT}
 			aria-valuenow={height ?? undefined}
 			tabindex="0"
-			title="Drag to resize. Arrow keys resize, Home restores the default height."
+			title={t('logs.resizeHint')}
 			onpointerdown={startResize}
 			onkeydown={resizeWithKeys}
 			ondblclick={() => logPanelHeight.set(null)}
@@ -152,17 +147,17 @@
 			onclick={togglePanel}
 			aria-expanded={$logPanelOpen}
 			aria-controls="app-log-body"
-			title={`${$logPanelOpen ? 'Hide' : 'Show'} logs (${modKey}+J)`}
+			title={t($logPanelOpen ? 'logs.hide' : 'logs.show', { shortcut: `${modKey}+J` })}
 		>
 			{#if $logPanelOpen}
 				<ChevronDownIcon size={16} />
 			{:else}
 				<ChevronUpIcon size={16} />
 			{/if}
-			<span>Logs ({$logs.length})</span>
+			<span>{t('logs.title', { count: $logs.length })}</span>
 		</button>
-		{#if errorCount}<span class="count error" title="Errors">{plural(errorCount, 'error')}</span>{/if}
-		{#if warnCount}<span class="count warn" title="Warnings">{plural(warnCount, 'warning')}</span>{/if}
+		{#if errorCount}<span class="count error" title={t('logs.errors')}>{t('logs.errorCount', { count: errorCount })}</span>{/if}
+		{#if warnCount}<span class="count warn" title={t('logs.warnings')}>{t('logs.warningCount', { count: warnCount })}</span>{/if}
 
 		{#if $logPanelOpen}
 			<div class="log-controls">
@@ -170,37 +165,37 @@
 					><SearchIcon size={14} /><input
 						class="input sm"
 						type="search"
-						placeholder="Filter logs…"
-						aria-label="Filter logs"
+						placeholder={t('logs.filterPlaceholder')}
+						aria-label={t('logs.filter')}
 						bind:value={search}
 					/></label
 				>
 				{#if runId}<label class="run-only"
-						><input type="checkbox" bind:checked={currentRunOnly} />Current run</label
+						><input type="checkbox" bind:checked={currentRunOnly} />{t('logs.currentRun')}</label
 					>{/if}
-				<select aria-label="Log level" bind:value={$logFilter} class="input sm log-filter">
+				<select aria-label={t('logs.level')} bind:value={$logFilter} class="input sm log-filter">
 					{#each levels as level}
-						<option value={level}>{level}</option>
+						<option value={level}>{level === 'ALL' ? t('logs.levelAll') : level}</option>
 					{/each}
 				</select>
 				<button
 					class="icon-button ghost sm"
 					onclick={copyLogs}
 					disabled={!filteredLogs.length}
-					aria-label="Copy shown logs"
-					title="Copy shown logs"><CopyIcon size={14} /></button
+					aria-label={t('logs.copy')}
+					title={t('logs.copy')}><CopyIcon size={14} /></button
 				>
 				<button
 					class="icon-button ghost sm"
 					onclick={openLogFolder}
-					aria-label="Open log folder"
-					title="Open log folder"><FolderOpenIcon size={14} /></button
+					aria-label={t('logs.openFolder')}
+					title={t('logs.openFolder')}><FolderOpenIcon size={14} /></button
 				>
 				<button
 					class="icon-button ghost sm"
 					onclick={clearLogs}
-					aria-label="Clear logs"
-					title="Clear logs"><TrashIcon size={14} /></button
+					aria-label={t('logs.clear')}
+					title={t('logs.clear')}><TrashIcon size={14} /></button
 				>
 			</div>
 		{/if}
@@ -216,7 +211,7 @@
 				</div>
 			{:else}
 				<div class="log-empty">
-					{$logs.length ? 'No log entries match the filters' : 'No log entries'}
+					{$logs.length ? t('logs.noMatch') : t('logs.empty')}
 				</div>
 			{/each}
 		</div>

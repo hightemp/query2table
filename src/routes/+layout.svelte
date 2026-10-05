@@ -15,10 +15,13 @@
 	import type { Snippet } from 'svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { errorText } from '$lib/utils/errors';
+	import { loadLanguage, t } from '$lib/i18n';
 
 	let { children }: { children: Snippet } = $props();
 	let settingsError = $state('');
 	let eventError = $state('');
+	// Runs before the first render, so a cached language is used from the start.
+	void loadLanguage().catch(() => {});
 
 	async function loadSettings() {
 		settingsError = '';
@@ -106,7 +109,7 @@
 			{#if settingsError || eventError}<div class="app-alerts">
 					{#if settingsError}
 						<ErrorNotice error={settingsError} context="settings_load" />
-						<button class="button" onclick={loadSettings}>Retry loading settings</button>
+						<button class="button" onclick={loadSettings}>{t('common.retryLoadingSettings')}</button>
 					{/if}
 					{#if eventError}<ErrorNotice error={eventError} />{/if}
 				</div>{/if}

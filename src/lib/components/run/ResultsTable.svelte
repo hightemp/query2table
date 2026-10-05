@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { untrack, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import {
@@ -120,7 +121,7 @@
 		const evidence: ColumnDef<RunRow, unknown> = {
 			id: EVIDENCE,
 			accessorFn: (row) => row.confidence,
-			header: 'Evidence',
+			header: t('table.evidence'),
 			sortingFn: (a, b, id) => compare(a.getValue(id), b.getValue(id)),
 		};
 		return data.length ? [data[0], evidence, ...data.slice(1)] : [evidence];
@@ -205,9 +206,9 @@
 			event.preventDefault();
 			try {
 				await copyText(rowText(row));
-				toast('Row copied as tab-separated values.', 'success');
+				toast(t('table.rowCopied'), 'success');
 			} catch {
-				toast('Could not copy the row. Open its details to copy single values.', 'error');
+				toast(t('table.rowCopyFailed'), 'error');
 			}
 			return;
 		}
@@ -293,31 +294,32 @@
 			><SearchIcon size={16} /><input
 				class="input sm"
 				type="search"
-				aria-label="Search results"
-				placeholder={`Search results… (${modKey}+F)`}
+				aria-label={t('table.search')}
+				placeholder={t('table.searchPlaceholder', { shortcut: `${modKey}+F` })}
 				bind:this={searchInput}
 				bind:value={filterInput}
 			/></label
 		>
 		{#if schema.length > 1}<select
 				class="input sm column-filter"
-				aria-label="Search in column"
+				aria-label={t('table.searchColumn')}
 				bind:value={filterColumn}
 			>
-				<option value="">All columns</option>
+				<option value="">{t('table.allColumns')}</option>
 				{#each schema as column}<option value={column.name}>{columnLabel(column.name)}</option
 					>{/each}
 			</select>{/if}
 		<span class="count"
-			>{visibleRows.length}{filter ? ` of ${rows.length}` : ''}
-			{rows.length === 1 ? 'row' : 'rows'}</span
+			>{filter
+				? t('table.countOf', { shown: visibleRows.length, count: rows.length })
+				: t('units.row', { count: rows.length })}</span
 		>
 		<div class="toolbar-actions">
 			<button
 				class="icon-button ghost sm"
 				aria-pressed={$density === 'compact'}
-				aria-label="Compact rows"
-				title="Compact rows"
+				aria-label={t('table.compact')}
+				title={t('table.compact')}
 				onclick={() =>
 					density.update((value) => (value === 'compact' ? 'comfortable' : 'compact'))}
 				><Rows3Icon size={16} /></button
@@ -329,10 +331,10 @@
 						aria-expanded={columnsMenuOpen}
 						aria-controls="columns-menu"
 						onclick={() => (columnsMenuOpen = !columnsMenuOpen)}
-						><Columns3Icon size={16} />Columns{#if hidden.length}{` (${visibleSchema.length}/${schema.length})`}{/if}</button
+						><Columns3Icon size={16} />{t('table.columns')}{#if hidden.length}{` (${visibleSchema.length}/${schema.length})`}{/if}</button
 					>
 					{#if columnsMenuOpen}
-						<div class="menu" id="columns-menu" role="group" aria-label="Visible columns">
+						<div class="menu" id="columns-menu" role="group" aria-label={t('table.visibleColumns')}>
 							{#each schema as column}
 								<label
 									><input
@@ -344,7 +346,7 @@
 								>
 							{/each}
 							{#if hidden.length}<button class="button ghost sm" onclick={() => (hidden = [])}
-									>Show all</button
+									>{t('table.showAll')}</button
 								>{/if}
 						</div>
 					{/if}
@@ -359,11 +361,11 @@
 		bind:this={scrollElement}
 		tabindex="0"
 		role="region"
-		aria-label="Results table"
+		aria-label={t('table.label')}
 	>
-		{#if !schema.length}<EmptyState>The result schema will appear here.</EmptyState>
+		{#if !schema.length}<EmptyState>{t('table.schemaPending')}</EmptyState>
 		{:else if !visibleRows.length}<EmptyState
-				>{filter ? 'No matching rows. Try another search.' : 'No results yet.'}</EmptyState
+				>{filter ? t('table.noMatch') : t('table.empty')}</EmptyState
 			>
 		{:else}
 			<table style={`width: ${tableWidth}px`} aria-rowcount={visibleRows.length + 1}>
@@ -375,7 +377,7 @@
 				</colgroup>
 				<thead
 					><tr
-						><th class="sticky actions-cell"><span class="sr-only">Details</span></th
+						><th class="sticky actions-cell"><span class="sr-only">{t('table.details')}</span></th
 						>{#each headers as header (header.id)}
 							{@const sorted = header.column.getIsSorted()}
 							{@const column = schema.find((item) => item.name === header.id)}
@@ -391,11 +393,11 @@
 								><button
 									class:sorted={!!sorted}
 									title={header.id === EVIDENCE
-										? 'Extraction confidence and number of sources'
+										? t('table.evidenceHint')
 										: column?.description || undefined}
 									onclick={header.column.getToggleSortingHandler()}
 									><span class="header-label"
-										>{header.id === EVIDENCE ? 'Evidence' : columnLabel(header.id)}</span
+										>{header.id === EVIDENCE ? t('table.evidence') : columnLabel(header.id)}</span
 									>{#if sorted === 'asc'}<ArrowUpIcon size={14} />{:else if sorted === 'desc'}<ArrowDownIcon
 											size={14}
 										/>{:else}<ArrowUpDownIcon size={14} />{/if}</button
@@ -405,7 +407,7 @@
 										class="resize-handle"
 										role="separator"
 										aria-orientation="vertical"
-										aria-label={`Resize ${columnLabel(header.id)} column`}
+										aria-label={t('table.resizeColumn', { name: columnLabel(header.id) })}
 										aria-valuenow={widthOf(header.id)}
 										tabindex="0"
 										onpointerdown={(event) => startResize(event, header.id)}
@@ -436,8 +438,8 @@
 								><button
 									class="icon-button ghost sm"
 									data-row-index={item.index}
-									aria-label={`Open row ${item.index + 1} details`}
-									title={`Open details (Enter). ${modKey}+C copies the row.`}
+									aria-label={t('table.openRow', { n: item.index + 1 })}
+									title={t('table.openRowHint', { shortcut: `${modKey}+C` })}
 									onfocus={() => {
 										focusedRowId = row.id;
 									}}
@@ -450,12 +452,11 @@
 									{@const sources = row.original.sources}
 									{@const percent = Math.round(row.original.confidence * 100)}
 									<td class="evidence"
-										><div class="confidence" title={`Extraction confidence ${percent}%`}>
+										><div class="confidence" title={t('table.confidence', { percent })}>
 											<span class="meter"><span style={`width:${percent}%`}></span></span>{percent}%
 										</div>
 										{#if sources !== undefined}<div class="sources">
-												{sources}
-												{sources === 1 ? 'source' : 'sources'}
+												{t('units.source', { count: sources })}
 											</div>{/if}</td
 									>
 								{:else}
@@ -473,8 +474,8 @@
 													label={urlLabel(String(value))}
 												/>{:else if flag !== null}<span class="flag" class:yes={flag}
 													>{#if flag}<CheckIcon size={14} />{:else}<XIcon size={14} />{/if}{flag
-														? 'Yes'
-														: 'No'}</span
+														? t('common.yes')
+														: t('common.no')}</span
 												>{:else}{formatCell(value, type)}{/if}
 										</div></td
 									>

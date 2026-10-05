@@ -1,3 +1,4 @@
+import { intlLocale, t, type MessageKey } from '$lib/i18n';
 import type { HistoryRun, HistorySort } from '$lib/types';
 import type { StopConditions } from '$lib/api/tauri';
 
@@ -9,15 +10,11 @@ export interface RunSummary {
 }
 
 const SEARCH_PROVIDERS = ['brave', 'serper'];
-const RESULT_KEYS: Record<string, [string, string]> = {
-	table: ['rows_found', 'row'],
-	links: ['link_count', 'link'],
-	images: ['image_count', 'image'],
+const RESULT_KEYS: Record<string, [string, MessageKey]> = {
+	table: ['rows_found', 'units.row'],
+	links: ['link_count', 'units.link'],
+	images: ['image_count', 'units.image'],
 };
-
-function plural(count: number, word: string) {
-	return `${count.toLocaleString('en-US')} ${word}${count === 1 ? '' : 's'}`;
-}
 
 /** Money in a list row: cents, or "<$0.01" for tiny amounts. */
 export function shortUsd(amount: number): string {
@@ -37,12 +34,12 @@ function parse(raw: string | null | undefined): Record<string, any> | null {
 
 export function formatDuration(seconds: number): string {
 	const s = Math.round(seconds);
-	if (s < 60) return `${s} s`;
+	if (s < 60) return t('duration.s', { s });
 	const h = Math.floor(s / 3600);
 	const m = Math.floor((s % 3600) / 60);
-	if (h) return m ? `${h} h ${m} m` : `${h} h`;
+	if (h) return m ? t('duration.hm', { h, m }) : t('duration.h', { h });
 	const rest = s % 60;
-	return rest ? `${m} m ${rest} s` : `${m} m`;
+	return rest ? t('duration.ms', { m, s: rest }) : t('duration.m', { m });
 }
 
 /** What a History row says about a run, from its saved stats. */
@@ -51,11 +48,11 @@ export function runSummary(run: HistoryRun): RunSummary {
 	if (!stats) return { results: null, duration: null, cost: null, model: null };
 	let results: string | null = null;
 	if (run.run_type === 'research') {
-		if (run.turn_count > 1) results = plural(run.turn_count, 'question');
-		else if (typeof stats.steps === 'number') results = plural(stats.steps, 'step');
+		if (run.turn_count > 1) results = t('history.question', { count: run.turn_count });
+		else if (typeof stats.steps === 'number') results = t('units.step', { count: stats.steps });
 	} else {
 		const [key, word] = RESULT_KEYS[run.run_type] ?? RESULT_KEYS.table;
-		if (typeof stats[key] === 'number') results = plural(stats[key], word);
+		if (typeof stats[key] === 'number') results = t(word, { count: stats[key] });
 	}
 	const duration = typeof stats.elapsed_secs === 'number' ? formatDuration(stats.elapsed_secs) : null;
 	const accounting = stats.accounting;
@@ -63,7 +60,7 @@ export function runSummary(run: HistoryRun): RunSummary {
 	if (accounting && typeof accounting.spent_usd === 'number') {
 		cost =
 			accounting.spent_usd <= 0 && accounting.unpriced_calls > 0
-				? 'cost unknown'
+				? t('history.costUnknown')
 				: shortUsd(accounting.spent_usd);
 	} else if (typeof stats.spent_usd === 'number') cost = shortUsd(stats.spent_usd);
 	// The model that handled most of the run's model requests.
@@ -84,26 +81,27 @@ export function relativeTime(seconds: number, now = Date.now()): string {
 	const ms = seconds * 1000;
 	const diff = Math.max(0, now - ms);
 	if (ms >= startOfDay(now)) {
-		if (diff < 60_000) return 'just now';
-		if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
-		return `${Math.floor(diff / 3_600_000)} h ago`;
+		if (diff < 60_000) return t('history.justNow');
+		if (diff < 3_600_000) return t('history.minutesAgo', { count: Math.floor(diff / 60_000) });
+		return t('history.hoursAgo', { count: Math.floor(diff / 3_600_000) });
 	}
 	const date = new Date(ms);
-	const time = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+	const time = date.toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' });
 	if (ms >= startOfDay(now) - 6 * 86_400_000)
-		return `${date.toLocaleDateString(undefined, { weekday: 'short' })} ${time}`;
-	return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+		return `${date.toLocaleDateString(intlLocale(), { weekday: 'short' })} ${time}`;
+	return date.toLocaleDateString(intlLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /** Day heading for a run: Today, Yesterday, This week, or its month. */
 export function dateGroup(seconds: number, now = Date.now()): string {
 	const ms = seconds * 1000;
 	const today = startOfDay(now);
-	if (ms >= today) return 'Today';
-	if (ms >= today - 86_400_000) return 'Yesterday';
+	if (ms >= today) return t('history.today');
+	if (ms >= today - 86_400_000) return t('history.yesterday');
 	const weekday = (new Date(now).getDay() + 6) % 7; // Monday is 0
-	if (ms >= today - weekday * 86_400_000) return 'This week';
-	return new Date(ms).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+	if (ms >= today - weekday * 86_400_000) return t('history.thisWeek');
+	const month = new Date(ms).toLocaleDateString(intlLocale(), { month: 'long', year: 'numeric' });
+	return month.charAt(0).toUpperCase() + month.slice(1);
 }
 
 export interface RunGroup {
@@ -116,7 +114,7 @@ export interface RunGroup {
 export function groupRuns(runs: HistoryRun[], now: number, sort: HistorySort): RunGroup[] {
 	const groups: RunGroup[] = [];
 	const pinned = runs.filter((run) => run.pinned_at);
-	if (pinned.length) groups.push({ label: 'Pinned', runs: pinned });
+	if (pinned.length) groups.push({ label: t('history.pinned'), runs: pinned });
 	const rest = runs.filter((run) => !run.pinned_at);
 	if (sort !== 'newest' && sort !== 'oldest') {
 		if (rest.length) groups.push({ label: null, runs: rest });

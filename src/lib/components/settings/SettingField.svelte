@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { EyeIcon, EyeOffIcon, RotateCcwIcon } from '@lucide/svelte';
-	import { isDefault, type FieldDef } from '$lib/settings/schema';
+	import { fieldDescription, fieldLabel, isDefault, optionLabel, unitLabel, type FieldDef } from '$lib/settings/schema';
+	import { t } from '$lib/i18n';
 
 	let {
 		field,
@@ -27,17 +28,22 @@
 	} = $props();
 
 	let reveal = $state(false);
+	let label = $derived(fieldLabel(field));
 	let describedBy = $derived([`${field.key}-description`, error ? `${field.key}-error` : ''].filter(Boolean).join(' '));
 	let canReset = $derived(!field.keepOnReset && field.kind !== 'password' && !isDefault(field, value));
 	let defaultLabel = $derived(
-		field.kind === 'switch' ? (field.default === 'true' ? 'on' : 'off') : (field.options?.find((o) => o.value === field.default)?.label ?? field.default)
+		field.kind === 'switch'
+			? t(field.default === 'true' ? 'field.defaultOn' : 'field.defaultOff')
+			: field.options?.includes(field.default)
+				? optionLabel(field, field.default)
+				: field.default
 	);
 </script>
 
 <div class="setting-field" class:changed class:invalid={!!error} data-key={field.key}>
 	<div class="label-column">
-		<label for={field.key} id={`${field.key}-label`}>{field.label}{#if changed}<span class="changed-dot" title="Not saved yet" aria-hidden="true"></span>{/if}</label>
-		<p class="description" id={`${field.key}-description`}>{field.description}</p>
+		<label for={field.key} id={`${field.key}-label`}>{label}{#if changed}<span class="changed-dot" title={t('field.notSaved')} aria-hidden="true"></span>{/if}</label>
+		<p class="description" id={`${field.key}-description`}>{fieldDescription(field)}</p>
 	</div>
 	<div class="control-column">
 		<div class="control-row">
@@ -45,8 +51,8 @@
 				{@render control()}
 			{:else if field.kind === 'select'}
 				<select id={field.key} class="input" {value} aria-describedby={describedBy} onchange={(e) => onchange(e.currentTarget.value)}>
-					{#each field.options ?? [] as option (option.value)}
-						<option value={option.value} disabled={disabledOptions.includes(option.value)}>{option.label}</option>
+					{#each field.options ?? [] as option (option)}
+						<option value={option} disabled={disabledOptions.includes(option)}>{optionLabel(field, option)}</option>
 					{/each}
 				</select>
 			{:else if field.kind === 'switch'}
@@ -60,7 +66,7 @@
 					aria-describedby={describedBy}
 					onclick={() => onchange(value === 'true' ? 'false' : 'true')}><span class="thumb"></span></button
 				>
-				<span class="switch-state" aria-hidden="true">{value === 'true' ? 'On' : 'Off'}</span>
+				<span class="switch-state" aria-hidden="true">{value === 'true' ? t('field.on') : t('field.off')}</span>
 			{:else if field.kind === 'password'}
 				<div class="password">
 					<input
@@ -77,7 +83,7 @@
 					<button
 						type="button"
 						class="icon-button ghost"
-						aria-label={`${reveal ? 'Hide' : 'Show'} ${field.label}`}
+						aria-label={t(reveal ? 'field.hide' : 'field.show', { name: label })}
 						aria-pressed={reveal}
 						onclick={() => (reveal = !reveal)}
 						>{#if reveal}<EyeOffIcon size={16} />{:else}<EyeIcon size={16} />{/if}</button
@@ -87,7 +93,7 @@
 				<input
 					type="range"
 					class="slider"
-					aria-label={field.label}
+					aria-label={label}
 					min={field.min}
 					max={field.max}
 					step={field.step}
@@ -106,7 +112,7 @@
 					aria-describedby={describedBy}
 					oninput={(e) => onchange(e.currentTarget.value)}
 				/>
-				{#if field.unit}<span class="unit">{field.unit}</span>{/if}
+				{#if field.unit}<span class="unit">{unitLabel(field.unit)}</span>{/if}
 			{:else if field.kind === 'number'}
 				<input
 					id={field.key}
@@ -120,7 +126,7 @@
 					aria-describedby={describedBy}
 					oninput={(e) => onchange(e.currentTarget.value)}
 				/>
-				{#if field.unit}<span class="unit">{field.unit}</span>{/if}
+				{#if field.unit}<span class="unit">{unitLabel(field.unit)}</span>{/if}
 			{:else}
 				<input
 					id={field.key}
@@ -138,8 +144,8 @@
 				<button
 					type="button"
 					class="icon-button ghost reset"
-					aria-label={`Reset ${field.label} to ${defaultLabel}`}
-					title={`Reset to ${defaultLabel}`}
+					aria-label={t('field.reset', { name: label, value: defaultLabel })}
+					title={t('field.resetHint', { value: defaultLabel })}
 					onclick={() => onchange(field.default)}><RotateCcwIcon size={14} /></button
 				>
 			{/if}

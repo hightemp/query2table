@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import type { Snippet } from 'svelte';
 	import type { LlmIssueCode } from '$lib/types';
 	import { presentError, type ErrorContext } from '$lib/utils/errors';
@@ -29,9 +30,9 @@
 	<p>{explanation.cause}</p>
 	{#if children}{@render children()}{/if}
 	<p class="action">{explanation.action}</p>
-	{#if explanation.settingsHref}<a href={explanation.settingsHref}>Open Settings</a>{/if}
+	{#if explanation.settingsHref}<a href={explanation.settingsHref}>{t('common.openSettings')}</a>{/if}
 	<details bind:open={detailsOpen}>
-		<summary>Technical details</summary>
+		<summary>{t('common.technicalDetails')}</summary>
 		<pre>{explanation.details}</pre>
 	</details>
 </div>

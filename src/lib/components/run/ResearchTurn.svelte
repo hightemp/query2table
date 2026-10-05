@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t, type MessageKey } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import type { ResearchStep } from '$lib/types';
 	import { CopyIcon, FileTextIcon, ListIcon, ChevronDownIcon, LinkIcon } from '@lucide/svelte';
@@ -51,10 +52,10 @@
 	let activeHeading = $state<string | null>(null);
 	let layout = $state<HTMLDivElement>();
 
-	const tabs: { value: Tab; label: string }[] = [
-		{ value: 'answer', label: 'Answer' },
-		{ value: 'activity', label: 'Activity' },
-		{ value: 'sources', label: 'Sources' },
+	const tabs: { value: Tab; label: MessageKey }[] = [
+		{ value: 'answer', label: 'research.tab.answer' },
+		{ value: 'activity', label: 'research.tab.activity' },
+		{ value: 'sources', label: 'research.tab.sources' },
 	];
 	function count(value: Tab) {
 		return value === 'activity' ? steps.length : value === 'sources' ? sources.length : null;
@@ -143,20 +144,20 @@
 	function copyMenu(event: MouseEvent) {
 		if (!answer) return;
 		const text = answer;
-		showContextMenu(menuPointFor(event.currentTarget as Element), 'Copy answer', [
-			{ label: 'Copy Markdown', icon: CopyIcon, action: () => copyWithToast(text, 'Answer copied as Markdown.') },
-			{ label: 'Copy as text', icon: FileTextIcon, action: () => copyWithToast(markdownToText(text), 'Answer copied as text.') },
+		showContextMenu(menuPointFor(event.currentTarget as Element), t('research.copyAnswer'), [
+			{ label: t('research.copyMarkdown'), icon: CopyIcon, action: () => copyWithToast(text, t('research.copiedMarkdown')) },
+			{ label: t('research.copyText'), icon: FileTextIcon, action: () => copyWithToast(markdownToText(text), t('research.copiedText')) },
 			{
-				label: 'Copy with sources',
+				label: t('research.copyWithSources'),
 				icon: LinkIcon,
-				action: () => copyWithToast(answerWithSources(text, sources), 'Answer copied with sources.'),
+				action: () => copyWithToast(answerWithSources(text, sources), t('research.copiedWithSources')),
 			},
 		]);
 	}
 	function contentsMenu(event: MouseEvent) {
 		showContextMenu(
 			menuPointFor(event.currentTarget as Element),
-			'Contents',
+			t('research.contents'),
 			headings.map((heading) => ({
 				label: `${'  '.repeat(heading.depth - 1)}${heading.text}`,
 				action: () => goTo(heading.slug),
@@ -165,17 +166,17 @@
 	}
 </script>
 
-<section class="turn" aria-label={question ?? 'Research'}>
+<section class="turn" aria-label={question ?? t('research.turn')}>
 	{#if showQuestion && question}<h2 class="question">{question}</h2>{/if}
 	{#if !answer && !running && (status === 'cancelled' || status === 'failed')}
 		<p class="turn-note" class:failed={status === 'failed'}>
 			{status === 'cancelled'
-				? 'This question was cancelled before an answer. The steps collected so far are kept.'
-				: 'This question could not be answered. See Activity for what went wrong.'}
+				? t('research.cancelledNote')
+				: t('research.failedNote')}
 		</p>
 	{/if}
 	<div class="tab-bar" bind:this={tabBar}>
-		<div class="tabs" role="tablist" aria-label="Research results" tabindex="-1" onkeydown={handleTabKey}>
+		<div class="tabs" role="tablist" aria-label={t('research.results')} tabindex="-1" onkeydown={handleTabKey}>
 			{#each tabs as item (item.value)}
 				{@const n = count(item.value)}
 				<button
@@ -186,7 +187,7 @@
 					tabindex={tab === item.value ? 0 : -1}
 					disabled={item.value === 'answer' && !answer}
 					onclick={() => select(item.value)}
-					>{item.label}{#if n !== null}<span class="count">{n}</span>{/if}</button
+					>{t(item.label)}{#if n !== null}<span class="count">{n}</span>{/if}</button
 				>
 			{/each}
 		</div>
@@ -195,10 +196,10 @@
 				{#if showContents}<button
 						class="button ghost sm contents-button"
 						aria-haspopup="menu"
-						onclick={contentsMenu}><ListIcon size={15} />Contents<ChevronDownIcon size={14} /></button
+						onclick={contentsMenu}><ListIcon size={15} />{t('research.contents')}<ChevronDownIcon size={14} /></button
 					>{/if}
 				<button class="button ghost sm" aria-haspopup="menu" onclick={copyMenu}
-					><CopyIcon size={15} />Copy answer<ChevronDownIcon size={14} /></button
+					><CopyIcon size={15} />{t('research.copyAnswer')}<ChevronDownIcon size={14} /></button
 				>
 			</div>
 		{/if}
@@ -215,12 +216,12 @@
 	>
 		{#if tab === 'answer' && answer}
 			<div class="answer-layout" class:with-contents={showContents} bind:this={layout}>
-				<div class="answer" aria-label="Research answer" role="region">
+				<div class="answer" aria-label={t('research.answer')} role="region">
 					<Markdown content={answer} idPrefix={`${id}-h`} />
 				</div>
 				{#if showContents}
-					<nav class="contents" aria-label="Contents">
-						<p>Contents</p>
+					<nav class="contents" aria-label={t('research.contents')}>
+						<p>{t('research.contents')}</p>
 						<ul>
 							{#each headings as heading (heading.slug)}
 								<li class={`depth-${heading.depth}`}>
@@ -244,7 +245,7 @@
 			<ResearchSteps {steps} {running} />
 		{/if}
 	</div>
-	{#if cost !== null}<p class="turn-cost">Cost of this answer: {formatUsd(cost)}</p>{/if}
+	{#if cost !== null}<p class="turn-cost">{t('research.turnCost', { amount: formatUsd(cost) })}</p>{/if}
 </section>
 
 <style>

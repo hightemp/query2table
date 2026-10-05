@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatDateTime, t, type MessageKey } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import type { HistoryRun } from '$lib/types';
 	import {
@@ -38,7 +39,6 @@
 	} = $props();
 
 	const icons = { table: TableIcon, images: ImageIcon, links: LinkIcon, research: BrainIcon } as const;
-	const typeNames: Record<string, string> = { table: 'Table', images: 'Images', links: 'Links', research: 'Research' };
 	let Icon = $derived(icons[run.run_type as keyof typeof icons] ?? TableIcon);
 	let name = $derived(run.title || run.query);
 	let summary = $derived(runSummary(run));
@@ -73,18 +73,18 @@
 	<input
 		type="checkbox"
 		class="select"
-		aria-label={`Select ${name}`}
+		aria-label={t('history.selectRun', { name })}
 		checked={selected}
 		onclick={(event) => onselect(event.currentTarget.checked, event.shiftKey)}
 	/>
-	<span class="type" title={typeNames[run.run_type] ?? run.run_type}><Icon size={16} /></span>
+	<span class="type" title={['table', 'images', 'links', 'research'].includes(run.run_type) ? t(`mode.${run.run_type}` as MessageKey) : run.run_type}><Icon size={16} /></span>
 	<div class="main">
 		<div class="title-line">
 			{#if renaming}
 				<input
 					bind:this={input}
 					class="input sm rename"
-					aria-label="Run name"
+					aria-label={t('history.runName')}
 					bind:value={draft}
 					onkeydown={(event) => {
 						if (event.key === 'Enter') finish(draft);
@@ -106,14 +106,14 @@
 					}}>{name}</a
 				>
 			{/if}
-			{#if run.pinned_at}<span class="pin" title="Pinned"><PinIcon size={13} /></span>{/if}
+			{#if run.pinned_at}<span class="pin" title={t('history.pinned')}><PinIcon size={13} /></span>{/if}
 		</div>
 		<p class="meta">
 			{#if run.title}<span class="query">{run.query}</span>{/if}
 			{#each meta as item}<span>{item}</span>{/each}
 			{#if run.error && run.status === 'failed'}<span class="error">{presentError(run.error).title}</span
 				>{/if}
-			<time datetime={new Date(run.created_at * 1000).toISOString()} title={new Date(run.created_at * 1000).toLocaleString()}
+			<time datetime={new Date(run.created_at * 1000).toISOString()} title={formatDateTime(run.created_at, { dateStyle: 'full', timeStyle: 'short' })}
 				>{relativeTime(run.created_at, now)}</time
 			>
 		</p>
@@ -121,7 +121,7 @@
 	{#if unusual}<Badge tone={statusTone(run.status)}>{statusLabel(run.status)}</Badge>{/if}
 	<button
 		class="icon-button menu"
-		aria-label={`Actions for ${name}`}
+		aria-label={t('common.actionsFor', { name })}
 		aria-haspopup="menu"
 		onclick={(event) => {
 			const rect = event.currentTarget.getBoundingClientRect();

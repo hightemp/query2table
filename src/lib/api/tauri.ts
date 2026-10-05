@@ -237,7 +237,10 @@ export async function updateSettings(values: Record<string, string>): Promise<vo
 
 export interface ConnectionReport {
 	ok: boolean;
+	/** English text, used when there is no translation for `code`. */
 	message: string;
+	code?: string | null;
+	params?: Record<string, string>;
 }
 
 /** Checks LLM credentials and model with unsaved form values; generates nothing. */

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import type { Accounting } from '$lib/types';
 	import type { StopConditions } from '$lib/api/tauri';
@@ -82,10 +83,10 @@
 			</div>
 		{/each}
 	{:else}
-		<EmptyState>No research output yet.</EmptyState>
+		<EmptyState>{t('research.empty')}</EmptyState>
 	{/if}
 	{#if conversationCost !== null && turns.length > 1}
-		<p class="conversation-cost">Conversation cost: {formatUsd(conversationCost)}</p>
+		<p class="conversation-cost">{t('research.conversationCost', { amount: formatUsd(conversationCost) })}</p>
 	{/if}
 	{#if onask}
 		<FollowUpBox {suggestions} disabled={running} limits={fullLimits} {onask} />
@@ -93,12 +94,12 @@
 	{#if scrolled}
 		<button
 			class="button sm back-to-top"
-			aria-label="Back to top"
-			title="Back to top"
+			aria-label={t('research.backToTop')}
+			title={t('research.backToTop')}
 			onclick={() => {
 				if (view) view.scrollTop = 0;
 				scrolled = false;
-			}}><ArrowUpIcon size={15} />Top</button
+			}}><ArrowUpIcon size={15} />{t('research.top')}</button
 		>
 	{/if}
 </div>

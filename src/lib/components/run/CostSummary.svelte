@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import type { Accounting } from '$lib/types';
 	let {
 		accounting = null,
@@ -11,81 +12,64 @@
 			: `$${amount.toFixed(6).replace(/0{1,2}$/, '')}`;
 	let title = $derived.by(() => {
 		if (!accounting)
-			return legacy !== null ? `Historical estimate ${usd(legacy)}` : 'Cost not recorded';
-		if (accounting.llm_calls + accounting.search_calls === 0) return 'No provider requests yet';
+			return legacy !== null ? t('cost.historical', { amount: usd(legacy) }) : t('cost.notRecorded');
+		if (accounting.llm_calls + accounting.search_calls === 0) return t('cost.noRequests');
 		const priced = accounting.reported_calls + accounting.estimated_calls;
-		if (!priced && accounting.pending_calls) return 'Cost pending';
-		if (!priced && accounting.unpriced_calls) return 'Cost unknown';
+		if (!priced && accounting.pending_calls) return t('cost.pending');
+		if (!priced && accounting.unpriced_calls) return t('cost.unknown');
 		if (accounting.unpriced_calls || accounting.pending_calls)
-			return `Partial cost ${usd(accounting.spent_usd)}`;
-		return `${accounting.estimated_calls ? 'Estimated' : 'Reported'} cost ${usd(accounting.spent_usd)}`;
+			return t('cost.partial', { amount: usd(accounting.spent_usd) });
+		return t(accounting.estimated_calls ? 'cost.estimated' : 'cost.reported', { amount: usd(accounting.spent_usd) });
 	});
 </script>
 
 <details class="cost-summary" class:inline>
-	<summary>{title}<span>Usage &amp; cost</span></summary>
+	<summary>{title}<span>{t('cost.usage')}</span></summary>
 	<div class="cost-details">
 		{#if accounting}
+			<p>{t('cost.charges', { reported: usd(accounting.reported_usd), estimated: usd(accounting.estimated_usd) })}</p>
 			<p>
-				Reported charges: {usd(accounting.reported_usd)} · Rate estimates: {usd(
-					accounting.estimated_usd
-				)}
+				{t('cost.attempts', { llm: accounting.llm_calls, search: accounting.search_calls, pending: accounting.pending_calls })}
 			</p>
 			<p>
-				{accounting.llm_calls} LLM attempts · {accounting.search_calls} search attempts · {accounting.pending_calls}
-				in flight
+				{t('cost.tokens', {
+					input: accounting.prompt_tokens,
+					output: accounting.completion_tokens,
+					cached: accounting.cached_prompt_tokens,
+				})}
 			</p>
-			<p>
-				Known token totals: {accounting.prompt_tokens.toLocaleString()} input · {accounting.completion_tokens.toLocaleString()}
-				output · {accounting.cached_prompt_tokens.toLocaleString()} cached input. Thinking tokens are
-				included in output.
-			</p>
-			{#if accounting.missing_usage_calls}<p>
-					Token usage was not reported for {accounting.missing_usage_calls} LLM attempts; these tokens
-					are not counted as zero.
-				</p>{/if}
+			{#if accounting.missing_usage_calls}<p>{t('cost.missingUsage', { count: accounting.missing_usage_calls })}</p>{/if}
 			{#each accounting.breakdown as line}
 				<div class="cost-line">
 					<strong>{line.provider} · {line.model}</strong
 					>{#if line.requested_model && line.requested_model !== line.model}<span
-							>Requested as {line.requested_model}</span
+							>{t('cost.requestedAs', { model: line.requested_model })}</span
 						>{/if}<span
-						>{line.calls} attempts · reported {usd(line.reported_usd)} · estimated {usd(
-							line.estimated_usd
-						)}{#if line.unpriced_calls}
-							· {line.unpriced_calls} unpriced{/if}</span
+						>{t('cost.lineAttempts', { calls: line.calls, reported: usd(line.reported_usd), estimated: usd(line.estimated_usd) })}{#if line.unpriced_calls}{t(
+								'cost.lineUnpriced',
+								{ count: line.unpriced_calls }
+							)}{/if}</span
 					>
 					{#if line.pricing}<span
-							>{line.pricing.source}: {#if ['brave', 'serper'].includes(line.provider)}{usd(
-									line.pricing.per_request
-								)} per request{:else}{usd(line.pricing.input_per_million)} input / {usd(
-									line.pricing.output_per_million
-								)} output per million tokens{#if line.pricing.cached_input_per_million != null}; {usd(
-										line.pricing.cached_input_per_million
-									)} cached input per million{/if}{#if line.pricing.cache_write_per_million != null};
-									{usd(line.pricing.cache_write_per_million)} cache write per million{/if}{#if line.pricing.per_request};
-									{usd(line.pricing.per_request)} per request{/if}{/if}.</span
-						>{#if line.pricing.credit_based}<span
-								>Estimated usage-credit consumption; included credits, subscription fees and cash
-								payments may differ.</span
-							>{/if}{/if}
+							>{line.pricing.source}: {#if ['brave', 'serper'].includes(line.provider)}{t('cost.perRequest', {
+									amount: usd(line.pricing.per_request ?? 0),
+								})}{:else}{t('cost.perMillion', {
+									input: usd(line.pricing.input_per_million),
+									output: usd(line.pricing.output_per_million),
+								})}{#if line.pricing.cached_input_per_million != null}{t('cost.cachedPerMillion', {
+										amount: usd(line.pricing.cached_input_per_million),
+									})}{/if}{#if line.pricing.cache_write_per_million != null}{t('cost.cacheWritePerMillion', {
+										amount: usd(line.pricing.cache_write_per_million),
+									})}{/if}{#if line.pricing.per_request}{t('cost.alsoPerRequest', {
+										amount: usd(line.pricing.per_request),
+									})}{/if}{/if}.</span
+						>{#if line.pricing.credit_based}<span>{t('cost.creditBased')}</span>{/if}{/if}
 				</div>
 			{/each}
-			<p>
-				When cache usage or cache rates are unavailable, token estimates use the regular input rate.
-			</p>
-			<p>
-				Run spending limit: {usd(accounting.max_budget_usd)}. New requests stop when accounted
-				spending reaches this limit. Requests already in flight can exceed it.
-			</p>
-			{#if accounting.unpriced_calls > 0}<p>
-					A saved rate or provider billing response is missing for these attempts. Timeouts and
-					cancelled requests may have no final billing information. Settings changes apply to new
-					runs; earlier costs keep the information available during that run.
-				</p>{/if}
-		{:else if legacy !== null}<p>
-				An earlier version recorded this estimate without actual usage or model-specific rates.
-			</p>{/if}
+			<p>{t('cost.cacheNote')}</p>
+			<p>{t('cost.limit', { amount: usd(accounting.max_budget_usd) })}</p>
+			{#if accounting.unpriced_calls > 0}<p>{t('cost.unpricedNote')}</p>{/if}
+		{:else if legacy !== null}<p>{t('cost.legacyNote')}</p>{/if}
 	</div>
 </details>
 

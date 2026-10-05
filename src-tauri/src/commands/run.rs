@@ -87,6 +87,7 @@ pub async fn start_run(
         app.clone(),
         run_id.clone(),
         notifications_enabled,
+        crate::utils::i18n::current_language(&settings),
     ));
 
     let rid = run_id.clone();
@@ -791,7 +792,12 @@ pub async fn ask_follow_up(
     let notifications_enabled = settings
         .get("notifications_enabled")
         .map_or(true, |value| value != "false");
-    let events = Some(EventPublisher::new(app.clone(), run_id.clone(), notifications_enabled));
+    let events = Some(EventPublisher::new(
+        app.clone(),
+        run_id.clone(),
+        notifications_enabled,
+        crate::utils::i18n::current_language(&settings),
+    ));
     let (pipeline, cmd_tx) = ResearchPipeline::follow_up(
         run_id.clone(),
         question,

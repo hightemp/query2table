@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { pricingScope } from '$lib/utils/pricing';
 	let {
 		provider,
@@ -45,11 +46,10 @@
 </script>
 
 <div class="model-pricing" id="model-pricing">
-	<h3>Usage and model pricing</h3>
-	<p>Changes apply to new runs after Save. Saved run costs retain their original rates.</p>
+	<h3>{t('pricing.title')}</h3>
+	<p>{t('pricing.applies')}</p>
 	<p>
-		Provider-reported cost takes priority. Otherwise, OpenRouter and Ollama Cloud use published
-		model rates when available. Calculated amounts are estimates; unavailable prices stay unknown.
+		{t('pricing.priority')}
 	</p>
 	<label class="pricing-toggle"
 		><input
@@ -57,13 +57,13 @@
 			checked={!!rate}
 			disabled={!model.trim()}
 			onchange={(event) => toggle(event.currentTarget.checked)}
-		/>Use custom rates for this model and endpoint</label
+		/>{t('pricing.custom')}</label
 	>
 	{#if rate}
 		<p class="scope">{model} · {provider}</p>
 		<div class="rate-fields">
 			<label
-				>Input USD / 1M tokens<input
+				>{t('pricing.input')}<input
 					class="input"
 					required
 					type="number"
@@ -74,7 +74,7 @@
 				/></label
 			>
 			<label
-				>Output USD / 1M tokens<input
+				>{t('pricing.output')}<input
 					class="input"
 					required
 					type="number"
@@ -85,7 +85,7 @@
 				/></label
 			>
 			<label
-				>Cached input USD / 1M tokens (optional)<input
+				>{t('pricing.cached')}<input
 					class="input"
 					type="number"
 					min="0"
@@ -96,8 +96,7 @@
 			>
 		</div>
 		<p>
-			Enter both input and output rates. An explicit 0 means free; an empty optional cache rate uses
-			the input rate for estimates. Rates for other models are kept separately.
+			{t('pricing.help')}
 		</p>
 	{/if}
 </div>

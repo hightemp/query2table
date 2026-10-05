@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t, type MessageKey } from '$lib/i18n';
 	import type { Accounting, ProgressStats } from '$lib/types';
 	import type { StopConditions } from '$lib/api/tauri';
 	import { formatUsd, formatMinutes } from '$lib/utils/stopConditions';
@@ -15,12 +16,7 @@
 		runType?: string;
 		paused?: boolean;
 	} = $props();
-	const units: Record<string, string> = {
-		table: 'rows',
-		images: 'images',
-		links: 'links',
-		research: 'steps',
-	};
+	const units = { table: 'units.row', images: 'units.image', links: 'units.link', research: 'units.step' } as const;
 
 	// The run stops at whichever limit it reaches first, so the bar follows the nearest one.
 	let nearest = $derived.by(() => {
@@ -30,23 +26,26 @@
 			const done = runType === 'research' ? (stats?.queries_executed ?? 0) : (stats?.rows_found ?? 0);
 			candidates.push({
 				fraction: done / target,
-				name: `${units[runType] ?? 'results'} target`,
-				detail: `${done} of ${target} ${units[runType] ?? 'results'}`,
+				name: t(`runProgress.target.${runType in units ? runType : 'table'}` as MessageKey),
+				detail: t('runProgress.targetDetail', {
+					done,
+					target: t(units[runType as keyof typeof units] ?? 'units.row', { count: target }),
+				}),
 			});
 		}
 		const budget = accounting?.max_budget_usd ?? limits?.max_budget_usd;
 		if (budget)
 			candidates.push({
 				fraction: (accounting?.spent_usd ?? 0) / budget,
-				name: 'spending limit',
-				detail: `${formatUsd(accounting?.spent_usd ?? 0)} of ${formatUsd(budget)}`,
+				name: t('runProgress.spending'),
+				detail: t('runProgress.targetDetail', { done: formatUsd(accounting?.spent_usd ?? 0), target: formatUsd(budget) }),
 			});
 		const duration = limits?.max_duration_seconds;
 		if (duration)
 			candidates.push({
 				fraction: (stats?.elapsed_secs ?? 0) / duration,
-				name: 'time limit',
-				detail: `${Math.floor((stats?.elapsed_secs ?? 0) / 60)} of ${formatMinutes(duration)}`,
+				name: t('runProgress.time'),
+				detail: t('runProgress.timeDetail', { done: Math.floor((stats?.elapsed_secs ?? 0) / 60), total: formatMinutes(duration) }),
 			});
 		return candidates.sort((a, b) => b.fraction - a.fraction)[0] ?? null;
 	});
@@ -58,15 +57,15 @@
 		<div
 			class="track"
 			role="progressbar"
-			aria-label="Run progress"
+			aria-label={t('runProgress.label')}
 			aria-valuemin={0}
 			aria-valuemax={100}
 			aria-valuenow={percent}
-			aria-valuetext={`${percent}% of the ${nearest.name}: ${nearest.detail}`}
+			aria-valuetext={`${t('runProgress.of', { percent, limit: nearest.name })}: ${nearest.detail}`}
 		>
 			<div class="fill" style={`width:${percent}%`}></div>
 		</div>
-		<span class="caption">{percent}% of the {nearest.name} · {nearest.detail}</span>
+		<span class="caption">{t('runProgress.of', { percent, limit: nearest.name })} · {nearest.detail}</span>
 	</div>
 {/if}
 

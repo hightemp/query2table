@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
 	import SiteIcon from './SiteIcon.svelte';
 	import type { ResearchSource } from '$lib/utils/research';
@@ -13,7 +14,7 @@
 </script>
 
 {#if !sources.length}
-	<p class="empty">No sources yet. Pages the agent reads and links in the answer appear here.</p>
+	<p class="empty">{t('research.noSources')}</p>
 {:else}
 	<ol class="sources">
 		{#each sources as source, i (source.url)}
@@ -24,8 +25,8 @@
 					<ExternalLink href={source.url} label={source.title} class="source-title" />
 					<div class="meta">
 						<span class="domain">{source.domain}</span>
-						{#if source.cited}<span class="tag cited" title="The answer links to this page">Cited</span>{/if}
-						{#if source.read}<span class="tag" title="The agent read this page">Read</span>{/if}
+						{#if source.cited}<span class="tag cited" title={t('research.citedHint')}>{t('research.cited')}</span>{/if}
+						{#if source.read}<span class="tag" title={t('research.readHint')}>{t('research.read')}</span>{/if}
 					</div>
 				</div>
 			</li>

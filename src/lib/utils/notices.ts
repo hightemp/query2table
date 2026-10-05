@@ -1,3 +1,4 @@
+import { t, type MessageKey } from '$lib/i18n';
 import type { Accounting, LlmIssueEvent, LlmIssueOutcome } from '$lib/types';
 import { presentError } from '$lib/utils/errors';
 
@@ -18,20 +19,25 @@ export interface Notice {
 	attempts: LlmIssueEvent[];
 }
 
-export const STAGE_LABELS: Record<string, string> = {
-	interpreter: 'Analyzing query',
-	planner: 'Planning schema',
-	schema_planner: 'Planning schema',
-	search_planner: 'Planning search queries',
-	query_expander: 'Expanding search queries',
-	extractor: 'Extracting data',
-	image_ranker: 'Ranking images',
-	link_ranker: 'Ranking links',
-	research: 'Research',
-	setup: 'Setting up the run',
-	image_search_planner: 'Planning image searches',
-	link_search_planner: 'Planning link searches',
-};
+const STAGES = [
+	'interpreter',
+	'planner',
+	'search_planner',
+	'query_expander',
+	'extractor',
+	'image_ranker',
+	'link_ranker',
+	'research',
+	'setup',
+	'image_search_planner',
+	'link_search_planner',
+];
+
+/** Readable name of a pipeline stage. */
+export function stageLabel(stage: string): string {
+	const known = stage === 'schema_planner' ? 'planner' : stage;
+	return STAGES.includes(known) ? t(`stage.${known}` as MessageKey) : stage;
+}
 
 const PROVIDER_NAMES: Record<string, string> = {
 	brave: 'Brave Search',
@@ -84,39 +90,28 @@ function inferredOutcome(stage: string | null, code: string): LlmIssueOutcome | 
 	}
 }
 
-function plural(count: number, word: string) {
-	return `${count} ${word}${count === 1 ? '' : 's'}`;
-}
-
 function consequence(outcome: LlmIssueOutcome | 'unknown', stage: string | null, code: string, count: number) {
 	switch (outcome) {
 		case 'retrying':
-			return 'Retrying the request…';
+			return t('notice.retrying');
 		case 'recovered':
-			return count === 1
-				? 'A retry succeeded. Nothing was lost.'
-				: `Retries succeeded for ${count} requests. Nothing was lost.`;
+			return t('notice.recovered', { count });
 		case 'continued':
-			return 'The agent asked the model again and continued. The answer is not affected.';
+			return t('notice.continued');
 		case 'fallback':
-			if (stage === 'image_ranker') return 'Images are shown without relevance ranking.';
-			if (stage === 'link_ranker')
-				return `${plural(count, 'page')} could not be scored and ${count === 1 ? 'was' : 'were'} placed among weak links.`;
-			if (stage === 'image_search_planner' || stage === 'link_search_planner')
-				return 'Searches used simple variations of your query instead of planned ones.';
-			return 'A simpler method was used, so results may be less precise.';
+			if (stage === 'image_ranker') return t('notice.fallbackImages');
+			if (stage === 'link_ranker') return t('notice.fallbackLinks', { count });
+			if (stage === 'image_search_planner' || stage === 'link_search_planner') return t('notice.fallbackSearch');
+			return t('notice.fallback');
 		case 'skipped':
-			if (stage === 'extractor') return `Data from ${plural(count, 'page')} was skipped.`;
-			if (stage === 'link_ranker') return `${plural(count, 'page')} left out of the links.`;
-			if (stage === 'image_ranker')
-				return count === 1 ? 'A batch of images was left out.' : `${count} batches of images were left out.`;
-			return 'Some results were skipped.';
+			if (stage === 'extractor') return t('notice.skippedPages', { count });
+			if (stage === 'link_ranker') return t('notice.skippedLinks', { count });
+			if (stage === 'image_ranker') return t('notice.skippedImages', { count });
+			return t('notice.skipped');
 		case 'stopped':
-			return code === 'budget_limit'
-				? 'The spending limit stopped the run at this step.'
-				: 'The run stopped at this step.';
+			return code === 'budget_limit' ? t('notice.stoppedBudget') : t('notice.stopped');
 		default:
-			return 'Some results may be missing.';
+			return t('notice.unknown');
 	}
 }
 
@@ -193,7 +188,7 @@ function llmNotices(issues: LlmIssueEvent[], runStatus: string) {
 				turnIndex,
 				action:
 					level !== 'info' && explanation.settingsHref
-						? { label: 'Open Settings', href: explanation.settingsHref }
+						? { label: t('common.openSettings'), href: explanation.settingsHref }
 						: undefined,
 				attempts: [...attempts],
 			},
@@ -216,8 +211,8 @@ function costNotices(accounting: Accounting | null): Notice[] {
 			...base,
 			key: 'cost:limit',
 			level: 'warning',
-			title: 'Spending limit reached',
-			consequence: 'New requests have stopped; requests already in flight may still be charged.',
+			title: t('notice.limitTitle'),
+			consequence: t('notice.limitText'),
 		});
 	if (accounting.unpriced_calls > 0) {
 		const totals = new Map<string, number>();
@@ -233,9 +228,12 @@ function costNotices(accounting: Accounting | null): Notice[] {
 			key: 'cost:unknown',
 			count: accounting.unpriced_calls,
 			level: 'warning',
-			title: `${plural(accounting.unpriced_calls, 'request')} with unknown cost`,
-			consequence: `${accounting.unpriced_calls === 1 ? 'It is' : 'They are'} not counted toward the spending limit${providers ? ` (${providers})` : ''}.`,
-			action: { label: 'Set prices', href: `/settings#settings-${section}` },
+			title: t('notice.unknownCostTitle', { count: accounting.unpriced_calls }),
+			consequence: t('notice.unknownCostText', {
+				count: accounting.unpriced_calls,
+				providers: providers ? ` (${providers})` : '',
+			}),
+			action: { label: t('notice.setPrices'), href: `/settings#settings-${section}` },
 		});
 	}
 	return notices;

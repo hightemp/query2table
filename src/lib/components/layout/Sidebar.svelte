@@ -19,16 +19,17 @@
 	} from '$lib/stores/ui';
 	import { toast } from '$lib/stores/toasts';
 	import { modKey } from '$lib/utils/shortcuts';
+	import { t, type MessageKey } from '$lib/i18n';
 
-	const nav = [
-		{ href: '/', label: 'Query', icon: SearchIcon },
-		{ href: '/history', label: 'History', icon: HistoryIcon },
-		{ href: '/settings', label: 'Settings', icon: SettingsIcon },
+	const nav: { href: string; label: MessageKey; icon: typeof SearchIcon }[] = [
+		{ href: '/', label: 'nav.query', icon: SearchIcon },
+		{ href: '/history', label: 'nav.history', icon: HistoryIcon },
+		{ href: '/settings', label: 'nav.settings', icon: SettingsIcon },
 	];
-	const themes: { value: ThemePreference; label: string; icon: typeof SunIcon }[] = [
-		{ value: 'light', label: 'Light', icon: SunIcon },
-		{ value: 'dark', label: 'Dark', icon: MoonIcon },
-		{ value: 'system', label: 'System', icon: MonitorIcon },
+	const themes: { value: ThemePreference; label: MessageKey; icon: typeof SunIcon }[] = [
+		{ value: 'light', label: 'theme.light', icon: SunIcon },
+		{ value: 'dark', label: 'theme.dark', icon: MoonIcon },
+		{ value: 'system', label: 'theme.system', icon: MonitorIcon },
 	];
 	let savingTheme = $state(false);
 	let current = $derived(themes.find((theme) => theme.value === $themePreference) ?? themes[2]);
@@ -40,7 +41,7 @@
 		try {
 			await setTheme(next);
 		} catch {
-			toast('Could not save the theme. Try again.', 'error');
+			toast(t('theme.saveFailed'), 'error');
 		} finally {
 			savingTheme = false;
 		}
@@ -59,9 +60,9 @@
 		<button
 			class="icon-button ghost"
 			onclick={toggleSidebar}
-			aria-label="Toggle sidebar"
+			aria-label={t('sidebar.toggle')}
 			aria-expanded={!$sidebarCollapsed}
-			title={`${$sidebarCollapsed ? 'Expand' : 'Collapse'} sidebar (${modKey}+B)`}
+			title={t($sidebarCollapsed ? 'sidebar.expand' : 'sidebar.collapse', { shortcut: `${modKey}+B` })}
 		>
 			{#if $sidebarCollapsed}
 				<PanelLeftOpenIcon size={20} />
@@ -76,14 +77,14 @@
 			{@const active = $page.url.pathname === item.href}
 			<a
 				href={item.href}
-				aria-label={item.label}
-				title={$sidebarCollapsed ? item.label : undefined}
+				aria-label={t(item.label)}
+				title={$sidebarCollapsed ? t(item.label) : undefined}
 				aria-current={active ? 'page' : undefined}
 				class="nav-item"
 				class:active
 			>
 				<item.icon size={20} />
-				{#if !$sidebarCollapsed}<span>{item.label}</span>{/if}
+				{#if !$sidebarCollapsed}<span>{t(item.label)}</span>{/if}
 			</a>
 		{/each}
 	</nav>
@@ -94,21 +95,23 @@
 				class="icon-button ghost"
 				onclick={() => changeTheme(upcoming.value)}
 				disabled={savingTheme}
-				aria-label={`Theme: ${current.label}. Switch to ${upcoming.label}`}
-				title={`Theme: ${current.label}. Click for ${upcoming.label}`}
+				aria-label={t('theme.current', { current: t(current.label), next: t(upcoming.label) })}
+				title={t('theme.current', { current: t(current.label), next: t(upcoming.label) })}
 			>
 				<current.icon size={20} />
 			</button>
 		{:else}
-			<div class="theme-switch" role="group" aria-label="Theme">
+			<div class="theme-switch" role="group" aria-label={t('theme.group')}>
 				{#each themes as theme (theme.value)}
 					<button
 						class:active={$themePreference === theme.value}
 						aria-pressed={$themePreference === theme.value}
 						disabled={savingTheme}
-						title={theme.value === 'system' ? 'Follow the system theme' : `${theme.label} theme`}
+						aria-label={t(theme.label)}
+						title={theme.value === 'system' ? t('theme.followSystem') : t('theme.named', { name: t(theme.label) })}
 						onclick={() => changeTheme(theme.value)}
-						><theme.icon size={15} /><span>{theme.label}</span></button
+						><theme.icon size={15} />{#if $themePreference === theme.value}<span>{t(theme.label)}</span
+							>{/if}</button
 					>
 				{/each}
 			</div>
@@ -213,8 +216,9 @@
 		background: var(--app-subtle);
 	}
 
+	/* Only the chosen theme is named, so longer translations still fit. */
 	.theme-switch button {
-		flex: 1;
+		flex: 0 0 34px;
 		min-width: 0;
 		display: inline-flex;
 		align-items: center;
@@ -232,6 +236,7 @@
 	}
 
 	.theme-switch button.active {
+		flex: 1 1 auto;
 		background: var(--app-panel);
 		color: var(--app-text);
 		font-weight: 600;

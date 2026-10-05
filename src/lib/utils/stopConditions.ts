@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n';
 import type { StopConditions } from '$lib/api/tauri';
 
 export interface StopConditionInput {
@@ -61,13 +62,13 @@ export function parseStopConditions(
 	const maxTarget = mode === 'research' ? RESEARCH_MAX_STEPS : MAX_TARGET;
 	const target = Number(input.target.trim());
 	if (!input.target.trim() || !Number.isInteger(target) || target < 1 || target > maxTarget)
-		errors.target = `Enter a whole number from 1 to ${maxTarget.toLocaleString('en-US')}.`;
+		errors.target = t('stop.targetError', { max: maxTarget });
 	const budget = Number(input.budget.trim());
 	if (!input.budget.trim() || !Number.isFinite(budget) || budget < 0.01)
-		errors.budget = 'Enter an amount of at least $0.01.';
+		errors.budget = t('stop.budgetError');
 	const minutes = Number(input.duration.trim());
 	if (!input.duration.trim() || !Number.isFinite(minutes) || minutes < 1 || minutes > MAX_MINUTES)
-		errors.duration = `Enter from 1 to ${MAX_MINUTES} minutes.`;
+		errors.duration = t('stop.durationError', { max: MAX_MINUTES });
 	if (Object.keys(errors).length) return { conditions: null, errors };
 	return {
 		conditions: {
@@ -86,5 +87,7 @@ export function formatUsd(amount: number): string {
 
 export function formatMinutes(seconds: number): string {
 	const minutes = Math.round(seconds / 60);
-	return minutes >= 60 && minutes % 60 === 0 ? `${minutes / 60} h` : `${minutes} min`;
+	return minutes >= 60 && minutes % 60 === 0
+		? t('units.hours', { count: minutes / 60 })
+		: t('units.minutes', { count: minutes });
 }
