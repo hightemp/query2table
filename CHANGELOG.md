@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.0 — 2026-10-05
+
+Query2Table now speaks Russian as well as English.
+
+### Interface language
+
+- Choose the language in Settings → Application: System, English or Русский. It applies at once, without a restart, and unsaved settings stay as they are. System follows the language of your operating system.
+- Every screen is translated: queries and runs, tables, images, links, Research, History, Settings, logs, dialogs, menus and notifications. Error explanations and run notices explain what happened in the chosen language.
+- Russian plural forms are used throughout (1 шаг, 3 шага, 5 шагов), and dates and numbers follow the chosen language.
+- Desktop notifications about finished runs and the tray menu use the same language; the tray menu updates as soon as the language changes.
+- Connection checks in Settings report their results in the chosen language.
+- Technical details such as raw provider errors and logs stay in English, and model answers keep the language of your question.
+
+### Also
+
+- The theme switch in the sidebar names only the selected theme, so longer translations fit.
+- Error hints point to the current names of Settings sections and fields.
+
+Existing settings and history are kept; no database migration is needed.
+
+Download the installer for your platform from the release assets below: Linux (DEB, RPM, AppImage), Windows (EXE, MSI), or macOS Apple Silicon (DMG, app archive).
+
 ## 0.7.0 — 2026-10-04
 
 Research becomes a conversation, History becomes a searchable library, and Settings can test your connections before a run.
