@@ -79,7 +79,6 @@ The language is the `ui_language` setting (`system`, `en`, `ru`); the backend us
 | README | README.md | Project landing page and branding |
 | TASKS.md | TASKS.md | Full technical implementation plan with 55 subtasks |
 | AGENTS.md | AGENTS.md | This file — project structure map |
-| UI-IMPROVEMENTS.md | UI-IMPROVEMENTS.md | UI audit and prioritized improvement plan |
 
 ## AI Context Files
 | File | Purpose |
