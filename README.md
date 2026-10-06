@@ -19,12 +19,70 @@
 
 Beyond tables, it offers three more dedicated modes: **image search**, which finds and LLM-ranks relevant images by visual relevance; **link search**, which reads the full content of candidate pages and returns only the most relevant links with LLM-generated descriptions and relevance scores; and **research**, an agentic mode where the model autonomously searches, reads pages, reasons, and writes a sourced Markdown answer.
 
-Ask something like *"Find all YC-backed AI startups from 2024 with their funding amount, CEO name, and website"* and watch the table fill up in real time.
+Ask something like *"Build a comparison table of open-source vector search databases and libraries with their language, license, deployment type, use case and website"* and watch the table fill up in real time.
 
-![YC startup research results in the redesigned workspace](screenshots/yc-startups-table.png)
-![Complete result values and source evidence](screenshots/yc-startups-sources.png)
+![Comparison table of open-source vector databases with evidence and sources](screenshots/test-en-2026-10-06/44-table-results.png)
 
-Screenshots show a new run of the example query above, captured in a separate application profile.
+## Tour
+
+### Ask in plain language
+
+Pick a result format, describe what you need, and set stop conditions. For tables, the app proposes columns that you can edit before the search starts.
+
+<table>
+  <tr>
+    <td><img src="screenshots/test-en-2026-10-06/01-query-table.png" alt="New query with the four result formats"></td>
+    <td><img src="screenshots/test-en-2026-10-06/05-schema-review.png" alt="Proposed table schema ready for review"></td>
+  </tr>
+</table>
+
+### Every row keeps its evidence
+
+Open a row to read complete values, copy them, and check the pages they were extracted from.
+
+![Row details with extraction confidence and sources](screenshots/test-en-2026-10-06/45-row-details-and-sources.png)
+
+### Research with follow-up questions
+
+The agent searches, reads pages and writes a sourced answer with a table of contents. Every step is visible in Activity, and follow-up questions continue the conversation with its history.
+
+<table>
+  <tr>
+    <td><img src="screenshots/test-en-2026-10-06/21-research-answer.png" alt="Research answer with contents and suggested follow-up questions"></td>
+    <td><img src="screenshots/test-en-2026-10-06/22-research-activity.png" alt="Research activity with numbered search and reading steps"></td>
+  </tr>
+</table>
+
+### Images and links
+
+Image search ranks results by relevance with filters by site and size; link search reads each page and explains why it matches.
+
+<table>
+  <tr>
+    <td><img src="screenshots/test-en-2026-10-06/28-images-grid.png" alt="Image search results in a justified grid"></td>
+    <td><img src="screenshots/test-en-2026-10-06/32-links-results.png" alt="Relevant links with descriptions and match levels"></td>
+  </tr>
+</table>
+
+### History and settings
+
+Search, filter and reopen past runs, run them again or export several at once. Settings check your LLM and search connections before you start.
+
+<table>
+  <tr>
+    <td><img src="screenshots/test-en-2026-10-06/18-history.png" alt="Run history grouped by day with results, duration, cost and model"></td>
+    <td><img src="screenshots/test-en-2026-10-06/43-settings-search-connection.png" alt="Search settings with a successful connection test"></td>
+  </tr>
+</table>
+
+### Light and dark themes
+
+<table>
+  <tr>
+    <td><img src="screenshots/test-en-2026-10-06/53-research-dark.png" alt="Research answer in the dark theme"></td>
+    <td><img src="screenshots/test-en-2026-10-06/50-table-dark.png" alt="Results table in the dark theme"></td>
+  </tr>
+</table>
 
 ## Features
 
