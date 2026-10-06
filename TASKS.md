@@ -2,6 +2,14 @@
 
 ## 1. Executive Summary
 
+### English native application screenshots (2026-10-06)
+
+- [x] Launch the native application with an isolated database and the current provider settings; use English queries and interface text.
+- [x] Capture every application page, the four result modes, settings sections and available dialogs; inspect the saved images and document coverage.
+- [x] Replace the sparse table example with a real comparison containing enough rows to demonstrate sorting, filtering, column selection, resizing, compact rows and source navigation.
+
+Verification: 69 native Tauri/GTK PNG captures at 1440 × 960, recorded in [the capture inventory](screenshots/test-en-2026-10-06/README.md) and its HTML gallery. The main English comparison completed in 149 seconds with 17 rows after merging 3 duplicates from 20 extracted records; 52 searches and 13 LLM calls used the current OpenRouter/Serper credentials in the isolated profile. The image, link and research runs also completed with real providers. Native UI checks exercised Pause/Resume, schema confirmation, cancellation, settings import/discard, ordinary CSV export (17 rows) and mixed CSV/Markdown bulk export. All PNGs were decoded and checked for their dimensions; primary screens and the remaining capture overview were visually inspected. The collection includes a manifest, checksums and credential-free examples. Extracted model values and visible partial/unknown cost warnings were preserved. The existing application's data and settings were not modified.
+
 ### Brave result bounds and explicit fallback control (2026-09-20)
 
 - [x] Enforce Brave endpoint result-count bounds before HTTP requests, including saved oversized values, zero and direct/custom-count calls.

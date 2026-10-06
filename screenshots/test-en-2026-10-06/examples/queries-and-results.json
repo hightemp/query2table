@@ -1,0 +1,56 @@
+[
+  {
+    "run_id": "790c05c1-6bbb-443b-b933-414c6b86e7ac",
+    "type": "table",
+    "status": "completed",
+    "query": "Build a comparison table of 15 open-source vector search databases and libraries using English sources: Qdrant, Milvus, Weaviate, Chroma, LanceDB, Vespa, OpenSearch, Elasticsearch, pgvector, FAISS, Annoy, Hnswlib, USearch, Vald, and Vearch. For every distinct project include its name, main programming language, license, deployment type, typical use case, and official website. Find English comparison pages that cover multiple projects, plus official documentation. Return one row per project.",
+    "stats": {
+      "duplicates_merged": 3,
+      "elapsed_secs": 149,
+      "llm_calls": 13,
+      "pages_failed": 12,
+      "pages_fetched": 22,
+      "queries_executed": 52,
+      "queries_failed": 0,
+      "rows_found": 17,
+      "search_calls": 52,
+      "spent_usd": 0.012480732000000001
+    }
+  },
+  {
+    "run_id": "c055cb08-f68b-468e-93a8-1b427047c2d9",
+    "type": "images",
+    "status": "completed",
+    "query": "Find photographs of the James Webb Space Telescope and its first deep field, using NASA and ESA English sources.",
+    "stats": {
+      "elapsed_secs": 42,
+      "image_count": 8,
+      "queries_executed": 11,
+      "spent_usd": 0.0
+    }
+  },
+  {
+    "run_id": "643854da-6fd9-4cdb-9e16-7b3cc280a951",
+    "type": "links",
+    "status": "completed",
+    "query": "Find official English documentation for Qdrant, Milvus, Weaviate, Chroma, and LanceDB vector databases.",
+    "stats": {
+      "elapsed_secs": 76,
+      "link_count": 4,
+      "pages_fetched": 33,
+      "queries_executed": 11,
+      "spent_usd": 0.0
+    }
+  },
+  {
+    "run_id": "b9f0e224-4661-46c4-be38-795a515675e3",
+    "type": "research",
+    "status": "completed",
+    "query": "Compare Qdrant and Milvus for a small self-hosted semantic search service. Use English sources, explain deployment and licensing, and cite official documentation.",
+    "stats": {
+      "elapsed_secs": 18,
+      "spent_usd": 0.0,
+      "steps": 8
+    }
+  }
+]

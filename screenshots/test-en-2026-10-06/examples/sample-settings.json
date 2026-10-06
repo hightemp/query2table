@@ -1,0 +1,1 @@
+{"app": "query2table", "version": 1, "settings": {"llm_temperature": "0.3", "max_parallel_fetches": "4"}}

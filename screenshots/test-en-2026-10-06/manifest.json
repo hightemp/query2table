@@ -1,0 +1,619 @@
+{
+  "app": "Query2Table",
+  "version": "0.8.0",
+  "source_commit": "229470191cedffeac9a40042983b3e8fc1520082",
+  "capture_date": "2026-10-06",
+  "interface_language": "en",
+  "capture_method": "Native Tauri GTK window on an isolated Xvfb display; real Rust backend and live providers",
+  "screenshot_count": 69,
+  "primary_runs": [
+    {
+      "run_id": "790c05c1-6bbb-443b-b933-414c6b86e7ac",
+      "type": "table",
+      "status": "completed",
+      "query": "Build a comparison table of 15 open-source vector search databases and libraries using English sources: Qdrant, Milvus, Weaviate, Chroma, LanceDB, Vespa, OpenSearch, Elasticsearch, pgvector, FAISS, Annoy, Hnswlib, USearch, Vald, and Vearch. For every distinct project include its name, main programming language, license, deployment type, typical use case, and official website. Find English comparison pages that cover multiple projects, plus official documentation. Return one row per project.",
+      "stats": {
+        "duplicates_merged": 3,
+        "elapsed_secs": 149,
+        "llm_calls": 13,
+        "pages_failed": 12,
+        "pages_fetched": 22,
+        "queries_executed": 52,
+        "queries_failed": 0,
+        "rows_found": 17,
+        "search_calls": 52,
+        "spent_usd": 0.012480732000000001
+      }
+    },
+    {
+      "run_id": "c055cb08-f68b-468e-93a8-1b427047c2d9",
+      "type": "images",
+      "status": "completed",
+      "query": "Find photographs of the James Webb Space Telescope and its first deep field, using NASA and ESA English sources.",
+      "stats": {
+        "elapsed_secs": 42,
+        "image_count": 8,
+        "queries_executed": 11,
+        "spent_usd": 0.0
+      }
+    },
+    {
+      "run_id": "643854da-6fd9-4cdb-9e16-7b3cc280a951",
+      "type": "links",
+      "status": "completed",
+      "query": "Find official English documentation for Qdrant, Milvus, Weaviate, Chroma, and LanceDB vector databases.",
+      "stats": {
+        "elapsed_secs": 76,
+        "link_count": 4,
+        "pages_fetched": 33,
+        "queries_executed": 11,
+        "spent_usd": 0.0
+      }
+    },
+    {
+      "run_id": "b9f0e224-4661-46c4-be38-795a515675e3",
+      "type": "research",
+      "status": "completed",
+      "query": "Compare Qdrant and Milvus for a small self-hosted semantic search service. Use English sources, explain deployment and licensing, and cite official documentation.",
+      "stats": {
+        "elapsed_secs": 18,
+        "spent_usd": 0.0,
+        "steps": 8
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "01-query-table.png",
+      "title": "New query — Table mode",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "2b5ac0288e65d88cf227b8a7498d049deb7fb6c8d366b4946932dbbc5e57197b"
+    },
+    {
+      "file": "02-query-stop-conditions.png",
+      "title": "Comparison query and stop conditions",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "ae7f35ec1d2ace3293f5d79562c37e40475dbc437a7db1a53a9d158c7febf00a"
+    },
+    {
+      "file": "03-run-in-progress.png",
+      "title": "Live table run",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "0d220635f085eedd55b7b916d8303a7241dbe657adceaba65eb59523f5736a90"
+    },
+    {
+      "file": "04-run-paused.png",
+      "title": "Paused run",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "10823541f7488f11959eb2b65d9b00a5f878ce13a91a34dc39656e6b4f23ae60"
+    },
+    {
+      "file": "05-schema-review.png",
+      "title": "Proposed schema editor",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "ea0706654c7272720cff218bfd592334ba7a83df95d7ccc8abd992ed9380aabb"
+    },
+    {
+      "file": "06-settings-llm.png",
+      "title": "LLM settings",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "10123d5c7c6b4cf464d3d7d0588608688dc6ec46a1060de1013cba99a0e22cce"
+    },
+    {
+      "file": "07-settings-model-picker.png",
+      "title": "Cloud model picker and connection check",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "accf14db207ed37b1517897df00e9622bf5ec244a25576d42a8be03b99238990"
+    },
+    {
+      "file": "08-settings-search.png",
+      "title": "Search settings",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "55c7e7dee4d876b07a3aac172e91870742bc6db565e763ee90775b3718c5caa1"
+    },
+    {
+      "file": "09-settings-runs.png",
+      "title": "Run settings",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "28b794f8a5a89fca89583f1c6acafe4ee56eb2374c870106d60f244654868d9c"
+    },
+    {
+      "file": "10-settings-runs-advanced.png",
+      "title": "Advanced run settings",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "3da79ab816ba99a40a88a65339ef6d5562250741ceeae558fdee426ebe274aeb"
+    },
+    {
+      "file": "11-settings-network.png",
+      "title": "Network and proxy settings",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "14285c00705aab1d17d892b4a5e55282fb6a8cbd054c250903338af452617d8c"
+    },
+    {
+      "file": "12-settings-application.png",
+      "title": "Application settings and file locations",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "f1639a2732fd17292ae6def792b160334315d55b265206e53a7f0d31d0b23322"
+    },
+    {
+      "file": "13-settings-openrouter.png",
+      "title": "OpenRouter settings",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "7895ab5c8feb1bd90c0fff054e501e386879716d80be3afaf9feb3ad2037ab73"
+    },
+    {
+      "file": "14-settings-ollama.png",
+      "title": "Local Ollama settings",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "4167526a9b18e7ae56932ec164a33aec65ef161f964c769addd836a15f5ea285"
+    },
+    {
+      "file": "15-settings-openai-compatible.png",
+      "title": "OpenAI-compatible settings",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "31664e64579275527756cf0da008a45667acda2b69c106bfcd9aaf9d821febc3"
+    },
+    {
+      "file": "16-settings-llm-advanced.png",
+      "title": "Advanced LLM settings",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "bbddb60e7be80d2ade05e04ccb3259303f1403a493e282296ab3a906626a86da"
+    },
+    {
+      "file": "17-settings-unsaved-dialog.png",
+      "title": "Unsaved settings dialog",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "229c978add1285bb57140b81831d18b6cae32bc888d78862f6a45073b337813b"
+    },
+    {
+      "file": "18-history.png",
+      "title": "Run history",
+      "category": "History",
+      "width": 1440,
+      "height": 960,
+      "sha256": "d880412618aeb0d4fe443ed74ad5b10713607f226b4a4f2cd8c1a07011e40b53"
+    },
+    {
+      "file": "19-settings-import-file-dialog.png",
+      "title": "Import settings file chooser",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "f6113998abd86c25a75679b0e10afd7d4d2d0769c030f2ff900a15a1e5c97533"
+    },
+    {
+      "file": "20-settings-import-preview.png",
+      "title": "Imported settings review",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "c3833a2d3e41aad9bf33c01d99d4f99663b770e56d3c2cf141f8b061985c6ef9"
+    },
+    {
+      "file": "21-research-answer.png",
+      "title": "Research answer",
+      "category": "Research",
+      "width": 1440,
+      "height": 960,
+      "sha256": "95ad1458d56c97b34d23b54aa2ffeace8c54e7d9a3adde753d73019f41665a56"
+    },
+    {
+      "file": "22-research-activity.png",
+      "title": "Research activity",
+      "category": "Research",
+      "width": 1440,
+      "height": 960,
+      "sha256": "d8035a8cb78e4b68eca90febd8c3b118e387bd1f5a252ada2d5cc295dd5d4e48"
+    },
+    {
+      "file": "23-research-sources.png",
+      "title": "Research sources",
+      "category": "Research",
+      "width": 1440,
+      "height": 960,
+      "sha256": "48cdbe27922b504f6eea0fc8f66b8fb54cc3d83d6932ac5ac086e264f4b78045"
+    },
+    {
+      "file": "24-research-export-dialog.png",
+      "title": "Research export dialog",
+      "category": "Research",
+      "width": 1440,
+      "height": 960,
+      "sha256": "aee364e642405c90ee290214465683344d535aca642527ec90bd99f361f7ed02"
+    },
+    {
+      "file": "25-research-followup-limits.png",
+      "title": "Follow-up limits",
+      "category": "Research",
+      "width": 1440,
+      "height": 960,
+      "sha256": "816a9d4b82ee507ace21e1b5379dbe74f02ce449d2c92ea86c6324a241078abd"
+    },
+    {
+      "file": "26-usage-and-cost.png",
+      "title": "Usage and cost details",
+      "category": "Research",
+      "width": 1440,
+      "height": 960,
+      "sha256": "ab0f3a4d247c9bdf82eb66a2da8e96a70fdaf9806c61248678c739479f84a9fb"
+    },
+    {
+      "file": "27-run-notices.png",
+      "title": "Run notices",
+      "category": "Research",
+      "width": 1440,
+      "height": 960,
+      "sha256": "9d8b50dbc5718e1c354394eed57e7a1bb61aff6ec9bbbf6f1a523da05153c0f1"
+    },
+    {
+      "file": "28-images-grid.png",
+      "title": "Image grid",
+      "category": "Images",
+      "width": 1440,
+      "height": 960,
+      "sha256": "61958cb1dd708fa94bc432e3035d8801acc6652c0619b1c99eef2b112d6e1116"
+    },
+    {
+      "file": "29-images-list.png",
+      "title": "Image list",
+      "category": "Images",
+      "width": 1440,
+      "height": 960,
+      "sha256": "eacde7e24bffe3f37c82282db576756d5384ad60c11dbbadbcefb09c60905e7f"
+    },
+    {
+      "file": "30-image-preview.png",
+      "title": "Image preview dialog",
+      "category": "Images",
+      "width": 1440,
+      "height": 960,
+      "sha256": "7b6227024877b52f1379208eb96040bc782d384653649f2b633cee05d71b1303"
+    },
+    {
+      "file": "31-image-context-menu.png",
+      "title": "Image context menu",
+      "category": "Images",
+      "width": 1440,
+      "height": 960,
+      "sha256": "ecb13895d169f40f4a5ceedaa44b15f0a78625d9dfa46ed0f2a4433053c69300"
+    },
+    {
+      "file": "32-links-results.png",
+      "title": "Link results",
+      "category": "Links",
+      "width": 1440,
+      "height": 960,
+      "sha256": "0a46ffe6b581e1f2a1d148a7b418240f140171091bb7afa69c3f15f05b2bde34"
+    },
+    {
+      "file": "33-links-selection.png",
+      "title": "Selected links",
+      "category": "Links",
+      "width": 1440,
+      "height": 960,
+      "sha256": "565320f695c97848fd6739a82fe967ec2b7388ada6d1035da2cb0b7c3a34930a"
+    },
+    {
+      "file": "34-links-open-confirm-dialog.png",
+      "title": "Open multiple links confirmation",
+      "category": "Links",
+      "width": 1440,
+      "height": 960,
+      "sha256": "319bb7438ca3b3673b078128bca8644d7e6b25be73f4a4f6390df550bfe5a9b7"
+    },
+    {
+      "file": "35-link-context-menu.png",
+      "title": "Link context menu",
+      "category": "Links",
+      "width": 1440,
+      "height": 960,
+      "sha256": "86b1f7bf5ff2b07c83dddc0fc49ad52bf59153124904d00472ddeea563cca533"
+    },
+    {
+      "file": "36-history-bulk-export-dialog.png",
+      "title": "Bulk export dialog",
+      "category": "History",
+      "width": 1440,
+      "height": 960,
+      "sha256": "5bfb59da82e16039d40516eac1ad39bd74d04374304f01fc70d51222a7358964"
+    },
+    {
+      "file": "37-history-context-menu.png",
+      "title": "History context menu",
+      "category": "History",
+      "width": 1440,
+      "height": 960,
+      "sha256": "749a61669d5a4667ea3d248408181ccf2d6c6d906afc840c41089d5d5d325816"
+    },
+    {
+      "file": "38-history-filtered.png",
+      "title": "Filtered history",
+      "category": "History",
+      "width": 1440,
+      "height": 960,
+      "sha256": "28a5604c52f43d2672e43227b8a56ba6ccd7dfe8a9276a40cf7262387aeeb704"
+    },
+    {
+      "file": "39-query-images.png",
+      "title": "New query — Images mode",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "6b237c55b7e36e967535d0da5b5310be08c35fcda8946e8cc13f3cb5f62e4036"
+    },
+    {
+      "file": "40-query-links.png",
+      "title": "New query — Links mode",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "766a54182bfcd9dc4e0c6e39e4402c5d58470a7fdc46f21f4d953b377f4ac631"
+    },
+    {
+      "file": "41-query-research.png",
+      "title": "New query — Research mode",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "d8aa00fe990a4bf0eede88effbccaa41516dd65c513e3ffd2164a8397752755d"
+    },
+    {
+      "file": "42-settings-export-file-dialog.png",
+      "title": "Export settings file chooser",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "0e38aef1aeaa895de766e88ac4712f130f23c45511553cf3ef93ad73893f89ba"
+    },
+    {
+      "file": "43-settings-search-connection.png",
+      "title": "Search connection check",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "cbbcd9c27ee1951c68b91f2529cc1d60713b59a25dba518e1879336e043b8078"
+    },
+    {
+      "file": "44-table-results.png",
+      "title": "Comparison table — 17 rows",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "7d632eda1769f301173f175d77bd139631d2027b5aa93222062675cfeef3504a"
+    },
+    {
+      "file": "45-row-details-and-sources.png",
+      "title": "Qdrant details and three sources",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "daef3fbf6efebf61ce8a19aff540a655b5af343fded9483db9cfdf599568e328"
+    },
+    {
+      "file": "46-table-columns-menu.png",
+      "title": "Table column menu",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "3f3879480719c16de6681463eecafb037d0a74988192869c43c1590b798183c8"
+    },
+    {
+      "file": "47-table-export-dialog.png",
+      "title": "Table export dialog",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "3d08c2c10f40d3671215749b287abc5506059d0b5e3733e8070a2551c960858a"
+    },
+    {
+      "file": "48-export-save-file-dialog.png",
+      "title": "Export save file chooser",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "d9e5243acc3ccef8650d0b9a6cc9d59059f1088ae866a12ccba88c74c07d61e8"
+    },
+    {
+      "file": "49-export-complete.png",
+      "title": "Export complete",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "3a47013a00b85f9faa25ae0fdad751bb27da1a7fece255c18a8bfa1d5bcae9dd"
+    },
+    {
+      "file": "50-table-dark.png",
+      "title": "Comparison table — dark theme",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "0470e827b47f56980567a0f8327e22e553dd564801552f94fceee2e202d256c2"
+    },
+    {
+      "file": "51-images-dark.png",
+      "title": "Image grid — dark theme",
+      "category": "Images",
+      "width": 1440,
+      "height": 960,
+      "sha256": "de818a89ad18c5c892fe6b8c1e0a1ff3003be3a91e06dda0b7d12ac3606d6a3c"
+    },
+    {
+      "file": "52-links-dark.png",
+      "title": "Links — dark theme",
+      "category": "Links",
+      "width": 1440,
+      "height": 960,
+      "sha256": "82a70d15dcd888614a26ee5bf13fe9bb056e1170cfb8198a271e2646e76a16ac"
+    },
+    {
+      "file": "53-research-dark.png",
+      "title": "Research — dark theme",
+      "category": "Research",
+      "width": 1440,
+      "height": 960,
+      "sha256": "bfe2d2e139fb44495e09c91ede6f5c2b38eb86e33752f6aa88a183c98d49a968"
+    },
+    {
+      "file": "54-history-dark.png",
+      "title": "History — dark theme",
+      "category": "History",
+      "width": 1440,
+      "height": 960,
+      "sha256": "20e72f2a10595de4ca5c9b39c32e655f89a0593888d4644f67c7bb0e57e95e2e"
+    },
+    {
+      "file": "55-settings-dark.png",
+      "title": "Settings — dark theme",
+      "category": "Settings",
+      "width": 1440,
+      "height": 960,
+      "sha256": "a0ba3b90e6c2683ebe5a78b40a7ad375358ae5992fffc3809503ad4a2080b441"
+    },
+    {
+      "file": "56-cancel-run-dialog.png",
+      "title": "Cancel run confirmation",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "ba4ae8e1bb96acd7839117b9998e8638bf3cb0a2b6b218f8e67dad055e83a89d"
+    },
+    {
+      "file": "57-run-cancelled.png",
+      "title": "Cancelled run",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "316e22110c7ec6b28c25aa5e3645ab70b0fe5fbe71c666e18a154de5cf10f133"
+    },
+    {
+      "file": "58-log-panel.png",
+      "title": "Log panel",
+      "category": "Query and run controls",
+      "width": 1440,
+      "height": 960,
+      "sha256": "b96268bb2c7bd19a40b5eb2b8fbb483bd1052e6841332574d7d243f4be6469f9"
+    },
+    {
+      "file": "59-bulk-export-folder-dialog.png",
+      "title": "Bulk export folder chooser",
+      "category": "History",
+      "width": 1440,
+      "height": 960,
+      "sha256": "28274ffbe56087fedd1d3f5b96d290e17090262361018e27ca8330b7ac50084d"
+    },
+    {
+      "file": "60-bulk-export-complete.png",
+      "title": "Bulk export complete",
+      "category": "History",
+      "width": 1440,
+      "height": 960,
+      "sha256": "a3b76711eeeeebf4359ad9bb29418e7cae75fdad4055f7373ab55b43a5a2fa50"
+    },
+    {
+      "file": "61-research-recommendation.png",
+      "title": "Research recommendation and sources",
+      "category": "Research",
+      "width": 1440,
+      "height": 960,
+      "sha256": "d1d21ff409c370a7321b79db5536dbbab34148271d9837d7427929621589a17e"
+    },
+    {
+      "file": "62-sidebar-collapsed.png",
+      "title": "Comparison table — collapsed sidebar",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "cbf02118ebe930b435113529f48847a35e55260d285eb91575edd5c70463ebda"
+    },
+    {
+      "file": "63-row-details-next.png",
+      "title": "Next row details",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "5382a4eaa6d7b0b68a3b4fd4591348c7d5fea169d0219e3d13be3580429bf08b"
+    },
+    {
+      "file": "64-table-filtered.png",
+      "title": "Table search — Rust",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "30a1cb32bbf5a7e433b1d6187d53bf9955a12718a7a78dbb98e37b49d8c642a3"
+    },
+    {
+      "file": "65-table-sorted-by-language.png",
+      "title": "Table sorted by language",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "c18bb420022b92cd718b1fbae6f8cff058d81eb3d83188355195e52dee99e551"
+    },
+    {
+      "file": "66-table-compact-rows.png",
+      "title": "Compact table rows",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "890b056735caa3d45366f46a251eb9876498ca81684426026fe9162729c6d117"
+    },
+    {
+      "file": "67-table-selected-columns.png",
+      "title": "Selected table columns",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "1060c8445b965cfd2beab41384ff58badfb3d519f86e8de2d2a44ff90a0b59c3"
+    },
+    {
+      "file": "68-table-column-filter.png",
+      "title": "Language column filter — Go",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "fef0605ef0c14f4beeae327d8a642e083721cabcebae3ea66b2ecd0710ec67d1"
+    },
+    {
+      "file": "69-table-more-results.png",
+      "title": "More table results",
+      "category": "Tables",
+      "width": 1440,
+      "height": 960,
+      "sha256": "8f4325798d274194a61a33a3789df64fabce0f222ada54aa62656c65765aea24"
+    }
+  ]
+}
