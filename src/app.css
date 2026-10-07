@@ -9,15 +9,16 @@
 		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
 		monospace;
 
-	/* Type scale */
-	--app-text-xs: 11px;
-	--app-text-sm: 12px;
-	--app-text-md: 13px;
-	--app-text-base: 14px;
-	--app-text-lg: 15px;
-	--app-text-xl: 17px;
-	--app-text-2xl: 20px;
-	--app-text-3xl: 24px;
+	/* Type scale, multiplied by the interface size */
+	--app-scale: 1;
+	--app-text-xs: calc(11px * var(--app-scale));
+	--app-text-sm: calc(12px * var(--app-scale));
+	--app-text-md: calc(13px * var(--app-scale));
+	--app-text-base: calc(14px * var(--app-scale));
+	--app-text-lg: calc(15px * var(--app-scale));
+	--app-text-xl: calc(17px * var(--app-scale));
+	--app-text-2xl: calc(20px * var(--app-scale));
+	--app-text-3xl: calc(24px * var(--app-scale));
 
 	/* Radii */
 	--app-radius-sm: 6px;
@@ -68,12 +69,170 @@
 	--app-accent: #79afff;
 	--app-accent-solid: #2f6fd6;
 	--app-accent-solid-hover: #3d7ce3;
+	--app-on-accent: #ffffff;
 	--app-success: #4ac38a;
 	--app-warning: #e3b341;
 	--app-danger: #ff7b72;
 	--app-shadow-popover: 0 4px 16px rgb(0 0 0 / 40%);
 	--app-shadow-dialog: 0 24px 80px rgb(0 0 0 / 55%);
 	color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+   Color themes, chosen in Settings → Application. The palettes mirror
+   src/lib/themes.ts; dark themes are applied together with the .dark class.
+   --------------------------------------------------------------------------- */
+/* Solarized Light */
+:root[data-theme='solarized-light'] {
+	--app-bg: #eee8d5;
+	--app-panel: #fdf6e3;
+	--app-subtle: #f5efdc;
+	--app-border: #d6cfb9;
+	--app-text: #073642;
+	--app-muted: #4f6168;
+	--app-accent: #1d6a9e;
+	--app-accent-solid: #1d6a9e;
+	--app-accent-solid-hover: #175a87;
+	--app-on-accent: #ffffff;
+	--app-success: #5c6a00;
+	--app-warning: #8a5a00;
+	--app-danger: #b3261e;
+}
+/* Nord Light */
+:root[data-theme='nord-light'] {
+	--app-bg: #e5e9f0;
+	--app-panel: #f6f8fb;
+	--app-subtle: #eceff4;
+	--app-border: #d0d7e2;
+	--app-text: #2e3440;
+	--app-muted: #4c566a;
+	--app-accent: #3d6290;
+	--app-accent-solid: #4a6f9c;
+	--app-accent-solid-hover: #3d6290;
+	--app-on-accent: #ffffff;
+	--app-success: #3f6e2e;
+	--app-warning: #875a00;
+	--app-danger: #a83a45;
+}
+/* Gruvbox Light */
+:root[data-theme='gruvbox-light'] {
+	--app-bg: #f2e5bc;
+	--app-panel: #fbf1c7;
+	--app-subtle: #ebdbb2;
+	--app-border: #d5c4a1;
+	--app-text: #3c3836;
+	--app-muted: #5f5650;
+	--app-accent: #076678;
+	--app-accent-solid: #076678;
+	--app-accent-solid-hover: #05505e;
+	--app-on-accent: #ffffff;
+	--app-success: #5f5c0b;
+	--app-warning: #8a4f02;
+	--app-danger: #9d0006;
+}
+/* Rosé Pine Dawn */
+:root[data-theme='rose-pine-dawn'] {
+	--app-bg: #faf4ed;
+	--app-panel: #fffaf3;
+	--app-subtle: #f2e9e1;
+	--app-border: #dfdad9;
+	--app-text: #575279;
+	--app-muted: #68647f;
+	--app-accent: #286983;
+	--app-accent-solid: #286983;
+	--app-accent-solid-hover: #1f566c;
+	--app-on-accent: #ffffff;
+	--app-success: #2f6b4f;
+	--app-warning: #8f5a12;
+	--app-danger: #a14f67;
+}
+/* Solarized Dark */
+:root[data-theme='solarized-dark'] {
+	--app-bg: #002b36;
+	--app-panel: #073642;
+	--app-subtle: #0c4250;
+	--app-border: #1c5563;
+	--app-text: #eee8d5;
+	--app-muted: #a3b1b1;
+	--app-accent: #5eaee8;
+	--app-accent-solid: #1f6fa8;
+	--app-accent-solid-hover: #2a7cb8;
+	--app-on-accent: #ffffff;
+	--app-success: #a8bd2a;
+	--app-warning: #d6a520;
+	--app-danger: #ff7a6e;
+}
+/* Nord */
+:root[data-theme='nord'] {
+	--app-bg: #2e3440;
+	--app-panel: #3b4252;
+	--app-subtle: #434c5e;
+	--app-border: #4c566a;
+	--app-text: #eceff4;
+	--app-muted: #c0c8d6;
+	--app-accent: #88c0d0;
+	--app-accent-solid: #88c0d0;
+	--app-accent-solid-hover: #9dcbd9;
+	--app-on-accent: #2e3440;
+	--app-success: #a3be8c;
+	--app-warning: #ebcb8b;
+	--app-danger: #f0959d;
+}
+/* Dracula */
+:root[data-theme='dracula'] {
+	--app-bg: #21222c;
+	--app-panel: #282a36;
+	--app-subtle: #343746;
+	--app-border: #44475a;
+	--app-text: #f8f8f2;
+	--app-muted: #b4bad8;
+	--app-accent: #bd93f9;
+	--app-accent-solid: #bd93f9;
+	--app-accent-solid-hover: #cba8fa;
+	--app-on-accent: #21222c;
+	--app-success: #50fa7b;
+	--app-warning: #f1fa8c;
+	--app-danger: #ff6e6e;
+}
+/* Gruvbox Dark */
+:root[data-theme='gruvbox-dark'] {
+	--app-bg: #1d2021;
+	--app-panel: #282828;
+	--app-subtle: #32302f;
+	--app-border: #504945;
+	--app-text: #ebdbb2;
+	--app-muted: #bdae93;
+	--app-accent: #83a598;
+	--app-accent-solid: #83a598;
+	--app-accent-solid-hover: #97b4a8;
+	--app-on-accent: #1d2021;
+	--app-success: #b8bb26;
+	--app-warning: #fabd2f;
+	--app-danger: #fe6a52;
+}
+/* Rosé Pine */
+:root[data-theme='rose-pine'] {
+	--app-bg: #191724;
+	--app-panel: #1f1d2e;
+	--app-subtle: #26233a;
+	--app-border: #403d52;
+	--app-text: #e0def4;
+	--app-muted: #a5a1c0;
+	--app-accent: #c4a7e7;
+	--app-accent-solid: #c4a7e7;
+	--app-accent-solid-hover: #d2bcef;
+	--app-on-accent: #191724;
+	--app-success: #9ccfd8;
+	--app-warning: #f6c177;
+	--app-danger: #eb6f92;
+}
+
+/* Interface size: scales the type scale, and with it most of the layout. */
+:root[data-scale='compact'] {
+	--app-scale: 0.9;
+}
+:root[data-scale='large'] {
+	--app-scale: 1.15;
 }
 
 /* ---------------------------------------------------------------------------

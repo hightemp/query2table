@@ -1356,7 +1356,8 @@ struct RetryPolicy {
 - [ ] Plugin system for custom extractors
 - [ ] Manual cell editing in results table
 - [ ] Intermediate row deletion during search
-- [ ] i18n/localization of the app UI
+- [x] i18n/localization of the app UI (English, Russian; `src/lib/i18n`)
+- [x] Color themes (Default, Solarized, Nord, Gruvbox, Rosé Pine light/dark, Dracula) with a light/dark pair for System, and interface size (`src/lib/themes.ts`, Settings → Application)
 
 ---
 

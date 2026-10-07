@@ -60,6 +60,9 @@ All user-visible frontend text goes through `t('key', params)` from `$lib/i18n`;
 Add every new key to both `src/lib/i18n/en.ts` and `ru.ts` (keys are sorted; plural messages use `{ one, few, many, other }` with a numeric `count` param). `src/tests/i18n.test.ts` checks that both catalogs have the same keys and placeholders.
 The language is the `ui_language` setting (`system`, `en`, `ru`); the backend uses it for notifications and the tray menu (`src-tauri/src/utils/i18n.rs`). Technical details (raw provider errors, logs) and model answers are not translated.
 
+## Themes
+Colors come only from the `--app-*` tokens. Themes live in `src/lib/themes.ts` and as `:root[data-theme='<id>']` blocks in `src/app.css`; `src/tests/themes.test.ts` checks that both match and that text keeps 4.5:1 contrast. Dark themes also get the `.dark` class. Font sizes must use the `--app-text-*` tokens so the interface size (`data-scale`) applies.
+
 ## Key Entry Points
 | File | Purpose |
 |------|---------|

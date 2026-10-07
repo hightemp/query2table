@@ -150,7 +150,7 @@ test('Passwords say what they show and proxies hide their passwords', async ({ p
 
 test('Application settings include the theme and files show full paths', async ({ page }) => {
 	await page.goto('/settings');
-	const theme = page.locator('#settings-app').getByRole('radiogroup', { name: 'Theme' });
+	const theme = page.locator('#settings-app').getByRole('radiogroup', { name: 'Theme', exact: true });
 	await theme.getByRole('radio', { name: 'Light' }).check();
 	await expect(page.locator('html')).not.toHaveClass(/dark/);
 	await theme.getByRole('radio', { name: 'Dark' }).check();

@@ -6,7 +6,7 @@
 	import { onMount } from 'svelte';
 	import { onLogEvent, onRunLogEntry } from '$lib/api/tauri';
 	import { addLog, logPanelOpen } from '$lib/stores/logs';
-	import { currentTheme, loadTheme, sidebarCollapsed } from '$lib/stores/ui';
+	import { appliedTheme, currentTheme, loadTheme, sidebarCollapsed, uiScale } from '$lib/stores/ui';
 	import Toaster from '$lib/components/layout/Toaster.svelte';
 	import ContextMenu from '$lib/components/common/ContextMenu.svelte';
 	import { contextMenu, closeContextMenu } from '$lib/stores/contextMenu';
@@ -33,7 +33,10 @@
 	}
 
 	$effect(() => {
-		document.documentElement.classList.toggle('dark', $currentTheme === 'dark');
+		const root = document.documentElement;
+		root.classList.toggle('dark', $currentTheme === 'dark');
+		root.dataset.theme = $appliedTheme;
+		root.dataset.scale = $uiScale;
 	});
 
 	// The webview's own menu offers browser actions (open in new window, save image, reload)

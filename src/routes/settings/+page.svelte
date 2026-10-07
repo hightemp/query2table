@@ -21,7 +21,18 @@
 	} from '@lucide/svelte';
 	import { settings } from '$lib/stores/settings';
 	import { language, setLanguage, t, type LanguagePreference, type MessageKey } from '$lib/i18n';
-	import { setTheme, themePreference, type ThemePreference } from '$lib/stores/ui';
+	import {
+		darkTheme,
+		lightTheme,
+		setTheme,
+		setThemeChoice,
+		setUiScale,
+		themePreference,
+		uiScale,
+		type ThemePreference,
+	} from '$lib/stores/ui';
+	import { UI_SCALES, type UiScale } from '$lib/themes';
+	import ThemePicker from '$lib/components/settings/ThemePicker.svelte';
 	import { toast } from '$lib/stores/toasts';
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
@@ -263,6 +274,20 @@
 			await setTheme(next);
 		} catch {
 			toast(t('theme.saveFailed'), 'error');
+		}
+	}
+	async function chooseTheme(id: string) {
+		try {
+			await setThemeChoice(id);
+		} catch {
+			toast(t('theme.saveFailed'), 'error');
+		}
+	}
+	async function changeScale(next: UiScale) {
+		try {
+			await setUiScale(next);
+		} catch {
+			toast(t('theme.scaleFailed'), 'error');
 		}
 	}
 
@@ -607,6 +632,25 @@
 														checked={$themePreference === theme.value}
 														onchange={() => changeTheme(theme.value)}
 													/><Icon size={15} />{t(theme.label)}</label
+												>
+											{/each}
+										</div>
+										<p class="theme-hint">{t('theme.pairHint')}</p>
+									</div>
+									<ThemePicker mode="light" selected={$lightTheme} onselect={chooseTheme} />
+									<ThemePicker mode="dark" selected={$darkTheme} onselect={chooseTheme} />
+									<div class="theme-row">
+										<span class="theme-label" id="scale-label">{t('theme.scale')}</span>
+										<div class="theme-options" role="radiogroup" aria-labelledby="scale-label">
+											{#each UI_SCALES as scale (scale)}
+												<label class:checked={$uiScale === scale}
+													><input
+														type="radio"
+														name="ui-scale"
+														value={scale}
+														checked={$uiScale === scale}
+														onchange={() => changeScale(scale)}
+													/>{t(`theme.scale.${scale}`)}</label
 												>
 											{/each}
 										</div>
@@ -975,6 +1019,11 @@
 	}
 	.theme-label {
 		font-weight: 600;
+	}
+	.theme-hint {
+		flex-basis: 100%;
+		color: var(--app-muted);
+		font-size: var(--app-text-sm);
 	}
 	select.language {
 		width: auto;
