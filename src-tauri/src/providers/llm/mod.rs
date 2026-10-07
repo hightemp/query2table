@@ -4,6 +4,7 @@ pub mod openai_compatible;
 pub mod openrouter;
 pub mod ollama;
 pub mod manager;
+pub mod capabilities;
 
 pub use types::*;
 

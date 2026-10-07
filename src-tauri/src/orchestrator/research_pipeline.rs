@@ -114,6 +114,10 @@ impl ResearchPipeline {
                 .await
                 .map_err(|e| format!("Storage: {e}"))?;
         }
+        self.repo
+            .link_attachments(&self.run_id, &self.config.attachments, self.turn_index as i64)
+            .await
+            .map_err(|e| format!("Storage: {e}"))?;
         let limits = serde_json::json!({
             "target_row_count": max_steps(&self.config),
             "max_budget_usd": self.config.max_budget_usd,

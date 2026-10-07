@@ -71,6 +71,10 @@ impl LinkPipeline {
             .create_run_with_type(&self.run_id, &self.query, &config_json.to_string(), "links")
             .await
             .map_err(|e| format!("Storage: {e}"))?;
+        self.repo
+            .link_attachments(&self.run_id, &self.config.attachments, 0)
+            .await
+            .map_err(|e| format!("Storage: {e}"))?;
 
         let supervisor = self.supervisor.take().ok_or_else(|| "Pipeline already started".to_string())?;
         supervisor.run(self.run_inner()).await

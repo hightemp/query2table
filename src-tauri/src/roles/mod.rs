@@ -13,3 +13,4 @@ pub mod image_searcher;
 pub mod image_ranker;
 pub mod link_ranker;
 pub mod research_agent;
+pub mod vision_reader;

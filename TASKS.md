@@ -1838,3 +1838,63 @@ All tests use mock LLM/Search providers. No real API calls.
 1. `cd src-tauri && cargo test --test pipeline_integration -- --test-threads=1` — all 12 integration tests pass ✅
 2. `cargo test --lib` — existing 144 unit tests still pass (regression) ✅
 3. Log files created in `tests/logs/` with full pipeline traces ✅
+
+---
+
+## Attachments: files and images in runs
+
+Goal: attach PDF, Word, Excel and other files and images to a query. Files serve both as context for the task ("find competitors of the company in this PDF") and as a source of data ("make a table from this price list"). Images go to models that can see them.
+
+### Decisions (agreed with the user)
+
+- **Role.** Files are context and a data source. Rows and answers cite the file and the place in it. Source mode per run: *files only* or *files + web* (Table, Research); for Links and Images files are context only.
+- **Modes.** All four. Images mode: an attached image is a reference; a vision model compares found images with it when ranking (costly: a warning is shown).
+- **Storage.** Copy into the app data folder, named by SHA-256 (no duplicates). Metadata and extracted text live in SQLite. Files are deleted together with the last run that uses them.
+- **Large documents.** Split into fragments that keep page, sheet and row numbers. The model gets an overview of each file plus the fragments that match the task (local full-text search). The Research agent can ask for a page or a fragment.
+- **Formats.** PDF; DOCX, ODT; XLSX, XLS, ODS, CSV; TXT, MD, HTML, JSON; images: PNG, JPEG, WebP, GIF.
+- **Scans.** A PDF page without a text layer is rendered to an image and read by a vision model. Without a vision model the file is marked "scan — needs a model that sees images".
+- **Vision.** Detected from the model catalog (OpenRouter `input_modalities`, Ollama `capabilities`), with a manual override. If the main model is blind, an optional separate vision model in Settings describes images as text; otherwise images cannot be attached (with an explanation).
+- **Input.** Attach button (file dialog), drag and drop, paste from the clipboard.
+- **Privacy.** A quiet line under the attachments: "File contents will be sent to OpenRouter" / "stay on this computer" for local providers.
+- **File sources.** "report.pdf, p. 12" / "prices.xlsx, sheet Prices, rows 40–60" with the quoted fragment in the sources panel and an "Open file" button (system app).
+- **Parsing.** Right after attaching: the chip shows pages, sheets, size, "scan" or an error before the run starts. A draft with files survives a restart.
+
+### Architecture
+
+**Addressing.** A place in a file is a URL: `attachment://<id>?page=12`, `attachment://<id>?sheet=Prices&rows=40-60`. All existing source plumbing (`row_sources.url`, research steps, link dedup, citations) keeps working; the UI renders these URLs as file sources.
+
+**Storage (SQLite).**
+- `attachments` (id, sha256 UNIQUE, file_name, mime, kind `document|spreadsheet|text|image`, size, stored_name, page_count, status `ready|needs_vision|failed`, error, outline, created_at).
+- `attachment_chunks` (id, attachment_id, ord, locator JSON {page, sheet, rows, section}, text, image_name for scanned pages) + FTS5 table `attachment_chunks_fts` for BM25 search.
+- `run_attachments` (run_id, attachment_id, turn_index, ord). Draft attachments have no run yet; unreferenced ones older than a day are removed on start.
+- Files: `<app data>/attachments/<sha256[0..2]>/<sha256>.<ext>`; normalized images (≤ 2048 px) and rendered scan pages next to them.
+
+**Backend modules (`src-tauri/src/attachments/`).**
+- `store.rs` — copy by hash, size limits, references, cleanup.
+- `parse/` — `pdf.rs` (pdf-extract per page, scan detection, render with a pure-Rust rasterizer, pdfium as a fallback), `office.rs` (DOCX/ODT via zip + quick-xml, with a decompressed-size guard), `sheet.rs` (calamine for XLSX/XLS/ODS, csv), `text.rs` (TXT/MD/JSON, HTML via `DocumentParser`), `image.rs` (decode, orient, downscale, thumbnail).
+- `chunk.rs` — fragments of about 3,000 characters with page/section/row locators; spreadsheets in blocks of rows with the header repeated.
+- `retrieve.rs` — overview of each file + top fragments for a query within a character budget (FTS5 BM25).
+- `vision.rs` — OCR of scanned pages and image descriptions through the vision model.
+
+**LLM.** `Message.content` becomes a list of parts `Text | Image { media_type, data }`; `Message::user(text)` stays for text. OpenAI-compatible and OpenRouter send `image_url` data URLs, Ollama sends `images`. `ModelCapabilities { vision }` come from the catalogs, cached per model, with the setting `llm_vision` (`auto|on|off`) and an optional `vision_provider/vision_model`.
+
+**Pipelines.**
+- *Table:* the interpreter and schema planner get the overview and matching fragments; fragments are extracted like fetched pages, with `attachment://` sources; *files only* skips web search.
+- *Research:* the first message carries the overview (and images for a vision model); a new agent action `read_file {file, page | query}` returns fragments; follow-up turns can add files.
+- *Links:* overview and fragments shape the search queries.
+- *Images:* the reference image shapes the queries (description) and the ranker compares candidates with it.
+
+**Commands.** `add_attachments(paths)`, `add_attachment_data(name, bytes)` (paste, dropped blobs), `remove_attachment(id)` (drafts), `get_run_attachments(run_id)`, `get_attachment_fragment(url)`, `open_attachment(id)`; `start_run` and follow-ups take `attachments: Vec<id>` and `source_mode`.
+
+**Frontend.** `AttachmentBar` (button, drop zone over the query form, paste) with chips (icon or thumbnail, name, pages/sheets, parsing / scan / error state, remove), privacy line, attachments kept in the query draft; file sources in table rows, research sources and links; attachments on the run page and in History; "Run again" reuses them. Settings: vision section (model sees images: auto/on/off, separate vision model, pages of scans to read).
+
+**Limits (settings, with defaults).** 50 MB per file, 20 files per run, 200 scanned pages per run, images downscaled to 2048 px.
+
+### Phases
+
+- [x] **A1** Storage, parsing of all formats, fragments, FTS search, commands; attach UI (button, drop, paste, chips, draft). Tests: parsers on fixture files, dedup and cleanup, commands, Playwright for the chips.
+- [x] **A2** Multimodal messages, vision capability detection, vision settings, OCR of scans, image descriptions.
+- [ ] **A3** Research: context, `read_file`, images, follow-up attachments, file sources in the answer.
+- [ ] **A4** Table: context, files as sources, *files only* mode, file sources in rows.
+- [ ] **A5** Links and Images (reference image ranking with a cost warning).
+- [ ] **A6** History, Run again, export of sources, cleanup, polish.

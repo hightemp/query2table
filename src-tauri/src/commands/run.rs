@@ -67,6 +67,7 @@ pub async fn start_run(
     run_type: Option<String>,
     stop_conditions: Option<StopConditions>,
     schema: Option<Vec<SchemaColumn>>,
+    attachments: Option<Vec<String>>,
 ) -> Result<StartRunResponse, String> {
     let run_id = new_id();
     let run_type = run_type.unwrap_or_else(|| "table".to_string());
@@ -79,6 +80,7 @@ pub async fn start_run(
     apply_stop_conditions(&mut config, stop_conditions);
     // Run again: a table run offers the earlier schema for review.
     config.suggested_schema = schema;
+    config.attachments = attachments.unwrap_or_default();
     let repo = Arc::new(Repository::new(state.db.pool().clone()));
     let notifications_enabled = settings
         .get("notifications_enabled")

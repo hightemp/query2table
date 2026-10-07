@@ -1,6 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
+	AttachmentFragment,
+	AttachmentInfo,
+	AttachResult,
+	RunAttachment,
 	StartRunResponse,
 	RunInfo,
 	RunLogEntry,
@@ -108,14 +112,63 @@ export async function startRun(
 	runType?: string,
 	stopConditions?: StopConditions,
 	/** Table runs: columns to offer for review instead of planning new ones. */
-	schema?: SchemaColumn[] | null
+	schema?: SchemaColumn[] | null,
+	/** Ids of attached files. */
+	attachments?: string[]
 ): Promise<StartRunResponse> {
 	return invoke('start_run', {
 		query,
 		runType: runType ?? null,
 		stopConditions: stopConditions ?? null,
 		schema: schema ?? null,
+		attachments: attachments?.length ? attachments : null,
 	});
+}
+
+// --- Attachments ---
+
+export function addAttachments(paths: string[]): Promise<AttachResult[]> {
+	return invoke('add_attachments', { paths });
+}
+
+/** Attaches pasted or dropped file content; the bytes travel as the raw request body. */
+export async function addAttachmentData(file: File): Promise<AttachResult> {
+	const bytes = new Uint8Array(await file.arrayBuffer());
+	return invoke('add_attachment_data', bytes, { headers: { 'x-file-name': encodeURIComponent(file.name || 'pasted') } });
+}
+
+export function getAttachments(ids: string[]): Promise<AttachmentInfo[]> {
+	return invoke('get_attachments', { ids });
+}
+
+export function removeAttachment(id: string): Promise<void> {
+	return invoke('remove_attachment', { id });
+}
+
+export function getRunAttachments(runId: string): Promise<RunAttachment[]> {
+	return invoke('get_run_attachments', { runId });
+}
+
+export function openAttachment(id: string): Promise<void> {
+	return invoke('open_attachment', { id });
+}
+
+export interface VisionStatus {
+	/** The main model gets images directly. */
+	main_sees: boolean;
+	/** What the provider's catalog says about the main model; null when unknown. */
+	detected: boolean | null;
+	/** The model that reads pictures and scanned pages; null when none can. */
+	reader: string | null;
+}
+
+/** Who reads images with the saved settings, with optional unsaved edits applied. */
+export function getVisionStatus(overrides?: Record<string, string>): Promise<VisionStatus> {
+	return invoke('get_vision_status', { overrides: overrides ?? null });
+}
+
+export function getAttachmentFragment(url: string): Promise<AttachmentFragment | null> {
+	return invoke('get_attachment_fragment', { url });
 }
 
 // --- History list ---

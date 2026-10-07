@@ -38,7 +38,7 @@ export interface FieldDef {
 }
 
 export const SECTIONS: SectionDef[] = [
-	{ id: 'llm', groups: ['Connection', 'Generation', 'Pricing'] },
+	{ id: 'llm', groups: ['Connection', 'Generation', 'Images', 'Pricing'] },
 	{ id: 'search', groups: ['Provider', 'Pricing'] },
 	{ id: 'runs', groups: ['Fetching', 'Quality', 'Content'] },
 	{ id: 'network', groups: ['Proxies'] },
@@ -85,6 +85,10 @@ export const FIELDS: FieldDef[] = [
 	},
 	{ key: 'llm_max_tokens', section: 'llm', group: 'Generation', kind: 'number', default: '4096', min: 256, max: 200000, step: 1, advanced: true, unit: 'tokens' },
 	{ key: 'openai_json_mode', section: 'llm', group: 'Generation', provider: 'openai_compatible', kind: 'switch', default: 'true', advanced: true },
+	// LLM — images (attached pictures and scanned pages)
+	{ key: 'llm_vision', section: 'llm', group: 'Images', kind: 'select', default: 'auto', options: ['auto', 'on', 'off'], keywords: 'vision pictures photos scans' },
+	{ key: 'vision_model', section: 'llm', group: 'Images', kind: 'model', default: '', keepOnReset: true, keywords: 'vision pictures photos scans ocr' },
+	{ key: 'vision_max_pages', section: 'llm', group: 'Images', kind: 'number', default: '50', min: 1, max: 1000, step: 1, advanced: true, keywords: 'scans ocr pdf' },
 	// Search
 	{
 		key: 'search_provider', section: 'search', group: 'Provider',

@@ -348,7 +348,9 @@ export async function startNewRun(
 	runType: string = 'table',
 	stopConditions?: import('$lib/api/tauri').StopConditions,
 	/** Table runs: columns to offer for review instead of planning new ones. */
-	schema?: SchemaColumn[] | null
+	schema?: SchemaColumn[] | null,
+	/** Ids of attached files. */
+	attachments?: string[]
 ) {
 	const currentGeneration = ++generation;
 	unsubscribeEvents();
@@ -366,7 +368,7 @@ export async function startNewRun(
 		try {
 			await subscribeEvents(currentGeneration, earlyEvents);
 			if (currentGeneration !== generation) return;
-			const resp = await apiStartRun(query, runType, stopConditions, schema);
+			const resp = await apiStartRun(query, runType, stopConditions, schema, attachments);
 			if (currentGeneration !== generation) return;
 			runState.update((s) => ({ ...s, runId: resp.run_id }));
 			for (const deliver of earlyEvents) deliver();

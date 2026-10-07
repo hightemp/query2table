@@ -1,3 +1,4 @@
+pub mod attachments;
 pub mod commands;
 pub mod orchestrator;
 pub mod roles;
@@ -55,6 +56,11 @@ pub fn run() {
         // Runs deleted in History can be restored only until the app closes.
         if let Err(e) = storage::repository::Repository::new(db.pool().clone()).purge_deleted_runs(None).await {
             tracing::warn!(error = %e, "Could not purge deleted runs");
+        }
+        // Drop attached files no run uses: unsent drafts older than a day and files of purged runs.
+        let attachments = attachments::store::AttachmentStore::new(db.pool().clone(), attachments::store::AttachmentStore::default_dir());
+        if let Err(e) = attachments.cleanup(24 * 3600).await {
+            tracing::warn!(error = %e, "Could not clean up attached files");
         }
         db
     });
@@ -151,6 +157,14 @@ pub fn run() {
             commands::run::get_row_sources,
             commands::settings::copy_text,
             commands::settings::paste_text,
+            commands::attachments::add_attachments,
+            commands::attachments::add_attachment_data,
+            commands::attachments::get_attachments,
+            commands::attachments::remove_attachment,
+            commands::attachments::get_run_attachments,
+            commands::attachments::open_attachment,
+            commands::attachments::get_attachment_fragment,
+            commands::attachments::get_vision_status,
             commands::run::get_image_results,
             commands::run::get_link_results,
             commands::run::set_link_visited,

@@ -66,6 +66,15 @@ impl OpenAiCompatibleProvider {
         response_json(response, "").await
     }
 
+    /// Whether a model sees images, from `architecture.input_modalities` in the catalog
+    /// (OpenRouter and compatible servers); None when the catalog does not say.
+    pub async fn sees_images(&self, model: &str) -> Option<bool> {
+        let catalog = self.get_authenticated("models").await.ok()?;
+        let entry = catalog.get("data")?.as_array()?.iter().find(|m| m.get("id").and_then(|id| id.as_str()) == Some(model))?;
+        let modalities = entry.get("architecture")?.get("input_modalities")?.as_array()?;
+        Some(modalities.iter().any(|m| m.as_str() == Some("image")))
+    }
+
     /// Fetch model IDs from an OpenAI-compatible catalog.
     pub async fn list_models(&self) -> Result<Vec<String>, LlmError> {
         debug!(provider = self.name, "Loading model catalog");
@@ -127,7 +136,22 @@ struct ChatRequest {
 #[derive(Serialize)]
 struct ChatMessage {
     role: String,
-    content: String,
+    /// Plain text, or text and image parts when the message carries images.
+    content: serde_json::Value,
+}
+
+fn message_content(message: &super::types::Message) -> serde_json::Value {
+    if message.images.is_empty() {
+        return serde_json::Value::String(message.content.clone());
+    }
+    let mut parts = vec![serde_json::json!({"type": "text", "text": message.content})];
+    parts.extend(
+        message
+            .images
+            .iter()
+            .map(|image| serde_json::json!({"type": "image_url", "image_url": {"url": image.data_url()}})),
+    );
+    serde_json::Value::Array(parts)
 }
 
 #[derive(Serialize)]
@@ -176,7 +200,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                     MessageRole::User => "user".to_string(),
                     MessageRole::Assistant => "assistant".to_string(),
                 },
-                content: m.content.clone(),
+                content: message_content(m),
             })
             .collect();
 

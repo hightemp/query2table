@@ -57,7 +57,7 @@ describe('settings schema', () => {
 		expect(isDefault(fieldByKey('llm_temperature')!, '0.70')).toBe(true);
 		expect(isDefault(fieldByKey('llm_temperature')!, '0.2')).toBe(false);
 		const reset = sectionResetValues('llm', map({ llm_provider: 'ollama_cloud', llm_temperature: '0.2', llm_max_tokens: '9000' }));
-		expect(reset).toEqual({ llm_temperature: '0.7', llm_max_tokens: '4096', llm_reasoning_effort: 'auto' });
+		expect(reset).toEqual({ llm_temperature: '0.7', llm_max_tokens: '4096', llm_reasoning_effort: 'auto', llm_vision: 'auto', vision_max_pages: '50' });
 		expect(Object.keys(sectionResetValues('search', map({})))).not.toContain('brave_api_key');
 	});
 

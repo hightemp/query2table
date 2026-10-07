@@ -335,6 +335,26 @@ impl LlmManager {
         self.complete_with_retry(request, stage).await
     }
 
+    /// A completion for a pipeline stage with another model of the same provider (e.g. the
+    /// model for images), with the usual retries, diagnostics and accounting.
+    pub async fn complete_for_stage_with_model(
+        &self,
+        stage: &str,
+        messages: Vec<Message>,
+        model: &str,
+        json_mode: bool,
+    ) -> Result<CompletionResponse, LlmError> {
+        let request = CompletionRequest {
+            messages,
+            model: model.trim().to_string(),
+            temperature: self.config.temperature,
+            max_tokens: self.config.max_tokens,
+            json_mode,
+            reasoning_effort: self.config.reasoning_effort,
+        };
+        self.complete_with_retry(request, Some(stage)).await
+    }
+
     /// Send a chat completion with a specific model override.
     pub async fn complete_with_model(
         &self,

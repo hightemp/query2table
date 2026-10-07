@@ -38,6 +38,11 @@ impl OpenRouterProvider {
     }
 
     /// Load the public catalog, including before the user has entered an API key.
+    /// Whether a model sees images, from the public model catalog.
+    pub async fn sees_images(api_key: String, model: &str) -> Option<bool> {
+        OpenAiCompatibleProvider::new(BASE_URL.into(), api_key, true).ok()?.for_openrouter().sees_images(model).await
+    }
+
     pub async fn list_models(api_key: String) -> Result<Vec<String>, LlmError> {
         OpenAiCompatibleProvider::new(BASE_URL.into(), api_key, true)?
             .for_openrouter()

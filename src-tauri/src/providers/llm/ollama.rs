@@ -53,6 +53,23 @@ impl OllamaProvider {
         }
     }
 
+    /// Whether a model sees images, from the `capabilities` of `/api/show`; None when unknown.
+    pub async fn sees_images(&self, model: &str) -> Option<bool> {
+        let response = self
+            .authenticate(self.client.post(format!("{}/api/show", self.base_url)))
+            .json(&serde_json::json!({ "model": model }))
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+            .ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let json: serde_json::Value = response.json().await.ok()?;
+        let capabilities = json.get("capabilities")?.as_array()?;
+        Some(capabilities.iter().any(|c| c.as_str() == Some("vision")))
+    }
+
     /// Fetch model IDs from the server's native catalog.
     pub async fn list_models(&self) -> Result<Vec<String>, LlmError> {
         debug!(
@@ -117,6 +134,9 @@ enum OllamaThinking {
 struct OllamaMessage {
     role: String,
     content: String,
+    /// Base64 images for models that see images.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    images: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -192,6 +212,7 @@ impl LlmProvider for OllamaProvider {
                     MessageRole::Assistant => "assistant".to_string(),
                 },
                 content: m.content.clone(),
+                images: (!m.images.is_empty()).then(|| m.images.iter().map(|i| i.data_base64.clone()).collect()),
             })
             .collect();
 
@@ -203,6 +224,7 @@ impl LlmProvider for OllamaProvider {
             messages.insert(0, OllamaMessage {
                 role: "system".into(),
                 content: "Return only valid JSON matching the requested structure, without Markdown fences or commentary.".into(),
+                images: None,
             });
         }
         let format = if request.json_mode && !cloud_model {
@@ -374,6 +396,7 @@ mod tests {
             messages: vec![OllamaMessage {
                 role: "user".to_string(),
                 content: "hi".to_string(),
+                images: None,
             }],
             stream: false,
             options: OllamaOptions {

@@ -331,6 +331,53 @@ impl Database {
                 .await
                 .ok(); // ok() — ignore error if column already exists
         }
+        // Attached files: one row per distinct file (by content), its text fragments with a
+        // full-text index, and which runs (and conversation turns) use it.
+        for statement in [
+            "CREATE TABLE IF NOT EXISTS attachments (
+                id TEXT PRIMARY KEY,
+                sha256 TEXT NOT NULL UNIQUE,
+                file_name TEXT NOT NULL,
+                mime TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                size INTEGER NOT NULL,
+                stored_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                page_count INTEGER,
+                sheet_count INTEGER,
+                char_count INTEGER NOT NULL DEFAULT 0,
+                scanned_pages TEXT NOT NULL DEFAULT '[]',
+                outline TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL
+            )",
+            "CREATE TABLE IF NOT EXISTS attachment_chunks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                attachment_id TEXT NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
+                ord INTEGER NOT NULL,
+                locator TEXT NOT NULL,
+                text TEXT NOT NULL
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_attachment_chunks_attachment ON attachment_chunks(attachment_id, ord)",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS attachment_chunks_fts USING fts5(
+                text, content='attachment_chunks', content_rowid='id', tokenize='unicode61 remove_diacritics 2'
+            )",
+            "CREATE TRIGGER IF NOT EXISTS attachment_chunks_ai AFTER INSERT ON attachment_chunks BEGIN
+                INSERT INTO attachment_chunks_fts(rowid, text) VALUES (new.id, new.text);
+            END",
+            "CREATE TRIGGER IF NOT EXISTS attachment_chunks_ad AFTER DELETE ON attachment_chunks BEGIN
+                INSERT INTO attachment_chunks_fts(attachment_chunks_fts, rowid, text) VALUES ('delete', old.id, old.text);
+            END",
+            "CREATE TABLE IF NOT EXISTS run_attachments (
+                run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                attachment_id TEXT NOT NULL REFERENCES attachments(id),
+                turn_index INTEGER NOT NULL DEFAULT 0,
+                ord INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (run_id, attachment_id, turn_index)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_run_attachments_attachment ON run_attachments(attachment_id)",
+        ] {
+            sqlx::query(statement).execute(&self.pool).await?;
+        }
         // Research runs saved before conversations become one-turn conversations.
         sqlx::query(
             "INSERT INTO research_turns (id, run_id, turn_index, question, answer_markdown, status, created_at)

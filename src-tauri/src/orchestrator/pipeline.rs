@@ -45,6 +45,10 @@ pub struct PipelineConfig {
     pub max_page_size_bytes: u64,
     /// Table runs: columns proposed for review instead of planning new ones (Run again).
     pub suggested_schema: Option<Vec<SchemaColumn>>,
+    /// Files attached to the query (ids in `attachments`).
+    pub attachments: Vec<String>,
+    /// Most scanned pages the model for images reads in one run.
+    pub vision_max_pages: u32,
     /// Seconds allowed for loading one page.
     pub fetch_timeout_secs: u64,
     /// New pages taken from the results of each search query.
@@ -101,6 +105,11 @@ impl PipelineConfig {
                 .map(|kb| kb * 1024)
                 .unwrap_or(5 * 1024 * 1024),
             suggested_schema: None,
+            attachments: Vec::new(),
+            vision_max_pages: settings.get("vision_max_pages")
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(50)
+                .clamp(1, 1000),
             fetch_timeout_secs: settings.get("fetch_timeout_seconds")
                 .and_then(|v| v.parse::<u64>().ok())
                 .unwrap_or(15)
@@ -227,6 +236,8 @@ impl Pipeline {
         config_json["min_confidence"] = self.config.min_confidence.into();
         config_json["dedup_similarity"] = self.config.dedup_similarity.into();
         self.repo.create_run(&self.run_id, &self.query, &config_json.to_string()).await
+            .map_err(|e| PipelineError::Storage(e.to_string()))?;
+        self.repo.link_attachments(&self.run_id, &self.config.attachments, 0).await
             .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
         let supervisor = self.supervisor.take().ok_or_else(|| PipelineError::Internal("Pipeline already started".to_string()))?;
@@ -869,7 +880,9 @@ mod settings_tests {
     #[test]
     fn fetch_timeout_and_pages_per_query_come_from_settings() {
         let defaults = PipelineConfig::from_settings(&HashMap::new());
-        assert_eq!((defaults.fetch_timeout_secs, defaults.max_pages_per_query), (15, 10));
+        assert_eq!((defaults.fetch_timeout_secs, defaults.max_pages_per_query, defaults.vision_max_pages), (15, 10, 50));
+        let pages = PipelineConfig::from_settings(&HashMap::from([("vision_max_pages".to_string(), "5000".to_string())]));
+        assert_eq!(pages.vision_max_pages, 1000);
         let settings = HashMap::from([
             ("fetch_timeout_seconds".to_string(), "40".to_string()),
             ("max_pages_per_query".to_string(), "3".to_string()),

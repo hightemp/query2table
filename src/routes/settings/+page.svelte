@@ -51,7 +51,9 @@
 		testLlmConnection,
 		testProxy,
 		testSearchConnection,
+		getVisionStatus,
 		type ConnectionReport,
+		type VisionStatus,
 	} from '$lib/api/tauri';
 	import {
 		SECTIONS,
@@ -66,6 +68,7 @@
 		validationErrors,
 		type FieldDef,
 		type SectionId,
+		type LlmProvider as LlmProviderId,
 	} from '$lib/settings/schema';
 	import { configurationProblems } from '$lib/utils/runConfig';
 	import { validPricingOverrides } from '$lib/utils/pricing';
@@ -414,7 +417,33 @@
 		};
 	});
 
-	const pickerProviders = ['openrouter_model', 'ollama_model', 'ollama_cloud_model', 'openai_model'];
+	const pickerProviders = ['openrouter_model', 'ollama_model', 'ollama_cloud_model', 'openai_model', 'vision_model'];
+	/** The model for images is picked from the current provider's catalog. */
+	function pickerProvider(field: FieldDef) {
+		return (field.key === 'vision_model' ? provider : (field.provider ?? 'openrouter')) as LlmProviderId;
+	}
+
+	// --- Images: who reads pictures and scans with the values on the page ---
+	let vision = $state<VisionStatus | null>(null);
+	let visionInputs = $derived(
+		JSON.stringify(
+			['llm_provider', modelKey, 'ollama_url', 'ollama_cloud_url', 'ollama_cloud_api_key', 'openai_base_url', 'openai_api_key', 'openrouter_api_key', 'llm_vision', 'vision_model'].map(
+				(key) => [key, settingsMap.get(key) ?? '']
+			)
+		)
+	);
+	$effect(() => {
+		const overrides = Object.fromEntries(JSON.parse(visionInputs) as [string, string][]);
+		if (!settingsMap.size) return;
+		const timer = setTimeout(() => {
+			void getVisionStatus(overrides)
+				.then((status) => (vision = status))
+				.catch(() => (vision = null));
+		}, 300);
+		return () => clearTimeout(timer);
+	});
+	const providerTitle = (id: string) =>
+		({ openrouter: 'OpenRouter', ollama: 'Ollama', ollama_cloud: 'Ollama Cloud', openai_compatible: t('models.server') })[id] ?? id;
 </script>
 
 <svelte:window
@@ -453,26 +482,35 @@
 	>
 		{#snippet control()}
 			{#if pickerProviders.includes(field.key)}
+				{@const picker = pickerProvider(field)}
 				<LlmModelPicker
 					id={field.key}
-					provider={field.provider ?? 'openrouter'}
+					provider={picker}
 					value={value(field)}
-					baseUrl={field.key === 'ollama_model'
+					baseUrl={picker === 'ollama'
 						? value('ollama_url') || 'http://localhost:11434'
-						: field.key === 'openai_model'
+						: picker === 'openai_compatible'
 							? value('openai_base_url') || 'http://localhost:8080/v1'
 							: value('ollama_cloud_url') || 'https://ollama.com'}
-					apiKey={field.key === 'openrouter_model'
+					apiKey={picker === 'openrouter'
 						? value('openrouter_api_key')
-						: field.key === 'openai_model'
+						: picker === 'openai_compatible'
 							? value('openai_api_key')
 							: value('ollama_cloud_api_key')}
-					allowCustom={field.key === 'ollama_model' || field.key === 'openai_model'}
+					allowCustom={picker === 'ollama' || picker === 'openai_compatible' || field.key === 'vision_model'}
 					onchange={(model) => handleChange(field.key, model)}
 				/>
 			{/if}
 		{/snippet}
 		{#snippet help()}
+			{#if field.key === 'llm_vision' && vision}
+				<p class="help vision-status" role="status">
+					{#if vision.main_sees}{t('vision.sees', { model: activeModel })}
+					{:else if vision.detected === null && (settingsMap.get('llm_vision') ?? 'auto') === 'auto'}{t('vision.unknown', { model: activeModel, provider: providerTitle(provider) })}
+					{:else}{t('vision.blind', { model: activeModel, provider: providerTitle(provider) })}{/if}
+					{#if !vision.main_sees}{vision.reader ? t('vision.reader', { model: vision.reader }) : t('vision.noReader')}{/if}
+				</p>
+			{/if}
 			{#if field.key === 'llm_reasoning_effort'}
 				<p class="help">{t('settings.reasoningHelp')}</p>
 				{#if isGptOss}<p class="help">{t('settings.gptOssHelp')}</p>{/if}

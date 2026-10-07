@@ -374,3 +374,47 @@ export interface ResearchAnswerEvent {
 	follow_ups?: string[];
 	markdown: string;
 }
+
+// --- Attachments ---
+
+export type AttachmentKind = 'document' | 'spreadsheet' | 'text' | 'image';
+
+export interface AttachmentInfo {
+	id: string;
+	file_name: string;
+	kind: AttachmentKind;
+	mime: string;
+	size: number;
+	/** `needs_vision`: some pages are scans that need a model that sees images. */
+	status: 'ready' | 'needs_vision';
+	page_count: number | null;
+	sheet_count: number | null;
+	char_count: number;
+	scanned_pages: number;
+	/** Small preview of images, as a data URL. */
+	thumbnail: string | null;
+	created_at: number;
+}
+
+export interface AttachError {
+	file_name: string;
+	code: string;
+	message: string;
+}
+
+export interface AttachResult {
+	attachment: AttachmentInfo | null;
+	error: AttachError | null;
+}
+
+export interface RunAttachment {
+	turn_index: number;
+	attachment: AttachmentInfo;
+}
+
+export interface AttachmentFragment {
+	attachment_id: string;
+	file_name: string;
+	locator: { page?: number; sheet?: string; rows?: [number, number]; section?: string };
+	text: string;
+}

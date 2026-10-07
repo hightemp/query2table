@@ -22,6 +22,11 @@ impl Repository {
 
     // --- Runs ---
 
+    /// Files attached to a run, or to one turn of a research conversation.
+    pub async fn link_attachments(&self, run_id: &str, ids: &[String], turn_index: i64) -> Result<(), sqlx::Error> {
+        crate::attachments::store::link_to_run(&self.pool, run_id, ids, turn_index).await
+    }
+
     pub async fn create_run(&self, id: &str, query: &str, config: &str) -> Result<(), sqlx::Error> {
         self.create_run_with_type(id, query, config, "table").await
     }

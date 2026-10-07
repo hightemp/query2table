@@ -90,9 +90,11 @@ export const test = base.extend({
 				schema,
 				images,
 				values,
-				calls: [] as { command: string; args: any }[],
+				calls: [] as { command: string; args: any; options?: any }[],
 				failSave: false,
 				clipboard: '',
+				visionDetected: false as boolean | null,
+				dialogFiles: ['/docs/report.pdf', '/docs/prices.xlsx'] as string[] | null,
 				failDelete: false,
 				failCopy: false,
 				delayImage: false,
@@ -109,14 +111,42 @@ export const test = base.extend({
 			(window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
 				unregisterListener: (_event: string, id: number) => listeners.delete(id),
 			};
+			/** What the app learns about an attached file, made up from its name. */
+			const attachment = (path: string) => {
+				const name = path.split('/').pop()!;
+				const ext = name.split('.').pop()!;
+				const kind = ['png', 'jpg', 'jpeg'].includes(ext) ? 'image' : ['xlsx', 'csv'].includes(ext) ? 'spreadsheet' : 'document';
+				return {
+					id: `att-${name}`,
+					file_name: name,
+					kind,
+					mime: 'application/octet-stream',
+					size: 2_500_000,
+					status: name.includes('scan') ? 'needs_vision' : 'ready',
+					page_count: kind === 'document' ? 12 : null,
+					sheet_count: kind === 'spreadsheet' ? 2 : null,
+					char_count: kind === 'image' ? 0 : 48_000,
+					scanned_pages: name.includes('scan') ? 12 : 0,
+					thumbnail: kind === 'image' ? 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=' : null,
+					created_at: 0,
+				};
+			};
+			const attach = (path: string) =>
+				path.includes('broken')
+					? { attachment: null, error: { file_name: path.split('/').pop(), code: 'damaged', message: 'bad zip' } }
+					: { attachment: attachment(path), error: null };
 			(window as any).__TAURI_INTERNALS__ = {
+				metadata: {
+					currentWindow: { label: 'main' },
+					currentWebview: { windowLabel: 'main', label: 'main' },
+				},
 				transformCallback: (callback: any) => {
 					callbacks.set(++nextId, callback);
 					return nextId;
 				},
 				unregisterCallback: (id: number) => callbacks.delete(id),
-				invoke: async (command: string, args: any = {}) => {
-					fixture.calls.push({ command, args });
+				invoke: async (command: string, args: any = {}, options?: any) => {
+					fixture.calls.push({ command, args, options });
 					switch (command) {
 						case 'plugin:event|listen': {
 							const id = ++nextId;
@@ -275,7 +305,28 @@ export const test = base.extend({
 						case 'export_runs':
 							return args.runIds.map((id: string) => `${args.dir}/${id}.${args.format}`);
 						case 'plugin:dialog|open':
+							if (args?.options?.multiple) return fixture.dialogFiles;
 							return args?.options?.directory === false ? '/tmp/settings.json' : '/tmp/exports';
+						case 'get_vision_status': {
+							const all = { ...values, ...(args.overrides ?? {}) };
+							const mode = all.llm_vision ?? 'auto';
+							const main_sees = mode === 'on' || (mode === 'auto' && fixture.visionDetected === true);
+							const model = all.ollama_cloud_model;
+							return {
+								main_sees,
+								detected: fixture.visionDetected,
+								reader: main_sees ? model : all.vision_model || null,
+							};
+						}
+						case 'add_attachments':
+							return args.paths.map(attach);
+						case 'add_attachment_data':
+							return attach(decodeURIComponent(options?.headers?.['x-file-name'] ?? 'pasted'));
+						case 'get_attachments':
+							return args.ids.map((id: string) => attachment(`/${id.replace(/^att-/, '')}`));
+						case 'remove_attachment':
+						case 'open_attachment':
+							return;
 						case 'export_run':
 							return fixture.delayExport
 								? new Promise<void>((resolve) => (fixture.finishExport = resolve))

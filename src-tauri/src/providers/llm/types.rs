@@ -10,11 +10,33 @@ pub enum MessageRole {
     Assistant,
 }
 
+/// An image sent to a model that can see images.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ImageInput {
+    /// `image/jpeg` or `image/png`.
+    pub media_type: String,
+    pub data_base64: String,
+}
+
+impl ImageInput {
+    pub fn from_bytes(media_type: impl Into<String>, bytes: &[u8]) -> Self {
+        use base64::Engine;
+        Self { media_type: media_type.into(), data_base64: base64::engine::general_purpose::STANDARD.encode(bytes) }
+    }
+
+    pub fn data_url(&self) -> String {
+        format!("data:{};base64,{}", self.media_type, self.data_base64)
+    }
+}
+
 /// A single message in a chat completion conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: MessageRole,
     pub content: String,
+    /// Images shown after the text (user messages, models that see images).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ImageInput>,
 }
 
 impl Message {
@@ -22,6 +44,7 @@ impl Message {
         Self {
             role: MessageRole::System,
             content: content.into(),
+            images: Vec::new(),
         }
     }
 
@@ -29,6 +52,15 @@ impl Message {
         Self {
             role: MessageRole::User,
             content: content.into(),
+            images: Vec::new(),
+        }
+    }
+
+    pub fn user_with_images(content: impl Into<String>, images: Vec<ImageInput>) -> Self {
+        Self {
+            role: MessageRole::User,
+            content: content.into(),
+            images,
         }
     }
 
@@ -36,6 +68,7 @@ impl Message {
         Self {
             role: MessageRole::Assistant,
             content: content.into(),
+            images: Vec::new(),
         }
     }
 }

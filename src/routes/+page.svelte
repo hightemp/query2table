@@ -19,6 +19,8 @@
 	import type { RunInfo, SchemaColumn } from '$lib/types';
 	import { listRuns } from '$lib/api/tauri';
 	import SchemaEditor from '$lib/components/run/SchemaEditor.svelte';
+	import AttachmentBar from '$lib/components/query/AttachmentBar.svelte';
+	import { attachFiles, draftAttachments, MAX_ATTACHMENTS, takeDraftAttachments } from '$lib/stores/attachments';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
 	import CostSummary from '$lib/components/run/CostSummary.svelte';
@@ -93,7 +95,17 @@
 	let stopErrors = $derived(stopParsed.errors);
 	let stopInvalid = $derived(!stopParsed.conditions);
 	let configProblems = $derived(configurationProblems($settings));
-	let canSubmit = $derived(!!query.trim() && !configProblems.length);
+	let readingFiles = $derived($draftAttachments.some((d) => d.state === 'reading'));
+	let canSubmit = $derived(!!query.trim() && !configProblems.length && !readingFiles);
+	let dragging = $state(false);
+
+	/** Files pasted into the query (screenshots, copied files) are attached instead of typed. */
+	async function handlePaste(event: ClipboardEvent) {
+		const files = [...(event.clipboardData?.files ?? [])];
+		if (!files.length) return;
+		event.preventDefault();
+		if (await attachFiles(files)) toast(t('attachments.limit', { count: MAX_ATTACHMENTS }), 'error');
+	}
 
 	let isIdle = $derived($runState.status === 'idle');
 	let isSchemaReview = $derived($runState.status === 'schema_review');
@@ -144,7 +156,7 @@
 		submitError = '';
 		const input = { ...stopInput };
 		try {
-			await startNewRun(query, runType, conditions);
+			await startNewRun(query, runType, conditions, null, takeDraftAttachments());
 			stopEdited = false;
 			void rememberStopConditions(input, runType);
 		} catch (err) {
@@ -283,7 +295,8 @@
 			</div>
 		</header>
 		<div class="query-scroll">
-			<form class="query-form" onsubmit={handleSubmit} novalidate>
+			<form class="query-form" class:dragging onsubmit={handleSubmit} novalidate>
+				{#if dragging}<div class="drop-overlay" aria-hidden="true">{t('attachments.drop')}</div>{/if}
 				<div class="mode-toggle" role="group" aria-label={t('query.resultFormat')}>
 					{#each modes as item}<button
 							type="button"
@@ -304,12 +317,14 @@
 					bind:value={query}
 					placeholder={t('query.placeholder')}
 					rows={5}
+					onpaste={handlePaste}
 					onkeydown={(event) => {
 						if (event.key === 'Enter' && hasMod(event)) {
 							event.preventDefault();
 							event.currentTarget.form?.requestSubmit();
 						}
 					}}></textarea>
+				<AttachmentBar bind:dragging />
 				{#if !query.trim()}
 					<div class="examples" aria-label={t('query.examples')} role="group">
 						<span>{t('query.try')}</span>
@@ -604,11 +619,29 @@
 		padding-right: 12px;
 	}
 	.query-form {
+		position: relative;
 		max-width: 900px;
 		background: var(--app-panel);
 		border: 1px solid var(--app-border);
 		padding: 24px;
 		border-radius: var(--app-radius-lg);
+	}
+	.query-form.dragging {
+		border-color: var(--app-accent);
+	}
+	.drop-overlay {
+		position: absolute;
+		inset: 0;
+		z-index: 5;
+		display: grid;
+		place-items: center;
+		border: 2px dashed var(--app-accent);
+		border-radius: inherit;
+		background: color-mix(in srgb, var(--app-accent) 10%, var(--app-panel));
+		color: var(--app-accent);
+		font-size: var(--app-text-lg);
+		font-weight: 600;
+		pointer-events: none;
 	}
 	.mode-toggle {
 		display: flex;
