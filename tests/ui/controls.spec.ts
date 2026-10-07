@@ -1,4 +1,4 @@
-import { test, expect, viewRun } from './fixtures';
+import { test, expect, viewRun, emit } from './fixtures';
 
 test('Lists are the app’s own: keyboard, search and theme colors', async ({ page }) => {
 	await viewRun(page, 0);
@@ -70,4 +70,22 @@ test('Checkboxes, disclosures and tooltips are drawn by the app', async ({ page 
 	const summary = page.locator('summary').first();
 	expect(await summary.evaluate((el) => getComputedStyle(el).listStyleType)).toBe('none');
 	expect(await summary.evaluate((el) => getComputedStyle(el, '::before').maskImage || getComputedStyle(el, '::before').webkitMaskImage)).toContain('svg');
+});
+
+test('Schema rows line up the type list and the Required checkbox with the fields', async ({ page }) => {
+	await page.setViewportSize({ width: 1400, height: 800 });
+	await page.goto('/');
+	await page.getByLabel('What would you like to find?').fill('Find robots');
+	await page.getByRole('button', { name: 'Build Table' }).click();
+	await emit(page, 'run:schema_proposed', {
+		run_id: 'live',
+		columns: [{ name: 'name', type: 'text', description: 'Name', required: true }],
+	});
+	const name = await page.getByLabel('Column 1 name', { exact: true }).boundingBox();
+	const type = await page.getByRole('combobox', { name: 'Column 1 type' }).boundingBox();
+	const box = await page.locator('.column-row .checkbox .box').first().boundingBox();
+	const center = (r: { y: number; height: number }) => r.y + r.height / 2;
+	expect(Math.abs(type!.height - name!.height)).toBeLessThanOrEqual(1);
+	expect(Math.abs(center(type!) - center(name!))).toBeLessThanOrEqual(1);
+	expect(Math.abs(center(box!) - center(name!))).toBeLessThanOrEqual(2);
 });

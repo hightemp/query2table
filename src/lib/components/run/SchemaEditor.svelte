@@ -165,10 +165,12 @@
 		flex: 2 1 160px;
 	}
 	.required {
+		display: flex;
 		flex: 0 0 auto;
-		flex-direction: row;
 		align-items: center;
 		height: 36px;
+		font-size: var(--app-text-sm);
+		color: var(--app-muted);
 	}
 	footer {
 		padding: 12px 16px;
