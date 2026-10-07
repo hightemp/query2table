@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n';
+	import NumberInput from '$lib/components/common/NumberInput.svelte';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
 	import { pricingScope } from '$lib/utils/pricing';
 	let {
 		provider,
@@ -51,22 +53,16 @@
 	<p>
 		{t('pricing.priority')}
 	</p>
-	<label class="pricing-toggle"
-		><input
-			type="checkbox"
-			checked={!!rate}
-			disabled={!model.trim()}
-			onchange={(event) => toggle(event.currentTarget.checked)}
-		/>{t('pricing.custom')}</label
+	<span class="pricing-toggle"
+		><Checkbox checked={!!rate} disabled={!model.trim()} onchange={toggle}>{t('pricing.custom')}</Checkbox></span
 	>
+
 	{#if rate}
 		<p class="scope">{model} · {provider}</p>
 		<div class="rate-fields">
 			<label
-				>{t('pricing.input')}<input
-					class="input"
+				>{t('pricing.input')}<NumberInput
 					required
-					type="number"
 					min="0"
 					step="any"
 					value={rate.input_per_million ?? ''}
@@ -74,10 +70,8 @@
 				/></label
 			>
 			<label
-				>{t('pricing.output')}<input
-					class="input"
+				>{t('pricing.output')}<NumberInput
 					required
-					type="number"
 					min="0"
 					step="any"
 					value={rate.output_per_million ?? ''}
@@ -85,9 +79,7 @@
 				/></label
 			>
 			<label
-				>{t('pricing.cached')}<input
-					class="input"
-					type="number"
+				>{t('pricing.cached')}<NumberInput
 					min="0"
 					step="any"
 					value={rate.cached_input_per_million ?? ''}
@@ -134,7 +126,7 @@
 		color: var(--app-muted);
 		font-size: var(--app-text-sm);
 	}
-	.rate-fields input {
+	.rate-fields :global(.number-input) {
 		margin-top: 5px;
 	}
 	.scope {

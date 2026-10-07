@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect, type Locator, type Page } from '@playwright/test';
 export const test = base.extend({
 	page: async ({ page }, use) => {
 		const pageErrors: string[] = [];
@@ -92,6 +92,7 @@ export const test = base.extend({
 				values,
 				calls: [] as { command: string; args: any }[],
 				failSave: false,
+				clipboard: '',
 				failDelete: false,
 				failCopy: false,
 				delayImage: false,
@@ -222,7 +223,10 @@ export const test = base.extend({
 							return { run_id: 'live' };
 						case 'copy_text':
 							if (fixture.failCopy) throw new Error('clipboard unavailable');
+							fixture.clipboard = args.text;
 							return;
+						case 'paste_text':
+							return fixture.clipboard;
 						case 'plugin:dialog|save':
 							return '/tmp/query2table-fixture.csv';
 						case 'get_run':
@@ -298,4 +302,10 @@ export async function emit(page: Page, event: string, payload: unknown) {
 		event,
 		payload,
 	});
+}
+
+/** Picks an option of the app's Select by its visible label. */
+export async function choose(select: Locator, option: string | RegExp) {
+	await select.click();
+	await select.page().getByRole('listbox').getByRole('option', { name: option, exact: typeof option === 'string' }).click();
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
 	import SiteIcon from './SiteIcon.svelte';
@@ -25,8 +26,8 @@
 					<ExternalLink href={source.url} label={source.title} class="source-title" />
 					<div class="meta">
 						<span class="domain">{source.domain}</span>
-						{#if source.cited}<span class="tag cited" title={t('research.citedHint')}>{t('research.cited')}</span>{/if}
-						{#if source.read}<span class="tag" title={t('research.readHint')}>{t('research.read')}</span>{/if}
+						{#if source.cited}<span class="tag cited" use:tooltip={t('research.citedHint')}>{t('research.cited')}</span>{/if}
+						{#if source.read}<span class="tag" use:tooltip={t('research.readHint')}>{t('research.read')}</span>{/if}
 					</div>
 				</div>
 			</li>

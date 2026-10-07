@@ -9,7 +9,8 @@
 	import { appliedTheme, currentTheme, loadTheme, sidebarCollapsed, uiScale } from '$lib/stores/ui';
 	import Toaster from '$lib/components/layout/Toaster.svelte';
 	import ContextMenu from '$lib/components/common/ContextMenu.svelte';
-	import { contextMenu, closeContextMenu } from '$lib/stores/contextMenu';
+	import { contextMenu, closeContextMenu, showContextMenu } from '$lib/stores/contextMenu';
+	import { textMenuFor } from '$lib/utils/textMenu';
 	import { hasMod } from '$lib/utils/shortcuts';
 	import type { LogEntry } from '$lib/types';
 	import type { Snippet } from 'svelte';
@@ -40,15 +41,15 @@
 	});
 
 	// The webview's own menu offers browser actions (open in new window, save image, reload)
-	// that do not work in the app. Keep it only where it helps: text fields and selected text.
+	// that do not work in the app, so it is never shown; text gets the app's menu instead.
 	// In development, Shift+right-click still opens it for "Inspect element".
 	function handleContextMenu(event: MouseEvent) {
 		if (event.defaultPrevented) return;
-		const target = event.target as Element | null;
-		if (target?.closest('input, textarea, [contenteditable="true"]')) return;
-		if (window.getSelection()?.toString().trim()) return;
 		if (import.meta.env.DEV && event.shiftKey) return;
 		event.preventDefault();
+		// Text fields and selected text get the app's own Cut / Copy / Paste menu.
+		const items = textMenuFor(event.target as Element | null);
+		if (items) showContextMenu({ x: event.clientX, y: event.clientY }, t('textMenu.label'), items);
 	}
 
 	function handleShortcut(event: KeyboardEvent) {

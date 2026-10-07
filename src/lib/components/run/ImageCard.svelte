@@ -91,7 +91,7 @@
 			>
 		</span>
 	</button>
-	<label class="check" title={selected ? 'Deselect' : 'Select'}>
+	<label class="check">
 		<input
 			type="checkbox"
 			checked={selected}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t, type MessageKey } from '$lib/i18n';
 	import { onMount } from 'svelte';
 	import {
@@ -98,7 +99,7 @@
 						type="text"
 						readonly
 						value={paths[item.key]}
-						title={paths[item.key]}
+						use:tooltip={paths[item.key]}
 						onclick={(e) => e.currentTarget.select()}
 					/>
 					<button

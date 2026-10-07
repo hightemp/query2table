@@ -71,6 +71,15 @@ pub fn copy_text(app: tauri::AppHandle, text: String) -> Result<(), String> {
         .map_err(|e| format!("Could not copy the selected text: {e}"))
 }
 
+/// Clipboard text for the Paste item of the text field menu. Called only from that menu,
+/// after the user chose Paste; typing Ctrl+V does not need it.
+#[tauri::command]
+pub fn paste_text(app: tauri::AppHandle) -> Result<String, String> {
+    app.clipboard()
+        .read_text()
+        .map_err(|e| format!("Could not read the clipboard: {e}"))
+}
+
 #[tauri::command]
 pub async fn open_app_folder(app: tauri::AppHandle, location: AppLocation) -> Result<(), String> {
     let folder = location.folder()?;

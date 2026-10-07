@@ -150,6 +150,7 @@ pub fn run() {
             commands::run::get_run_rows,
             commands::run::get_row_sources,
             commands::settings::copy_text,
+            commands::settings::paste_text,
             commands::run::get_image_results,
             commands::run::get_link_results,
             commands::run::set_link_visited,

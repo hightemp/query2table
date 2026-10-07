@@ -1,9 +1,9 @@
-import { test, expect, viewRun } from './fixtures';
+import { test, expect, viewRun, choose } from './fixtures';
 
 test('The language is chosen in Settings and applies at once', async ({ page }) => {
 	await page.goto('/settings');
 	await page.getByRole('spinbutton', { name: 'Temperature', exact: true }).fill('0.4');
-	await page.getByLabel('Language', { exact: true }).selectOption('ru');
+	await choose(page.getByLabel('Language', { exact: true }), 'Русский');
 	const nav = page.getByRole('navigation').first();
 	await expect(nav.getByRole('link')).toHaveText(['Запрос', 'История', 'Настройки']);
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Настройки');
@@ -19,7 +19,7 @@ test('The language is chosen in Settings and applies at once', async ({ page }) 
 	await page.getByRole('button', { name: 'Отменить изменения' }).click();
 	await page.reload();
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Настройки');
-	await page.getByLabel('Язык', { exact: true }).selectOption('en');
+	await choose(page.getByLabel('Язык', { exact: true }), 'English');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
 });
 

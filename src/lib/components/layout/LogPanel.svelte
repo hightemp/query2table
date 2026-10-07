@@ -1,5 +1,9 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
+	import Select from '$lib/components/common/Select.svelte';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
+
 	import { tick } from 'svelte';
 	import {
 		logs,
@@ -135,7 +139,7 @@
 			aria-valuemin={MIN_HEIGHT}
 			aria-valuenow={height ?? undefined}
 			tabindex="0"
-			title={t('logs.resizeHint')}
+			use:tooltip={t('logs.resizeHint')}
 			onpointerdown={startResize}
 			onkeydown={resizeWithKeys}
 			ondblclick={() => logPanelHeight.set(null)}
@@ -147,7 +151,7 @@
 			onclick={togglePanel}
 			aria-expanded={$logPanelOpen}
 			aria-controls="app-log-body"
-			title={t($logPanelOpen ? 'logs.hide' : 'logs.show', { shortcut: `${modKey}+J` })}
+			use:tooltip={t($logPanelOpen ? 'logs.hide' : 'logs.show', { shortcut: `${modKey}+J` })}
 		>
 			{#if $logPanelOpen}
 				<ChevronDownIcon size={16} />
@@ -156,8 +160,8 @@
 			{/if}
 			<span>{t('logs.title', { count: $logs.length })}</span>
 		</button>
-		{#if errorCount}<span class="count error" title={t('logs.errors')}>{t('logs.errorCount', { count: errorCount })}</span>{/if}
-		{#if warnCount}<span class="count warn" title={t('logs.warnings')}>{t('logs.warningCount', { count: warnCount })}</span>{/if}
+		{#if errorCount}<span class="count error" use:tooltip={t('logs.errors')}>{t('logs.errorCount', { count: errorCount })}</span>{/if}
+		{#if warnCount}<span class="count warn" use:tooltip={t('logs.warnings')}>{t('logs.warningCount', { count: warnCount })}</span>{/if}
 
 		{#if $logPanelOpen}
 			<div class="log-controls">
@@ -170,32 +174,35 @@
 						bind:value={search}
 					/></label
 				>
-				{#if runId}<label class="run-only"
-						><input type="checkbox" bind:checked={currentRunOnly} />{t('logs.currentRun')}</label
+				{#if runId}<span class="run-only"
+						><Checkbox bind:checked={currentRunOnly}>{t('logs.currentRun')}</Checkbox></span
 					>{/if}
-				<select aria-label={t('logs.level')} bind:value={$logFilter} class="input sm log-filter">
-					{#each levels as level}
-						<option value={level}>{level === 'ALL' ? t('logs.levelAll') : level}</option>
-					{/each}
-				</select>
+				<Select
+					label={t('logs.level')}
+					bind:value={$logFilter}
+					size="sm"
+					class="log-filter"
+					options={levels.map((level) => ({ value: level, label: level === 'ALL' ? t('logs.levelAll') : level }))}
+				/>
+
 				<button
 					class="icon-button ghost sm"
 					onclick={copyLogs}
 					disabled={!filteredLogs.length}
 					aria-label={t('logs.copy')}
-					title={t('logs.copy')}><CopyIcon size={14} /></button
+					use:tooltip={t('logs.copy')}><CopyIcon size={14} /></button
 				>
 				<button
 					class="icon-button ghost sm"
 					onclick={openLogFolder}
 					aria-label={t('logs.openFolder')}
-					title={t('logs.openFolder')}><FolderOpenIcon size={14} /></button
+					use:tooltip={t('logs.openFolder')}><FolderOpenIcon size={14} /></button
 				>
 				<button
 					class="icon-button ghost sm"
 					onclick={clearLogs}
 					aria-label={t('logs.clear')}
-					title={t('logs.clear')}><TrashIcon size={14} /></button
+					use:tooltip={t('logs.clear')}><TrashIcon size={14} /></button
 				>
 			</div>
 		{/if}
@@ -205,7 +212,7 @@
 		<div class="log-body" id="app-log-body" bind:this={body} onscroll={handleScroll}>
 			{#each filteredLogs as log}
 				<div class="log-entry">
-					<span class="log-time" title={log.timestamp}>{logTime(log.timestamp)}</span>
+					<span class="log-time" use:tooltip={log.timestamp}>{logTime(log.timestamp)}</span>
 					<span class="log-level {log.level.toLowerCase()}">{log.level}</span>
 					<span class="log-message">{log.message}</span>
 				</div>
@@ -311,7 +318,7 @@
 		white-space: nowrap;
 	}
 
-	.log-filter {
+	:global(.select.log-filter) {
 		width: auto;
 	}
 

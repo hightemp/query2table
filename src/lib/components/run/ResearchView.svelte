@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import type { Accounting } from '$lib/types';
@@ -95,7 +96,7 @@
 		<button
 			class="button sm back-to-top"
 			aria-label={t('research.backToTop')}
-			title={t('research.backToTop')}
+			use:tooltip={t('research.backToTop')}
 			onclick={() => {
 				if (view) view.scrollTop = 0;
 				scrolled = false;

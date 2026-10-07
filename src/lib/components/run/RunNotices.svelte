@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { intlLocale, t } from '$lib/i18n';
 	import type { Accounting, LlmIssueEvent } from '$lib/types';
 	import {
@@ -76,7 +77,7 @@
 				<button
 					class="icon-button dismiss"
 					aria-label={t('notices.dismiss')}
-					title={t('notices.dismissHint')}
+					use:tooltip={t('notices.dismissHint')}
 					onclick={() => ondismiss(dismissalOf(notices))}><XIcon size={15} /></button
 				>
 			{/if}
@@ -87,7 +88,7 @@
 					{@const Icon = icons[notice.level]}
 					{@const last = notice.attempts.at(-1)}
 					<article class="notice" data-level={notice.level} aria-label={notice.title}>
-						<span class="notice-icon" title={levelName(notice.level)}><Icon size={16} /></span>
+						<span class="notice-icon" use:tooltip={levelName(notice.level)}><Icon size={16} /></span>
 						<div class="notice-body">
 							<p class="notice-title">
 								<strong>{notice.title}</strong>

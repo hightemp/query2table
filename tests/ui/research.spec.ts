@@ -1,4 +1,4 @@
-import { test, expect, viewRun, emit } from './fixtures';
+import { test, expect, viewRun, emit, choose } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const answer = [
@@ -369,14 +369,14 @@ test('Research has its own step limit and exports the conversation or one turn',
 	await viewRun(page, 3);
 	await page.getByRole('button', { name: 'Export' }).click();
 	const dialog = page.getByRole('dialog', { name: 'Export Results' });
-	await dialog.getByLabel('Export').selectOption('Whole conversation');
+	await choose(dialog.getByLabel('Export'), 'Whole conversation');
 	await dialog.getByRole('button', { name: 'Export' }).click();
 	const [whole] = await calls(page, 'export_run');
 	expect(whole.args.request.turn_index ?? null).toBeNull();
 	await page.getByRole('dialog', { name: 'Export complete' }).getByRole('button', { name: 'Done' }).click();
 	await page.getByRole('button', { name: 'Export' }).click();
-	await dialog.getByLabel('Export').selectOption({ index: 1 });
-	await expect(dialog.getByLabel('Export')).toHaveValue('0');
+	await choose(dialog.getByLabel('Export'), /^Question 1/);
+	await expect(dialog.getByLabel('Export')).toHaveText(/^Question 1/);
 	await dialog.getByRole('button', { name: 'Export' }).click();
 	expect((await calls(page, 'export_run')).at(-1).args.request.turn_index).toBe(0);
 });

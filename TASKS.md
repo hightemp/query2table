@@ -1357,6 +1357,7 @@ struct RetryPolicy {
 - [ ] Manual cell editing in results table
 - [ ] Intermediate row deletion during search
 - [x] i18n/localization of the app UI (English, Russian; `src/lib/i18n`)
+- [x] Custom UI controls instead of the browser's: Select with search, Checkbox, Radio, NumberInput, Slider, tooltips, disclosure, scrollbars, text field menu (`src/lib/components/common`, `src/lib/actions/tooltip.ts`)
 - [x] Color themes (Default, Solarized, Nord, Gruvbox, Rosé Pine light/dark, Dracula) with a light/dark pair for System, and interface size (`src/lib/themes.ts`, Settings → Application)
 
 ---

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t, type MessageKey } from '$lib/i18n';
+	import Select from '$lib/components/common/Select.svelte';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
@@ -195,29 +196,32 @@
 				>
 			{/each}
 		</div>
-		<select
-			class="input sm"
-			aria-label={t('history.status')}
+		<Select
+			size="sm"
+			label={t('history.status')}
 			value={$history.filter.status}
-			onchange={(event) => void setHistoryFilter({ status: event.currentTarget.value })}
-		>
-			<option value="any">{t('history.anyStatus')}</option>
-			<option value="completed">{t('status.completed')}</option>
-			<option value="failed">{t('status.failed')}</option>
-			<option value="cancelled">{t('status.cancelled')}</option>
-			<option value="active">{t('history.inProgress')}</option>
-		</select>
-		<select
-			class="input sm"
-			aria-label={t('history.sort')}
+			onchange={(status) => void setHistoryFilter({ status })}
+			options={[
+				{ value: 'any', label: t('history.anyStatus') },
+				{ value: 'completed', label: t('status.completed') },
+				{ value: 'failed', label: t('status.failed') },
+				{ value: 'cancelled', label: t('status.cancelled') },
+				{ value: 'active', label: t('history.inProgress') },
+			]}
+		/>
+		<Select
+			size="sm"
+			label={t('history.sort')}
 			value={$history.filter.sort}
-			onchange={(event) => void setHistoryFilter({ sort: event.currentTarget.value as HistorySort })}
-		>
-			<option value="newest">{t('history.newest')}</option>
-			<option value="oldest">{t('history.oldest')}</option>
-			<option value="results">{t('history.mostResults')}</option>
-			<option value="cost">{t('history.highestCost')}</option>
-		</select>
+			onchange={(sort) => void setHistoryFilter({ sort: sort as HistorySort })}
+			options={[
+				{ value: 'newest', label: t('history.newest') },
+				{ value: 'oldest', label: t('history.oldest') },
+				{ value: 'results', label: t('history.mostResults') },
+				{ value: 'cost', label: t('history.highestCost') },
+			]}
+		/>
+
 	</div>
 
 	{#if selected.length}
@@ -313,7 +317,7 @@
 		flex: 1;
 		min-width: 0;
 	}
-	.toolbar select {
+	.toolbar :global(.select) {
 		width: auto;
 		flex: 0 0 auto;
 	}

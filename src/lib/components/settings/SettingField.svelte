@@ -1,8 +1,12 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import type { Snippet } from 'svelte';
 	import { EyeIcon, EyeOffIcon, RotateCcwIcon } from '@lucide/svelte';
 	import { fieldDescription, fieldLabel, isDefault, optionLabel, unitLabel, type FieldDef } from '$lib/settings/schema';
 	import { t } from '$lib/i18n';
+	import NumberInput from '$lib/components/common/NumberInput.svelte';
+	import Slider from '$lib/components/common/Slider.svelte';
+	import Select from '$lib/components/common/Select.svelte';
 
 	let {
 		field,
@@ -42,7 +46,7 @@
 
 <div class="setting-field" class:changed class:invalid={!!error} data-key={field.key}>
 	<div class="label-column">
-		<label for={field.key} id={`${field.key}-label`}>{label}{#if changed}<span class="changed-dot" title={t('field.notSaved')} aria-hidden="true"></span>{/if}</label>
+		<label for={field.key} id={`${field.key}-label`}>{label}{#if changed}<span class="changed-dot" use:tooltip={t('field.notSaved')} aria-hidden="true"></span>{/if}</label>
 		<p class="description" id={`${field.key}-description`}>{fieldDescription(field)}</p>
 	</div>
 	<div class="control-column">
@@ -50,11 +54,18 @@
 			{#if control && field.kind === 'model'}
 				{@render control()}
 			{:else if field.kind === 'select'}
-				<select id={field.key} class="input" {value} aria-describedby={describedBy} onchange={(e) => onchange(e.currentTarget.value)}>
-					{#each field.options ?? [] as option (option)}
-						<option value={option} disabled={disabledOptions.includes(option)}>{optionLabel(field, option)}</option>
-					{/each}
-				</select>
+				<Select
+					id={field.key}
+					{value}
+					aria-describedby={describedBy}
+					{onchange}
+					options={(field.options ?? []).map((option) => ({
+						value: option,
+						label: optionLabel(field, option),
+						disabled: disabledOptions.includes(option),
+					}))}
+				/>
+
 			{:else if field.kind === 'switch'}
 				<button
 					id={field.key}
@@ -90,9 +101,8 @@
 					>
 				</div>
 			{:else if field.kind === 'range'}
-				<input
-					type="range"
-					class="slider"
+				<Slider
+					class="range"
 					aria-label={label}
 					min={field.min}
 					max={field.max}
@@ -100,10 +110,9 @@
 					value={Number.isFinite(Number(value)) ? value : field.default}
 					oninput={(e) => onchange(e.currentTarget.value)}
 				/>
-				<input
+				<NumberInput
 					id={field.key}
-					class="input number"
-					type="number"
+					class="number"
 					min={field.min}
 					max={field.max}
 					step={field.step}
@@ -114,10 +123,9 @@
 				/>
 				{#if field.unit}<span class="unit">{unitLabel(field.unit)}</span>{/if}
 			{:else if field.kind === 'number'}
-				<input
+				<NumberInput
 					id={field.key}
-					class="input number wide"
-					type="number"
+					class="number wide"
 					min={field.min}
 					max={field.max}
 					step={field.step === 0.01 ? 'any' : field.step}
@@ -145,7 +153,7 @@
 					type="button"
 					class="icon-button ghost reset"
 					aria-label={t('field.reset', { name: label, value: defaultLabel })}
-					title={t('field.resetHint', { value: defaultLabel })}
+					use:tooltip={t('field.resetHint', { value: defaultLabel })}
 					onclick={() => onchange(field.default)}><RotateCcwIcon size={14} /></button
 				>
 			{/if}
@@ -195,8 +203,8 @@
 		gap: 8px;
 		min-width: 0;
 	}
-	.control-row > :global(select),
-	.control-row > :global(input:not(.slider):not(.number)),
+	.control-row > :global(.select),
+	.control-row > :global(input),
 	.control-row > :global(.password),
 	.control-row > :global(.model-picker) {
 		flex: 1;
@@ -211,17 +219,17 @@
 		flex: 1;
 		min-width: 0;
 	}
-	.slider {
+	.control-row > :global(.range) {
 		flex: 1;
 		min-width: 80px;
-		accent-color: var(--app-accent);
 	}
-	.number {
-		width: 96px;
+	.control-row > :global(.number) {
+		width: 124px;
 	}
-	.number.wide {
-		width: 140px;
+	.control-row > :global(.number.wide) {
+		width: 160px;
 	}
+
 	.unit {
 		color: var(--app-muted);
 		font-size: var(--app-text-sm);

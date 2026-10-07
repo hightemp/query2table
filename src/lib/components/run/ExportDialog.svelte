@@ -5,6 +5,8 @@
 	import { DownloadIcon } from '@lucide/svelte';
 	import { exportRun } from '$lib/api/tauri';
 	import Dialog from '$lib/components/common/Dialog.svelte';
+	import Select from '$lib/components/common/Select.svelte';
+	import Radio from '$lib/components/common/Radio.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { errorText } from '$lib/utils/errors';
 	import { debugUi } from '$lib/utils/diagnostics';
@@ -70,21 +72,28 @@
 			<p class="saved-path">{savedPath}</p>
 		</div>
 	{:else}<fieldset disabled={exporting}>
-			<legend>{t('export.format')}</legend>{#each options as option}<label
-					class:selected={format === option.value}
-					><input type="radio" name="format" value={option.value} bind:group={format} /><span
-						><strong>{option.label}</strong><small>{option.description}</small></span
-					></label
+			<legend>{t('export.format')}</legend>{#each options as option}<Radio
+					name="format"
+					value={option.value}
+					checked={format === option.value}
+					onchange={() => (format = option.value)}
+					><strong>{option.label}</strong><small>{option.description}</small></Radio
 				>{/each}
 		</fieldset>
 		{#if runType === 'research'}
 			<label class="turn-choice"
-				>{t('export.what')}<select class="input" bind:value={turnChoice} disabled={exporting}>
-					<option value="all">{t('export.wholeConversation')}</option>
-					{#each turns as turn (turn.index)}<option value={String(turn.index)}
-							>{t('export.question', { n: turn.index + 1, question: turn.question })}</option
-						>{/each}
-				</select></label
+				>{t('export.what')}<Select
+					bind:value={turnChoice}
+					disabled={exporting}
+					options={[
+						{ value: 'all', label: t('export.wholeConversation') },
+						...turns.map((turn) => ({
+							value: String(turn.index),
+							label: t('export.question', { n: turn.index + 1, question: turn.question }),
+						})),
+					]}
+				/></label
+
 			>
 		{/if}{/if}
 	{#if error}<ErrorNotice {error} context="export" />{/if}
@@ -110,7 +119,7 @@
 		font-size: var(--app-text-md);
 		margin-bottom: 8px;
 	}
-	label {
+	fieldset :global(.radio) {
 		display: flex;
 		gap: 12px;
 		align-items: center;
@@ -118,9 +127,9 @@
 		padding: 12px;
 		margin-bottom: 8px;
 		border-radius: var(--app-radius);
-		cursor: pointer;
 	}
-	label.selected {
+	fieldset :global(.radio:has(input:checked)) {
+
 		border-color: var(--app-accent);
 		background: color-mix(in srgb, var(--app-accent) 8%, var(--app-panel));
 	}

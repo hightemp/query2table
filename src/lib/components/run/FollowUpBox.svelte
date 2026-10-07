@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n';
+	import NumberInput from '$lib/components/common/NumberInput.svelte';
 	import { SendIcon, ChevronDownIcon, ChevronUpIcon } from '@lucide/svelte';
 	import type { StopConditions } from '$lib/api/tauri';
 	import { hasMod, modKey } from '$lib/utils/shortcuts';
@@ -110,9 +111,7 @@
 	{#if editLimits}
 		<div class="limits">
 			<label
-				>{t('mode.research.target')}<input
-					class="input sm"
-					type="number"
+				>{t('mode.research.target')}<NumberInput size="sm"
 					min="1"
 					max="200"
 					value={input.target}
@@ -120,9 +119,7 @@
 				/></label
 			>
 			<label
-				>{t('query.maxCost')}<input
-					class="input sm"
-					type="number"
+				>{t('query.maxCost')}<NumberInput size="sm"
 					min="0.01"
 					step="0.01"
 					value={input.budget}
@@ -130,9 +127,7 @@
 				/></label
 			>
 			<label
-				>{t('query.maxDuration')}<input
-					class="input sm"
-					type="number"
+				>{t('query.maxDuration')}<NumberInput size="sm"
 					min="1"
 					value={input.duration}
 					oninput={(e) => field('duration', e.currentTarget.value)}

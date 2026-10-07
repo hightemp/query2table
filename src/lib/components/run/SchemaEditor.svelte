@@ -2,6 +2,9 @@
 	import { t, type MessageKey } from '$lib/i18n';
 	import { untrack } from 'svelte';
 	import type { SchemaColumn } from '$lib/types';
+	import Select from '$lib/components/common/Select.svelte';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
+
 	import { PlusIcon, TrashIcon, CheckIcon } from '@lucide/svelte';
 	let {
 		columns: initialColumns,
@@ -53,15 +56,16 @@
 					/></label
 				>
 				<label
-					>{t('schema.type')}<select
-						class="input"
+					>{t('schema.type')}<Select
 						bind:value={column.type}
-						aria-label={t('schema.columnType', { n: i + 1 })}
+						label={t('schema.columnType', { n: i + 1 })}
 						disabled={pending}
-						>{#each ['text', 'number', 'url', 'date', 'boolean'] as type}<option value={type}
-								>{t(`schema.type.${type}` as MessageKey)}</option
-							>{/each}</select
-					></label
+						options={['text', 'number', 'url', 'date', 'boolean'].map((type) => ({
+							value: type,
+							label: t(`schema.type.${type}` as MessageKey),
+						}))}
+					/></label
+
 				>
 				<label class="description"
 					>{t('schema.description')}<input
@@ -72,12 +76,8 @@
 						disabled={pending}
 					/></label
 				>
-				<label class="required"
-					><input
-						type="checkbox"
-						bind:checked={column.required}
-						disabled={pending}
-					/>{t('schema.required')}</label
+				<span class="required"
+					><Checkbox bind:checked={column.required} disabled={pending}>{t('schema.required')}</Checkbox></span
 				>
 				<button
 					class="icon-button danger"

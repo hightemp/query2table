@@ -63,6 +63,9 @@ The language is the `ui_language` setting (`system`, `en`, `ru`); the backend us
 ## Themes
 Colors come only from the `--app-*` tokens. Themes live in `src/lib/themes.ts` and as `:root[data-theme='<id>']` blocks in `src/app.css`; `src/tests/themes.test.ts` checks that both match and that text keeps 4.5:1 contrast. Dark themes also get the `.dark` class. Font sizes must use the `--app-text-*` tokens so the interface size (`data-scale`) applies.
 
+## UI controls
+Do not use the browser's own controls. Use `Select` (lists; search appears from 8 options), `Checkbox`, `Radio`, `NumberInput` and `Slider` from `src/lib/components/common/`, and `use:tooltip` from `src/lib/actions/tooltip.ts` instead of `title` (`{ text, whenTruncated: true }` for clipped text). `<details>`, scrollbars and number spinners are styled globally in `src/app.css`. Right-click on text fields and selected text opens the app's menu (`src/lib/utils/textMenu.ts`). In Playwright tests pick list options with `choose()` from `tests/ui/fixtures.ts`.
+
 ## Key Entry Points
 | File | Purpose |
 |------|---------|

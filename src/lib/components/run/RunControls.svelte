@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import {
 		PauseIcon,
@@ -75,7 +76,7 @@
 
 	{#if isFinished}
 		{#if onedit}
-			<button class="button sm" onclick={onedit} title={t('controls.editQueryHint')}>
+			<button class="button sm" onclick={onedit} use:tooltip={t('controls.editQueryHint')}>
 				<PencilIcon size={16} />
 				{t('controls.editQuery')}
 			</button>

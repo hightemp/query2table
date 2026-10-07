@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import type { RunRow } from '$lib/stores/run';
 	import type { RowSource } from '$lib/types';
@@ -72,13 +73,13 @@
 		class="button sm"
 		disabled={!canPrevious}
 		onclick={() => navigate(-1)}
-		title={t('row.previousHint')}><ChevronUpIcon size={16} />{t('row.previous')}</button
+		use:tooltip={t('row.previousHint')}><ChevronUpIcon size={16} />{t('row.previous')}</button
 	>
 	<button
 		class="button sm"
 		disabled={!canNext}
 		onclick={() => navigate(1)}
-		title={t('row.nextHint')}><ChevronDownIcon size={16} />{t('row.next')}</button
+		use:tooltip={t('row.nextHint')}><ChevronDownIcon size={16} />{t('row.next')}</button
 	>
 {/snippet}
 
@@ -98,7 +99,7 @@
 	<dl>
 		{#each columns as column}<div class="field">
 				<dt>
-					<span title={column}>{columnLabel(column)}</span><CopyButton
+					<span use:tooltip={column}>{columnLabel(column)}</span><CopyButton
 						text={formatValue(row.data[column], true)}
 						label={t('row.copyField', { name: columnLabel(column) })}
 					/>

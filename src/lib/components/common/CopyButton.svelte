@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import { copyText } from '$lib/api/tauri';
 	import { toast } from '$lib/stores/toasts';
@@ -26,7 +27,7 @@
 <button
 	class="icon-button"
 	aria-label={copied ? t('common.copied') : label || t('common.copy')}
-	title={copied ? t('common.copied') : label || t('common.copy')}
+	use:tooltip={copied ? t('common.copied') : label || t('common.copy')}
 	onclick={copy}
 	>{#if copied}<CheckIcon size={15} />{:else}<CopyIcon size={15} />{/if}</button
 >

@@ -1,4 +1,4 @@
-import { test, expect, viewRun, emit } from './fixtures';
+import { test, expect, viewRun, emit, choose } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const links = Array.from({ length: 13 }, (_, i) => ({
@@ -42,7 +42,9 @@ test('Links show site, path, match tier and expandable descriptions', async ({ p
 	const first = page.locator('.link-card').first();
 	await expect(first).toContainText('github.com › org/repo-0');
 	await expect(first.locator('.tier')).toHaveText('Best match');
-	await expect(first.locator('.tier')).toHaveAttribute('title', '95% match — Lists the tools the query asks for');
+	await first.locator('.tier').hover();
+	await expect(page.getByRole('tooltip')).toHaveText('95% match — Lists the tools the query asks for');
+	await expect(first.locator('.tier')).toHaveAccessibleDescription('95% match — Lists the tools the query asks for');
 	await expect(page.locator('.link-card').nth(1)).toContainText('Visited');
 	const description = first.getByRole('button', { name: /Description of resource 0/ });
 	await expect(description).toHaveAttribute('aria-expanded', 'false');
@@ -128,9 +130,9 @@ test('Selected links can be copied in several formats, opened and hidden', async
 
 test('Links can be filtered, grouped by site and sorted', async ({ page }) => {
 	await openLinks(page);
-	await page.getByLabel('Site', { exact: true }).selectOption('blog.example');
+	await choose(page.getByLabel('Site', { exact: true }), /^blog\.example/);
 	await expect(page.locator('.link-card')).toHaveCount(4);
-	await page.getByLabel('Site', { exact: true }).selectOption('');
+	await choose(page.getByLabel('Site', { exact: true }), 'All sites');
 	await page.getByLabel('Group by site').check();
 	await expect(page.getByRole('region', { name: 'github.com' }).locator('.link-card')).toHaveCount(8);
 	await expect(page.locator('.site-group h3').first()).toContainText('github.com8');
@@ -138,7 +140,7 @@ test('Links can be filtered, grouped by site and sorted', async ({ page }) => {
 	await page.getByLabel('Search links').fill('resource 7');
 	await expect(page.locator('.link-card')).toHaveCount(1);
 	await page.getByLabel('Search links').fill('');
-	await page.getByLabel('Sort links').selectOption('site');
+	await choose(page.getByLabel('Sort links'), 'Site');
 	await expect(page.locator('.link-card').first()).toContainText('blog.example');
 });
 

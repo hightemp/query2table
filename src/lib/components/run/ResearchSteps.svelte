@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import type { ResearchStep } from '$lib/types';
 	import { SearchIcon, FileTextIcon, LightbulbIcon, TriangleAlertIcon } from '@lucide/svelte';
@@ -63,7 +64,7 @@
 						<span
 							class="summary"
 							class:open
-							title={open ? undefined : view.summary}
+							use:tooltip={open ? undefined : view.summary}
 							use:measure={view.step.id}>{view.summary}</span
 						>
 					</div>

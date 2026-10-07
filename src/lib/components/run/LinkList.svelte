@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n';
+	import Select from '$lib/components/common/Select.svelte';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
+
 	import { tick } from 'svelte';
 	import type { LinkResult } from '$lib/types';
 	import LinkCard from './LinkCard.svelte';
@@ -238,20 +241,29 @@
 					bind:value={search}
 				/></label
 			>
-			<select class="input sm" aria-label={t('links.sort')} bind:value={sort}>
-				<option value="relevance">{t('images.sortBest')}</option>
-				<option value="site">{t('links.sortSite')}</option>
-				<option value="found">{t('images.sortFound')}</option>
-			</select>
-			{#if sites.length > 1}<select class="input sm" aria-label={t('links.site')} bind:value={domain}>
-					<option value="">{t('images.allSites')}</option>
-					{#each sites as [name, count]}<option value={name}>{name} ({count})</option>{/each}
-				</select>{/if}
-			<label class="toggle"
-				><input type="checkbox" bind:checked={$groupBySiteSetting} />{t('links.groupBySite')}</label
-			>
-			{#if result.hiddenCount}<label class="toggle"
-					><input type="checkbox" bind:checked={showHidden} />{t('links.showHidden', { count: result.hiddenCount })}</label
+			<Select
+				size="sm"
+				label={t('links.sort')}
+				bind:value={sort}
+				options={[
+					{ value: 'relevance', label: t('images.sortBest') },
+					{ value: 'site', label: t('links.sortSite') },
+					{ value: 'found', label: t('images.sortFound') },
+				]}
+			/>
+			{#if sites.length > 1}<Select
+					size="sm"
+					label={t('links.site')}
+					bind:value={domain}
+					options={[
+						{ value: '', label: t('images.allSites') },
+						...sites.map(([name, count]) => ({ value: name, label: `${name} (${count})` })),
+					]}
+				/>{/if}
+
+			<span class="toggle"><Checkbox bind:checked={$groupBySiteSetting}>{t('links.groupBySite')}</Checkbox></span>
+			{#if result.hiddenCount}<span class="toggle"
+					><Checkbox bind:checked={showHidden}>{t('links.showHidden', { count: result.hiddenCount })}</Checkbox></span
 				>{/if}
 			<span class="count link-count" role="status"
 				>{filtered
@@ -364,7 +376,7 @@
 		padding-bottom: 8px;
 		flex-shrink: 0;
 	}
-	.toolbar select {
+	.toolbar :global(.select) {
 		width: auto;
 		max-width: 170px;
 	}

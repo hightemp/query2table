@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { open as openFile, save as saveFile } from '@tauri-apps/plugin-dialog';
@@ -33,6 +34,10 @@
 	} from '$lib/stores/ui';
 	import { UI_SCALES, type UiScale } from '$lib/themes';
 	import ThemePicker from '$lib/components/settings/ThemePicker.svelte';
+	import Select from '$lib/components/common/Select.svelte';
+	import Radio from '$lib/components/common/Radio.svelte';
+
+
 	import { toast } from '$lib/stores/toasts';
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
@@ -501,7 +506,7 @@
 			<button
 				class="button primary"
 				onclick={() => saveAll()}
-				title={blocked ? t('settings.fixToSave') : t('settings.saveHint', { shortcut: `${modKey}+S` })}
+				use:tooltip={blocked ? t('settings.fixToSave') : t('settings.saveHint', { shortcut: `${modKey}+S` })}
 				aria-keyshortcuts={modKey === '⌘' ? 'Meta+S' : 'Control+S'}
 				disabled={saving || blocked || !dirty.size}
 				><SaveIcon size={16} />{saving ? t('settings.savingShort') : t('settings.save')}</button
@@ -556,14 +561,14 @@
 				>
 			{/each}
 		</nav>
-		<select
-			class="input section-select"
-			aria-label={t('settings.section')}
-			value={activeSection}
-			onchange={(event) => goToSection(event.currentTarget.value)}
-		>
-			{#each SECTIONS as section (section.id)}<option value={section.id}>{sectionLabel(section.id)}</option>{/each}
-		</select>
+		<div class="section-select">
+			<Select
+				label={t('settings.section')}
+				value={activeSection}
+				onchange={goToSection}
+				options={SECTIONS.map((section) => ({ value: section.id, label: sectionLabel(section.id) }))}
+			/>
+		</div>
 
 		<div class="settings-scroll" tabindex="-1" bind:this={scroller} onscroll={updateActive}>
 			{#if searching && !matches.size}
@@ -657,16 +662,17 @@
 									</div>
 									<div class="theme-row">
 										<label class="theme-label" for="ui-language">{t('settings.language')}</label>
-										<select
+										<Select
 											id="ui-language"
-											class="input language"
+											class="language"
 											value={language.preference}
-											onchange={(event) => changeLanguage(event.currentTarget.value as LanguagePreference)}
-										>
-											<option value="system">{t('settings.languageSystem')}</option>
-											<option value="en">English</option>
-											<option value="ru">Русский</option>
-										</select>
+											onchange={(next) => changeLanguage(next as LanguagePreference)}
+											options={[
+												{ value: 'system', label: t('settings.languageSystem') },
+												{ value: 'en', label: 'English' },
+												{ value: 'ru', label: 'Русский' },
+											]}
+										/>
 									</div>
 								{:else if custom && section.id === 'app' && group === 'Files'}
 									<AppFiles />
@@ -675,23 +681,19 @@
 										{t('settings.proxyHelp')}
 									</p>
 									<div class="proxy-list">
-										<label class="proxy-radio"
-											><input
-												type="radio"
-												name="active-proxy"
-												checked={activeProxy === ''}
-												onchange={() => handleChange('active_proxy_url', '')}
-											/>{t('settings.directConnection')}</label
+										<Radio
+											name="active-proxy"
+											checked={activeProxy === ''}
+											onchange={() => handleChange('active_proxy_url', '')}>{t('settings.directConnection')}</Radio
 										>
 										{#each proxies as proxy, i (i)}
 											<div class="proxy-row">
-												<input
-													type="radio"
+												<Radio
 													name="active-proxy"
 													checked={proxy.url !== '' && activeProxy === proxy.url}
 													disabled={proxy.url === ''}
 													onchange={() => handleChange('active_proxy_url', proxy.url)}
-													aria-label={t('settings.useProxy')}
+													label={t('settings.useProxy')}
 												/>
 												<input
 													class="input proxy-name"
@@ -904,6 +906,9 @@
 		.section-select {
 			display: block;
 		}
+		.section-select :global(.select) {
+			width: 100%;
+		}
 	}
 	.settings-scroll {
 		min-height: 0;
@@ -1025,7 +1030,7 @@
 		color: var(--app-muted);
 		font-size: var(--app-text-sm);
 	}
-	select.language {
+	:global(.select.language) {
 		width: auto;
 		min-width: 180px;
 	}
@@ -1064,11 +1069,6 @@
 		flex-direction: column;
 		gap: 8px;
 		margin: 12px 0;
-	}
-	.proxy-radio {
-		display: flex;
-		align-items: center;
-		gap: 8px;
 	}
 	.proxy-row {
 		display: flex;

@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
 	import { CopyIcon, EllipsisIcon, EyeIcon } from '@lucide/svelte';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
 	import type { MenuItem } from '$lib/components/common/ContextMenu.svelte';
@@ -56,24 +58,20 @@
 		onmenu({ x: event.clientX, y: event.clientY });
 	}}
 >
-	<label class="check" title={selected ? 'Deselect' : 'Select'}
-		><input
-			type="checkbox"
-			checked={selected}
-			onchange={ontoggle}
-			aria-label={t('links.selectOne', { title: link.title || link.url })}
-		/></label
+	<span class="check"
+		><Checkbox checked={selected} onchange={ontoggle} label={t('links.selectOne', { title: link.title || link.url })} /></span
 	>
+
 	<div class="body">
 		<div class="site-line">
 			<SiteIcon domain={view.domain} host={view.host} />
-			<span class="site" title={link.url}
+			<span class="site" use:tooltip={link.url}
 				>{view.domain}{#if view.path}<span class="path">{` › ${view.path}`}</span>{/if}</span
 			>
-			{#if visited}<span class="visited-mark" title={t('links.openedBefore')}
+			{#if visited}<span class="visited-mark" use:tooltip={t('links.openedBefore')}
 					><EyeIcon size={12} />{t('links.visited')}</span
 				>{/if}
-			{#if view.tier}<span class="tier {view.tier}" title={tierTitle}>{tierLabel(view.tier)}</span
+			{#if view.tier}<span class="tier {view.tier}" use:tooltip={tierTitle}>{tierLabel(view.tier)}</span
 				>{/if}
 		</div>
 		<h3>
@@ -92,7 +90,7 @@
 					class:expanded
 					aria-expanded={expanded}
 					onclick={() => (expanded = !expanded)}
-					title={expanded ? t('common.showLess') : t('common.showMore')}
+					use:tooltip={expanded ? t('common.showLess') : t('common.showMore')}
 				>
 					<span class="text">{link.description}</span>
 					{#if expanded && link.reason}<span class="reason"
@@ -113,14 +111,14 @@
 		<button
 			class="icon-button ghost sm"
 			aria-label={t('links.copyLinkOf', { title: link.title || link.url })}
-			title={t('links.copy')}
+			use:tooltip={t('links.copy')}
 			onclick={() => copyWithToast(link.url, t('links.copied'))}><CopyIcon size={15} /></button
 		>
 		<button
 			class="icon-button ghost sm"
 			aria-label={t('links.moreActionsFor', { title: link.title || link.url })}
 			aria-haspopup="menu"
-			title={t('links.moreActions')}
+			use:tooltip={t('links.moreActions')}
 			onclick={(event) => onmenu(menuPointFor(event.currentTarget))}
 			><EllipsisIcon size={15} /></button
 		>

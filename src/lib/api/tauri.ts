@@ -50,6 +50,10 @@ export function copyText(text: string): Promise<void> {
 	return invoke('copy_text', { text });
 }
 
+export function pasteText(): Promise<string> {
+	return invoke('paste_text');
+}
+
 export function getRowSources(rowId: string): Promise<RowSource[]> {
 	return invoke('get_row_sources', { rowId });
 }

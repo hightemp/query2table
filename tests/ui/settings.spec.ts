@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures';
+import { test, expect, choose } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const calls = (page: Page, command: string) =>
@@ -24,7 +24,7 @@ test('Sections are listed on the left and follow the scroll', async ({ page }) =
 test('A narrow window picks sections from a menu', async ({ page }) => {
 	await page.setViewportSize({ width: 900, height: 700 });
 	await page.goto('/settings');
-	await page.getByRole('combobox', { name: 'Settings section' }).selectOption('runs');
+	await choose(page.getByRole('combobox', { name: 'Settings section' }), 'Runs');
 	await expect(page.getByRole('heading', { name: 'Runs', level: 2 })).toBeInViewport();
 });
 
@@ -116,13 +116,13 @@ test('Connections can be tested with the values in the form', async ({ page }) =
 
 test('Local Ollama and OpenAI-compatible servers list their models', async ({ page }) => {
 	await page.goto('/settings');
-	await page.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('ollama');
+	await choose(page.getByRole('combobox', { name: 'Provider', exact: true }), 'Ollama (local)');
 	const model = page.getByRole('combobox', { name: 'Model', exact: true });
 	await model.click();
 	await page.getByRole('option', { name: 'qwen3:8b' }).click();
 	await expect(model).toHaveValue('qwen3:8b');
 	expect((await calls(page, 'list_ollama_models'))[0].args).toEqual({ baseUrl: 'http://localhost:11434' });
-	await page.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('openai_compatible');
+	await choose(page.getByRole('combobox', { name: 'Provider', exact: true }), /OpenAI-compatible/);
 	await page.getByRole('combobox', { name: 'Model', exact: true }).click();
 	await expect(page.getByRole('option', { name: 'local-model' })).toBeVisible();
 });
@@ -156,7 +156,8 @@ test('Application settings include the theme and files show full paths', async (
 	await theme.getByRole('radio', { name: 'Dark' }).check();
 	await expect(page.locator('html')).toHaveClass(/dark/);
 	const data = page.getByLabel('Application data', { exact: true });
-	await expect(data).toHaveAttribute('title', /long-folder\/long-folder/);
+	await data.hover();
+	await expect(page.getByRole('tooltip')).toHaveText(/long-folder\/long-folder/);
 });
 
 test('Settings can be exported and imported as a file', async ({ page }) => {

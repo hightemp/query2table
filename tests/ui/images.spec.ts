@@ -1,4 +1,4 @@
-import { test, expect, viewRun } from './fixtures';
+import { test, expect, viewRun, choose } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const svg = (color: string, w: number, h: number) =>
@@ -142,18 +142,18 @@ test('Rows keep image proportions and broken thumbnails fall back to the origina
 
 test('Images can be searched, filtered by site and size, and sorted', async ({ page }) => {
 	await openGallery(page);
-	await page.getByLabel('Minimum size').selectOption('1000');
+	await choose(page.getByLabel('Minimum size'), '≥ 1000 px');
 	await expect(page.locator('.tile')).toHaveCount(2);
 	await expect(page.getByRole('status').filter({ hasText: 'of 3 images' })).toHaveText('2 of 3 images');
-	await page.getByLabel('Source site').selectOption('news.example');
+	await choose(page.getByLabel('Source site'), /^news\.example/);
 	await expect(page.locator('.tile')).toHaveCount(1);
 	await page.getByLabel('Search images').fill('nothing');
 	await expect(page.getByText('No images match these filters.')).toBeVisible();
 	await page.getByRole('button', { name: 'Reset filters' }).click();
 	await expect(page.locator('.tile')).toHaveCount(3);
-	await page.getByLabel('Sort images').selectOption('size');
+	await choose(page.getByLabel('Sort images'), 'Largest first');
 	await expect(page.locator('.tile').first()).toContainText('Portrait');
-	await page.getByLabel('Sort images').selectOption('found');
+	await choose(page.getByLabel('Sort images'), 'Found order');
 	await expect(page.locator('.tile').first()).toContainText('Wide tower');
 	// Scores differ, so they are shown.
 	await expect(page.locator('.tile').first()).toContainText('90% match');
@@ -242,7 +242,7 @@ test('Images have their own context menu instead of the webview one', async ({ p
 	await expect(page.getByRole('menu')).toHaveCount(0);
 });
 
-test('The webview menu stays only in text fields and on selected text', async ({ page }) => {
+test('The webview menu is replaced by the app menu in text fields and on selected text', async ({ page }) => {
 	await openGallery(page);
 	const prevented = (selector: string) =>
 		page.locator(selector).first().evaluate((element) => {
@@ -251,8 +251,25 @@ test('The webview menu stays only in text fields and on selected text', async ({
 			return event.defaultPrevented;
 		});
 	expect(await prevented('.sidebar')).toBe(true);
-	expect(await prevented('h1')).toBe(true);
-	expect(await prevented('input[type="search"]')).toBe(false);
+	expect(await prevented('input[type="search"]')).toBe(true);
+	await page.keyboard.press('Escape');
+
+	const search = page.locator('input[type="search"]').first();
+	await search.fill('robot arm');
+	await search.selectText();
+	await search.click({ button: 'right' });
+	const menu = page.getByRole('menu', { name: 'Text' });
+	await expect(menu.getByRole('menuitem')).toHaveText(['Cut', 'Copy', 'Paste', 'Select all']);
+	await menu.getByRole('menuitem', { name: 'Cut' }).click();
+	await expect(search).toHaveValue('');
+	await search.click({ button: 'right' });
+	await expect(menu.getByRole('menuitem', { name: 'Copy' })).toBeDisabled();
+	await menu.getByRole('menuitem', { name: 'Paste' }).click();
+	await expect(search).toHaveValue('robot arm');
+
+	// Selecting with the mouse leaves the field first; WebKit drops a selection made while it is focused.
+	await search.blur();
 	await page.locator('h1').selectText();
-	expect(await prevented('h1')).toBe(false);
+	await page.locator('h1').click({ button: 'right', position: { x: 12, y: 12 } });
+	await expect(menu.getByRole('menuitem')).toHaveText(['Copy']);
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { formatDateTime, t, type MessageKey } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import type { HistoryRun } from '$lib/types';
@@ -11,6 +12,8 @@
 		EllipsisIcon,
 	} from '@lucide/svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
+
 	import { isMenuKey } from '$lib/components/common/ContextMenu.svelte';
 	import { relativeTime, runSummary } from '$lib/utils/history';
 	import { statusLabel, statusTone } from '$lib/utils/status';
@@ -70,14 +73,14 @@
 		onmenu({ x: event.clientX, y: event.clientY });
 	}}
 >
-	<input
-		type="checkbox"
-		class="select"
-		aria-label={t('history.selectRun', { name })}
-		checked={selected}
-		onclick={(event) => onselect(event.currentTarget.checked, event.shiftKey)}
-	/>
-	<span class="type" title={['table', 'images', 'links', 'research'].includes(run.run_type) ? t(`mode.${run.run_type}` as MessageKey) : run.run_type}><Icon size={16} /></span>
+	<span class="select"
+		><Checkbox
+			label={t('history.selectRun', { name })}
+			checked={selected}
+			onclick={(event) => onselect(event.currentTarget.checked, event.shiftKey)}
+		/></span
+	>
+	<span class="type" use:tooltip={['table', 'images', 'links', 'research'].includes(run.run_type) ? t(`mode.${run.run_type}` as MessageKey) : run.run_type}><Icon size={16} /></span>
 	<div class="main">
 		<div class="title-line">
 			{#if renaming}
@@ -106,14 +109,14 @@
 					}}>{name}</a
 				>
 			{/if}
-			{#if run.pinned_at}<span class="pin" title={t('history.pinned')}><PinIcon size={13} /></span>{/if}
+			{#if run.pinned_at}<span class="pin" use:tooltip={t('history.pinned')}><PinIcon size={13} /></span>{/if}
 		</div>
 		<p class="meta">
 			{#if run.title}<span class="query">{run.query}</span>{/if}
 			{#each meta as item}<span>{item}</span>{/each}
 			{#if run.error && run.status === 'failed'}<span class="error">{presentError(run.error).title}</span
 				>{/if}
-			<time datetime={new Date(run.created_at * 1000).toISOString()} title={formatDateTime(run.created_at, { dateStyle: 'full', timeStyle: 'short' })}
+			<time datetime={new Date(run.created_at * 1000).toISOString()} use:tooltip={formatDateTime(run.created_at, { dateStyle: 'full', timeStyle: 'short' })}
 				>{relativeTime(run.created_at, now)}</time
 			>
 		</p>

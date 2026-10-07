@@ -1,4 +1,4 @@
-import { test, expect, viewRun } from './fixtures';
+import { test, expect, viewRun, choose } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const calls = (page: Page, command: string) =>
@@ -70,10 +70,10 @@ test('History searches, filters by type and status, and sorts', async ({ page })
 	await page.getByRole('button', { name: 'Clear filters' }).click();
 	await expect(page.locator('.history-row')).toHaveCount(4);
 
-	await page.getByLabel('Status').selectOption('failed');
+	await choose(page.getByLabel('Status'), 'Failed');
 	expect((await calls(page, 'list_history')).at(-1).args.filter.status).toBe('failed');
-	await page.getByLabel('Status').selectOption('any');
-	await page.getByLabel('Sort').selectOption('oldest');
+	await choose(page.getByLabel('Status'), 'Any status');
+	await choose(page.getByLabel('Sort'), 'Oldest first');
 	await expect(page.locator('.history-row').first()).toContainText('Saved table research');
 });
 
@@ -141,7 +141,7 @@ test('Selected runs can be deleted or exported together', async ({ page }) => {
 	await bar.getByRole('button', { name: 'Export…' }).click();
 	const dialog = page.getByRole('dialog', { name: 'Export runs' });
 	await expect(dialog).toContainText('Research conversations are saved as Markdown.');
-	await dialog.getByLabel('Format for tables, links and images').selectOption('xlsx');
+	await choose(dialog.getByLabel('Format for tables, links and images'), 'Excel');
 	await dialog.getByRole('button', { name: 'Choose folder and export' }).click();
 	await expect(dialog).toContainText('Exported 2 files to /tmp/exports');
 	const [exported] = await calls(page, 'export_runs');

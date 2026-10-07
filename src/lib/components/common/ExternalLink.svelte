@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import type { Snippet } from 'svelte';
 	import type { MenuItem } from './ContextMenu.svelte';
@@ -34,7 +35,7 @@
 
 <a
 	{href}
-	title={href}
+	use:tooltip={href}
 	class={className}
 	onclick={open}
 	aria-haspopup="menu"

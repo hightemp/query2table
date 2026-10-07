@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n';
+	import Select from '$lib/components/common/Select.svelte';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { FolderOpenIcon } from '@lucide/svelte';
 	import Dialog from '$lib/components/common/Dialog.svelte';
@@ -40,11 +41,16 @@
 			{t('bulk.description', { count: runIds.length })}
 		</p>
 		<label class="field"
-			>{t('bulk.format')}<select class="input" bind:value={format} disabled={exporting}>
-				<option value="csv">CSV</option>
-				<option value="json">JSON</option>
-				<option value="xlsx">{t('export.excel')}</option>
-			</select></label
+			>{t('bulk.format')}<Select
+				bind:value={format}
+				disabled={exporting}
+				options={[
+					{ value: 'csv', label: 'CSV' },
+					{ value: 'json', label: 'JSON' },
+					{ value: 'xlsx', label: t('export.excel') },
+				]}
+			/></label
+
 		>
 		<p class="note">{t('bulk.markdownNote')}</p>
 	{/if}

@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
+	import NumberInput from '$lib/components/common/NumberInput.svelte';
 	import { onMount, untrack } from 'svelte';
 	import {
 		runState,
@@ -319,7 +321,7 @@
 					</div>
 				{/if}
 				<div class="connection-summary">
-					<span>{providerNames[provider] ?? provider}</span><span class="model-name" title={model}
+					<span>{providerNames[provider] ?? provider}</span><span class="model-name" use:tooltip={{ text: model, whenTruncated: true }}
 						>{model}</span
 					><a href="/settings#settings-llm">{t('query.configure')}</a>
 				</div>
@@ -355,10 +357,8 @@
 					<div class="stop-conditions" id="stop-conditions">
 						<div class="stop-fields">
 							<label for="targetRows"
-								>{mode.targetLabel}<input
+								>{mode.targetLabel}<NumberInput
 									id="targetRows"
-									class="input"
-									type="number"
 									min="1"
 									step="1"
 									inputmode="numeric"
@@ -374,10 +374,8 @@
 									>{/if}</label
 							>
 							<label for="maxBudget"
-								>{t('query.maxCost')}<input
+								>{t('query.maxCost')}<NumberInput
 									id="maxBudget"
-									class="input"
-									type="number"
 									min="0.01"
 									step="0.01"
 									inputmode="decimal"
@@ -393,10 +391,8 @@
 									>{/if}</label
 							>
 							<label for="maxDuration"
-								>{t('query.maxDuration')}<input
+								>{t('query.maxDuration')}<NumberInput
 									id="maxDuration"
-									class="input"
-									type="number"
 									min="1"
 									step="1"
 									inputmode="numeric"
@@ -706,11 +702,8 @@
 		font-size: var(--app-text-sm);
 		color: var(--app-muted);
 	}
-	.stop-fields input {
+	.stop-fields :global(.number-input) {
 		margin-top: 4px;
-	}
-	.stop-fields input[aria-invalid='true'] {
-		border-color: var(--app-danger);
 	}
 	.field-error {
 		display: block;

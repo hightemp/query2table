@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { page } from '$app/stores';
 	import {
 		SearchIcon,
@@ -62,7 +63,7 @@
 			onclick={toggleSidebar}
 			aria-label={t('sidebar.toggle')}
 			aria-expanded={!$sidebarCollapsed}
-			title={t($sidebarCollapsed ? 'sidebar.expand' : 'sidebar.collapse', { shortcut: `${modKey}+B` })}
+			use:tooltip={t($sidebarCollapsed ? 'sidebar.expand' : 'sidebar.collapse', { shortcut: `${modKey}+B` })}
 		>
 			{#if $sidebarCollapsed}
 				<PanelLeftOpenIcon size={20} />
@@ -78,7 +79,7 @@
 			<a
 				href={item.href}
 				aria-label={t(item.label)}
-				title={$sidebarCollapsed ? t(item.label) : undefined}
+				use:tooltip={$sidebarCollapsed ? t(item.label) : undefined}
 				aria-current={active ? 'page' : undefined}
 				class="nav-item"
 				class:active
@@ -96,7 +97,7 @@
 				onclick={() => changeTheme(upcoming.value)}
 				disabled={savingTheme}
 				aria-label={t('theme.current', { current: t(current.label), next: t(upcoming.label) })}
-				title={t('theme.current', { current: t(current.label), next: t(upcoming.label) })}
+				use:tooltip={t('theme.current', { current: t(current.label), next: t(upcoming.label) })}
 			>
 				<current.icon size={20} />
 			</button>
@@ -108,7 +109,7 @@
 						aria-pressed={$themePreference === theme.value}
 						disabled={savingTheme}
 						aria-label={t(theme.label)}
-						title={theme.value === 'system' ? t('theme.followSystem') : t('theme.named', { name: t(theme.label) })}
+						use:tooltip={theme.value === 'system' ? t('theme.followSystem') : t('theme.named', { name: t(theme.label) })}
 						onclick={() => changeTheme(theme.value)}
 						><theme.icon size={15} />{#if $themePreference === theme.value}<span>{t(theme.label)}</span
 							>{/if}</button

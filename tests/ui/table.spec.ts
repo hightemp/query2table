@@ -1,4 +1,4 @@
-import { test, expect, viewRun, emit } from './fixtures';
+import { test, expect, viewRun, emit, choose } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const calls = (page: Page, command: string) =>
@@ -53,8 +53,9 @@ async function liveTable(page: Page) {
 test('Cells are formatted by type and headers are readable', async ({ page }) => {
 	await liveTable(page);
 	await expect(page.getByRole('button', { name: 'CEO name', exact: true })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Company name', exact: true })).toHaveAttribute(
-		'title',
+	await page.getByRole('button', { name: 'Company name', exact: true }).hover();
+	await expect(page.getByRole('tooltip')).toHaveText('Legal name');
+	await expect(page.getByRole('button', { name: 'Company name', exact: true })).toHaveAccessibleDescription(
 		'Legal name'
 	);
 	const alpha = page.locator('.data-row').nth(0);
@@ -153,10 +154,10 @@ test('Saved runs show source counts and search can target one column', async ({ 
 	await viewRun(page, 0);
 	await expect(page.locator('.data-row').first().locator('.evidence')).toContainText('1 source');
 	await expect(page.locator('.data-row').nth(1).locator('.evidence')).toContainText('2 sources');
-	await page.getByLabel('Search in column').selectOption('Count');
+	await choose(page.getByLabel('Search in column'), 'Count');
 	await page.getByRole('searchbox', { name: 'Search results' }).fill('999');
 	await expect(page.locator('.data-row')).toHaveCount(1);
-	await page.getByLabel('Search in column').selectOption('Name');
+	await choose(page.getByLabel('Search in column'), 'Name');
 	await expect(page.locator('.data-row')).toHaveCount(1);
 	await page.getByRole('searchbox', { name: 'Search results' }).fill('channel 09');
 	await expect(page.locator('.data-row').first()).toContainText('Robot channel 09');

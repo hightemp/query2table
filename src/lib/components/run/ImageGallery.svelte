@@ -1,5 +1,9 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
+	import Select from '$lib/components/common/Select.svelte';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
+
 	import type { ImageResult } from '$lib/types';
 	import ImageCard from './ImageCard.svelte';
 	import {
@@ -302,20 +306,36 @@
 					bind:value={search}
 				/></label
 			>
-			<select class="input sm" aria-label={t('images.sort')} bind:value={sort}>
-				<option value="relevance">{t('images.sortBest')}</option>
-				<option value="size">{t('images.sortLargest')}</option>
-				<option value="found">{t('images.sortFound')}</option>
-			</select>
-			{#if domains.length > 1}<select class="input sm" aria-label={t('images.site')} bind:value={domain}>
-					<option value="">{t('images.allSites')}</option>
-					{#each domains as [name, count]}<option value={name}>{name} ({count})</option>{/each}
-				</select>{/if}
-			<select class="input sm" aria-label={t('images.minSize')} bind:value={minSide}>
-				<option value={0}>{t('images.anySize')}</option>
-				<option value={1000}>≥ 1000 px</option>
-				<option value={2000}>≥ 2000 px</option>
-			</select>
+			<Select
+				size="sm"
+				label={t('images.sort')}
+				bind:value={sort}
+				options={[
+					{ value: 'relevance', label: t('images.sortBest') },
+					{ value: 'size', label: t('images.sortLargest') },
+					{ value: 'found', label: t('images.sortFound') },
+				]}
+			/>
+			{#if domains.length > 1}<Select
+					size="sm"
+					label={t('images.site')}
+					bind:value={domain}
+					options={[
+						{ value: '', label: t('images.allSites') },
+						...domains.map(([name, count]) => ({ value: name, label: `${name} (${count})` })),
+					]}
+				/>{/if}
+			<Select
+				size="sm"
+				label={t('images.minSize')}
+				bind:value={minSide}
+				options={[
+					{ value: 0, label: t('images.anySize') },
+					{ value: 1000, label: '≥ 1000 px' },
+					{ value: 2000, label: '≥ 2000 px' },
+				]}
+			/>
+
 			<span class="count" role="status"
 				>{filtered
 					? t('images.countOf', { shown: shown.length, count: images.length })
@@ -398,11 +418,10 @@
 							}}
 						>
 							<td class="check-cell"
-								><input
-									type="checkbox"
+								><Checkbox
 									checked={selectedIds.includes(view.image.id)}
 									onchange={() => toggle(view.image.id)}
-									aria-label={t('images.selectOne', { title: view.title })}
+									label={t('images.selectOne', { title: view.title })}
 								/></td
 							>
 							<td class="thumb-cell"
@@ -424,7 +443,7 @@
 										/>{:else}<ImageOffIcon size={18} />{/if}</button
 								></td
 							>
-							<td class="title-cell" title={view.title}>{view.title}</td>
+							<td class="title-cell" use:tooltip={{ text: view.title, whenTruncated: true }}>{view.title}</td>
 							<td class="muted">{view.domain}</td>
 							<td class="numeric muted">{size(view)}</td>
 							{#if showRelevance}<td class="numeric muted"
@@ -436,7 +455,7 @@
 								><button
 									class="icon-button ghost sm"
 									aria-label={t('images.copyLinkOf', { title: view.title })}
-									title={t('images.copyLink')}
+									use:tooltip={t('images.copyLink')}
 									onclick={() => copyLink(view)}><CopyIcon size={14} /></button
 								>{#if view.page}<ExternalLink href={view.page}
 										><ExternalLinkIcon size={14} /><span class="sr-only"
@@ -537,7 +556,7 @@
 		padding-bottom: 10px;
 		flex-shrink: 0;
 	}
-	.toolbar select {
+	.toolbar :global(.select) {
 		width: auto;
 		max-width: 220px;
 	}

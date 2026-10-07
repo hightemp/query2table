@@ -1,5 +1,9 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
+	import Select from '$lib/components/common/Select.svelte';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
+
 	import { untrack, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import {
@@ -300,15 +304,17 @@
 				bind:value={filterInput}
 			/></label
 		>
-		{#if schema.length > 1}<select
-				class="input sm column-filter"
-				aria-label={t('table.searchColumn')}
+		{#if schema.length > 1}<Select
+				size="sm"
+				class="column-filter"
+				label={t('table.searchColumn')}
 				bind:value={filterColumn}
-			>
-				<option value="">{t('table.allColumns')}</option>
-				{#each schema as column}<option value={column.name}>{columnLabel(column.name)}</option
-					>{/each}
-			</select>{/if}
+				options={[
+					{ value: '', label: t('table.allColumns') },
+					...schema.map((column) => ({ value: column.name, label: columnLabel(column.name) })),
+				]}
+			/>{/if}
+
 		<span class="count"
 			>{filter
 				? t('table.countOf', { shown: visibleRows.length, count: rows.length })
@@ -319,7 +325,7 @@
 				class="icon-button ghost sm"
 				aria-pressed={$density === 'compact'}
 				aria-label={t('table.compact')}
-				title={t('table.compact')}
+				use:tooltip={t('table.compact')}
 				onclick={() =>
 					density.update((value) => (value === 'compact' ? 'comfortable' : 'compact'))}
 				><Rows3Icon size={16} /></button
@@ -336,13 +342,10 @@
 					{#if columnsMenuOpen}
 						<div class="menu" id="columns-menu" role="group" aria-label={t('table.visibleColumns')}>
 							{#each schema as column}
-								<label
-									><input
-										type="checkbox"
-										checked={!hidden.includes(column.name)}
-										disabled={!hidden.includes(column.name) && visibleSchema.length === 1}
-										onchange={() => toggleColumn(column.name)}
-									/>{columnLabel(column.name)}</label
+								<Checkbox
+									checked={!hidden.includes(column.name)}
+									disabled={!hidden.includes(column.name) && visibleSchema.length === 1}
+									onchange={() => toggleColumn(column.name)}>{columnLabel(column.name)}</Checkbox
 								>
 							{/each}
 							{#if hidden.length}<button class="button ghost sm" onclick={() => (hidden = [])}
@@ -392,7 +395,7 @@
 										: 'none'}
 								><button
 									class:sorted={!!sorted}
-									title={header.id === EVIDENCE
+									use:tooltip={header.id === EVIDENCE
 										? t('table.evidenceHint')
 										: column?.description || undefined}
 									onclick={header.column.getToggleSortingHandler()}
@@ -439,7 +442,7 @@
 									class="icon-button ghost sm"
 									data-row-index={item.index}
 									aria-label={t('table.openRow', { n: item.index + 1 })}
-									title={t('table.openRowHint', { shortcut: `${modKey}+C` })}
+									use:tooltip={t('table.openRowHint', { shortcut: `${modKey}+C` })}
 									onfocus={() => {
 										focusedRowId = row.id;
 									}}
@@ -452,7 +455,7 @@
 									{@const sources = row.original.sources}
 									{@const percent = Math.round(row.original.confidence * 100)}
 									<td class="evidence"
-										><div class="confidence" title={t('table.confidence', { percent })}>
+										><div class="confidence" use:tooltip={t('table.confidence', { percent })}>
 											<span class="meter"><span style={`width:${percent}%`}></span></span>{percent}%
 										</div>
 										{#if sources !== undefined}<div class="sources">
@@ -468,7 +471,7 @@
 										class={cellClass(type, value)}
 										class:sticky={header.id === firstColumn}
 										class:first-column={header.id === firstColumn}
-										><div class="cell-preview" title={formatValue(value, true)}>
+										><div class="cell-preview" use:tooltip={{ text: formatValue(value, true), whenTruncated: !webUrl(value) }}>
 											{#if webUrl(value)}<ExternalLink
 													href={String(value)}
 													label={urlLabel(String(value))}
@@ -525,7 +528,7 @@
 	.search input {
 		width: min(320px, 40vw);
 	}
-	.column-filter {
+	:global(.select.column-filter) {
 		width: auto;
 		max-width: 180px;
 	}
@@ -559,7 +562,7 @@
 		background: var(--app-panel);
 		box-shadow: var(--app-shadow-popover);
 	}
-	.menu label {
+	.menu :global(.checkbox) {
 		display: flex;
 		align-items: center;
 		gap: 8px;
@@ -568,7 +571,7 @@
 		font-size: var(--app-text-md);
 		white-space: nowrap;
 	}
-	.menu label:hover {
+	.menu :global(.checkbox:hover) {
 		background: var(--app-subtle);
 	}
 	.table-scroll {
