@@ -78,6 +78,8 @@ pub struct MockLlmProvider {
     extract_returns_invalid: bool,
     /// Roles detected for each call, in order.
     roles: std::sync::Mutex<Vec<String>>,
+    /// User messages of each call with its role.
+    texts: std::sync::Mutex<Vec<(String, String)>>,
 }
 
 impl MockLlmProvider {
@@ -92,7 +94,13 @@ impl MockLlmProvider {
             extract_response: include_str!("../fixtures/extract_response.json").to_string(),
             extract_returns_invalid: false,
             roles: Default::default(),
+            texts: Default::default(),
         }
+    }
+
+    /// The user messages sent for one role, one string per call.
+    pub fn texts_for(&self, role: &str) -> Vec<String> {
+        self.texts.lock().unwrap().iter().filter(|(r, _)| r == role).map(|(_, t)| t.clone()).collect()
     }
 
     /// How many calls were made for one role ("schema", "extract", …).
@@ -152,6 +160,14 @@ impl LlmProvider for MockLlmProvider {
 
         let role = self.detect_role(&request);
         self.roles.lock().unwrap().push(role.to_string());
+        let text = request
+            .messages
+            .iter()
+            .filter(|m| matches!(m.role, MessageRole::User))
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        self.texts.lock().unwrap().push((role.to_string(), text));
         let content = match role {
             "interpret" => self.interpret_response.clone(),
             "schema" => self.schema_response.clone(),

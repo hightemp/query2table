@@ -4,7 +4,7 @@ use crate::providers::search::{SearchManager, SearchResult, SearchError};
 use super::search_planner::PlannedSearch;
 
 /// Collected and deduplicated search results from executing search queries.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CollectedResults {
     pub results: Vec<SearchResultWithQuery>,
     pub total_queries_executed: usize,

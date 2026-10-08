@@ -10,6 +10,9 @@
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import CopyButton from '$lib/components/common/CopyButton.svelte';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
+	import { FileTextIcon } from '@lucide/svelte';
+	import { attachmentPlace, placeLabel } from '$lib/utils/attachments';
+	import { showAttachment } from '$lib/stores/attachmentPreview';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	let {
 		row,
@@ -121,16 +124,25 @@
 				}}>{t('row.retrySources')}</button
 			>
 		{:else if !sources.length}<p class="muted">{t('row.noSources')}</p>
-		{:else}{#each sources as source}<article>
-					<div class="source-heading">
-						<ExternalLink href={source.url} label={source.title || source.url} /><CopyButton
-							text={source.url}
-							label={t('row.copySourceUrl')}
-						/>
-					</div>
-					{#if source.title}<p class="source-url">
-							{source.url}
-						</p>{/if}{#if source.snippet}<blockquote>{source.snippet}</blockquote>{/if}
+		{:else}{#each sources as source}{@const file = attachmentPlace(source.url)}<article>
+					{#if file}
+						<div class="source-heading">
+							<FileTextIcon size={15} />
+							<button class="file-source" onclick={() => showAttachment(source.url)}
+								>{placeLabel((source.title ?? '').split(', ')[0] || t('attachments.preview'), file.place)}</button
+							>
+						</div>
+					{:else}
+						<div class="source-heading">
+							<ExternalLink href={source.url} label={source.title || source.url} /><CopyButton
+								text={source.url}
+								label={t('row.copySourceUrl')}
+							/>
+						</div>
+						{#if source.title}<p class="source-url">
+								{source.url}
+							</p>{/if}
+					{/if}{#if source.snippet}<blockquote>{source.snippet}</blockquote>{/if}
 				</article>{/each}{/if}
 	</section>
 </Dialog>
@@ -197,6 +209,17 @@
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: 8px;
+	}
+	.file-source {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--app-accent);
+		font-weight: 600;
+		text-align: left;
+	}
+	.file-source:hover {
+		text-decoration: underline;
 	}
 	.source-url {
 		font-size: var(--app-text-sm);

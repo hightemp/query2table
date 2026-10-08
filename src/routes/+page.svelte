@@ -20,6 +20,7 @@
 	import { listRuns } from '$lib/api/tauri';
 	import SchemaEditor from '$lib/components/run/SchemaEditor.svelte';
 	import AttachmentBar from '$lib/components/query/AttachmentBar.svelte';
+	import FileChips from '$lib/components/common/FileChips.svelte';
 	import { attachFiles, draftAttachments, MAX_ATTACHMENTS, takeDraftAttachments } from '$lib/stores/attachments';
 	import Checkbox from '$lib/components/common/Checkbox.svelte';
 	import { filesOnlyModes } from '$lib/utils/attachments';
@@ -493,6 +494,7 @@
 				/>
 			{/snippet}
 		</RunHeader>
+		{#if !isResearchRun}<FileChips files={$runState.attachments.map((f) => f.attachment)} />{/if}
 		<div class="run-summary">
 			<div class="summary-line">
 				{#if isActive || isSchemaReview}<RunStatusPanel

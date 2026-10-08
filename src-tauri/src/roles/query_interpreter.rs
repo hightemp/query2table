@@ -13,6 +13,19 @@ pub struct QueryIntent {
     pub languages: Vec<String>,
     #[serde(default)]
     pub original_query: String,
+    /// What the attached files hold, for the roles planning the table; never from the model.
+    #[serde(skip)]
+    pub files_context: Option<String>,
+}
+
+impl QueryIntent {
+    /// The files part of a planning prompt, or nothing without files.
+    pub fn files_note(&self, max_chars: usize) -> String {
+        match &self.files_context {
+            Some(context) => format!("\n\n{}", crate::utils::text::truncate_chars(context, max_chars)),
+            None => String::new(),
+        }
+    }
 }
 
 const SYSTEM_PROMPT: &str = r#"You are a query interpreter for a research tool that converts natural-language questions into structured data collection plans.
@@ -35,15 +48,24 @@ impl QueryInterpreter {
         query: &str,
         llm: &LlmManager,
     ) -> Result<QueryIntent, LlmError> {
+        Self::interpret_with_files(query, None, llm).await
+    }
+
+    /// Interpret a query that comes with attached files; `files` describes them and holds the
+    /// passages matching the query.
+    pub async fn interpret_with_files(
+        query: &str,
+        files: Option<&str>,
+        llm: &LlmManager,
+    ) -> Result<QueryIntent, LlmError> {
         debug!(query = %query, "Interpreting query");
 
-        let messages = vec![
-            Message::system(SYSTEM_PROMPT),
-            Message::user(format!(
-                "Parse this research query into structured JSON:\n\n\"{}\"",
-                query
-            )),
-        ];
+        let mut request = format!("Parse this research query into structured JSON:\n\n\"{}\"", query);
+        if let Some(files) = files {
+            request.push_str("\n\nThe query refers to these attached files; take the entities and attributes from them when it asks about them:\n\n");
+            request.push_str(files);
+        }
+        let messages = vec![Message::system(SYSTEM_PROMPT), Message::user(request)];
 
         let response = llm.complete_for_stage("interpreter", messages, true).await?;
 
@@ -55,6 +77,7 @@ impl QueryInterpreter {
             })?;
 
         intent.original_query = query.to_string();
+        intent.files_context = files.map(str::to_string);
 
         if intent.languages.is_empty() {
             intent.languages.push("en".to_string());
@@ -79,6 +102,7 @@ mod tests {
             geo: Some("Germany".to_string()),
             languages: vec!["en".to_string(), "de".to_string()],
             original_query: "Find tech companies in Germany".to_string(),
+            files_context: None,
         };
 
         let json = serde_json::to_string(&intent).unwrap();

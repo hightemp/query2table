@@ -31,8 +31,10 @@ pub fn fts_query(text: &str) -> Option<String> {
         if (chars.len() < 3 && !(numeric && chars.len() >= 2)) || STOP_WORDS.contains(&word.as_str()) {
             continue;
         }
+        // Endings vary ("companies" / "company", "компаний" / "компания"): longer words lose more.
+        let cut = if chars.len() >= 8 { 3 } else { 2 };
         let term = if chars.len() >= 6 && !numeric {
-            format!("\"{}\"*", chars[..chars.len() - 2].iter().collect::<String>())
+            format!("\"{}\"*", chars[..chars.len() - cut].iter().collect::<String>())
         } else {
             format!("\"{word}\"")
         };
@@ -128,8 +130,8 @@ mod tests {
 
     #[test]
     fn queries_keep_meaningful_words_and_stem_long_ones() {
-        assert_eq!(fts_query("Find the competitors of Acme in 2025").as_deref(), Some("\"competito\"* OR \"acme\" OR \"2025\""));
-        assert_eq!(fts_query("Найди цены компаний").as_deref(), Some("\"цены\" OR \"компан\"*"));
+        assert_eq!(fts_query("Find the competitors of Acme in 2025").as_deref(), Some("\"competit\"* OR \"acme\" OR \"2025\""));
+        assert_eq!(fts_query("Найди цены компаний").as_deref(), Some("\"цены\" OR \"компа\"*"));
         assert_eq!(fts_query("a, of — ?"), None);
         // Quotes in the text cannot break the query.
         assert_eq!(fts_query("say \"hello\" OR").as_deref(), Some("\"say\" OR \"hello\""));

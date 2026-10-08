@@ -94,6 +94,7 @@ export const test = base.extend({
 				failSave: false,
 				clipboard: '',
 				runAttachments: [] as unknown[],
+				rowSources: null as unknown[] | null,
 				visionDetected: false as boolean | null,
 				dialogFiles: ['/docs/report.pdf', '/docs/prices.xlsx'] as string[] | null,
 				failDelete: false,
@@ -201,6 +202,7 @@ export const test = base.extend({
 						case 'get_run_issues':
 							return [];
 						case 'get_row_sources':
+							if (fixture.rowSources) return fixture.rowSources;
 							return [
 								{
 									id: 'source',

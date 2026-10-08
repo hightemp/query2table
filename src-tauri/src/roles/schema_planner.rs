@@ -42,11 +42,16 @@ impl SchemaPlanner {
         let messages = vec![
             Message::system(SYSTEM_PROMPT),
             Message::user(format!(
-                "Design a table schema for collecting data about: {}\n\nDesired attributes: {}\nConstraints: {}\nGeo focus: {}",
+                "Design a table schema for collecting data about: {}\n\nDesired attributes: {}\nConstraints: {}\nGeo focus: {}{}",
                 intent.entity_type,
                 intent.attributes.join(", "),
                 intent.constraints.join(", "),
                 intent.geo.as_deref().unwrap_or("none"),
+                if intent.files_context.is_some() {
+                    format!("\n\nAttached files (when they hold the data, base the columns on their fields):{}", intent.files_note(6000))
+                } else {
+                    String::new()
+                },
             )),
         ];
 

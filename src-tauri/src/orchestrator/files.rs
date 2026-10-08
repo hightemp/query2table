@@ -73,6 +73,26 @@ impl RunFiles {
         vision::prepare(&self.store, llm, &self.plan, &self.ids(), max_pages).await
     }
 
+    /// For extraction: reads scans and describes every picture, so all content is text.
+    pub async fn prepare_as_text(&self, llm: &LlmManager, max_pages: u32) -> VisionReport {
+        let plan = VisionPlan { main_sees: false, ..self.plan.clone() };
+        vision::prepare(&self.store, llm, &plan, &self.ids(), max_pages).await
+    }
+
+    /// Every fragment of the files, in file order, at most `limit`.
+    pub async fn fragments(&self, limit: usize) -> Vec<FragmentHit> {
+        let mut out = Vec::new();
+        for file in &self.files {
+            let hits = retrieve::at(self.store.pool(), &file.id, &Locator::default(), usize::MAX).await.unwrap_or_default();
+            out.extend(hits);
+            if out.len() >= limit {
+                out.truncate(limit);
+                break;
+            }
+        }
+        out
+    }
+
     /// The first message about the files: each file's overview with its cite address, then the
     /// fragments that best match `question`, within `budget` characters of fragment text.
     pub async fn context(&self, question: &str, budget: usize) -> String {
@@ -86,7 +106,13 @@ impl RunFiles {
             let outline: String = outline.chars().take(OVERVIEW_CHARS).collect();
             out.push_str(&format!("\n[{}] {} — attachment://{}\n{}\n", file.label, file.file_name, file.id, outline));
         }
-        let hits = retrieve::search(self.store.pool(), &self.ids(), question, 12).await.unwrap_or_default();
+        let mut hits = retrieve::search(self.store.pool(), &self.ids(), question, 12).await.unwrap_or_default();
+        if hits.is_empty() {
+            // Nothing matches the wording ("make a table from this file"): show how each file begins.
+            for file in &self.files {
+                hits.extend(retrieve::at(self.store.pool(), &file.id, &Locator::default(), 1).await.unwrap_or_default());
+            }
+        }
         let mut used = 0;
         let mut shown = Vec::new();
         for hit in hits {

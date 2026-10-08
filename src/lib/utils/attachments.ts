@@ -9,7 +9,7 @@ export const ATTACHMENT_EXTENSIONS = {
 };
 
 /** Modes that can answer from the attached files alone, without searching the web. */
-export const filesOnlyModes: string[] = ['research'];
+export const filesOnlyModes: string[] = ['research', 'table'];
 
 export function formatSize(bytes: number): string {
 	if (bytes < 1024 * 1024) return t('attachments.kb', { size: formatNumber(Math.max(1, Math.round(bytes / 1024))) });

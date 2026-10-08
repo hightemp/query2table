@@ -26,6 +26,16 @@ use super::budget_tracker::BudgetTracker;
 use super::events::{EventPublisher, ProgressStats};
 use super::fetch_pool::{self, FetchJob, FetchResult};
 use super::extract_pool::{self, ExtractionJob, ExtractResult};
+use super::files::RunFiles;
+use crate::attachments::store::AttachmentStore;
+use crate::providers::llm::capabilities::VisionPlan;
+use crate::roles::document_parser::ParsedDocument;
+use crate::roles::search_executor::CollectedResults;
+
+/// Most file fragments extracted in one run (about 1.2 million characters).
+const MAX_FILE_FRAGMENTS: usize = 400;
+/// Characters of matching file fragments given to the interpreter and schema planner.
+const FILE_CONTEXT_CHARS: usize = 6000;
 
 /// Pipeline configuration derived from settings.
 #[derive(Debug, Clone)]
@@ -275,26 +285,37 @@ impl Pipeline {
                 .with_accounting(self.budget.observer()),
             )
         };
-        let search = if let Some(search) = self.search_override.take() {
-            Arc::new(
+        // A files-only run neither needs nor uses a search provider.
+        let search_override = self.search_override.take();
+        let search = if !self.config.web_search {
+            None
+        } else if let Some(search) = search_override {
+            Some(Arc::new(
                 search
                     .as_ref()
                     .clone()
                     .with_accounting(self.budget.observer()),
-            )
+            ))
         } else {
-            Arc::new(
+            Some(Arc::new(
                 SearchManager::from_config(self.config.search.clone())
                     .map_err(|e| PipelineError::Config(format!("Search: {e}")))?
                     .with_accounting(self.budget.observer()),
-            )
+            ))
         };
+
+        // Attached files: scans read and pictures described, so all of them can be extracted.
+        let files = self.load_files(&llm).await;
 
         // --- Phase 1: Interpret query ---
         self.set_state(PipelineState::Interpreting).await;
         self.log("INFO", "interpreter", "Analyzing query with LLM...").await;
 
-        let intent = QueryInterpreter::interpret(&self.query, &llm)
+        let files_context = match &files {
+            Some(files) => Some(files.context(&self.query, FILE_CONTEXT_CHARS).await),
+            None => None,
+        };
+        let intent = QueryInterpreter::interpret_with_files(&self.query, files_context.as_deref(), &llm)
             .await
             .map_err(|e| PipelineError::Llm(format!("Interpreter: {e}")))?;
 
@@ -362,8 +383,52 @@ impl Pipeline {
         self.repo.confirm_run_schema(&self.run_id).await
             .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
-        // --- Phase 4: Search planning ---
         self.set_state(PipelineState::Running).await;
+        let (all_queries, collected, pending_results) = match &search {
+            Some(search) => self.search_web(&intent, &confirmed_columns, &llm, search).await?,
+            None => {
+                self.log("INFO", "search_planner", "Web search is off: building the table from the attached files").await;
+                (Vec::new(), CollectedResults::default(), Vec::new())
+            }
+        };
+
+        // --- Phase 6: Fetch + Extract loop ---
+        let file_fragments = match &files {
+            Some(files) => files.fragments(MAX_FILE_FRAGMENTS).await,
+            None => Vec::new(),
+        };
+        if !file_fragments.is_empty() {
+            self.log("INFO", "extractor", &format!("Extracting rows from {} file fragment(s)", file_fragments.len())).await;
+        }
+        let file_count = file_fragments.len();
+        let total_pages = pending_results.len() + file_count;
+        self.log("INFO", "fetcher", &format!("Fetching {} pages (max {} parallel)...", pending_results.len(), self.config.max_parallel_fetches)).await;
+        let fetcher = if let Some(f) = self.fetcher_override.take() {
+            f
+        } else {
+            let rate_limiter = RateLimiter::new(std::time::Duration::from_millis(self.config.rate_limit_ms));
+            Arc::new(
+                HttpFetcher::new(rate_limiter)
+                    .with_max_body_bytes(self.config.max_page_size_bytes)
+                    .with_timeout(std::time::Duration::from_secs(self.config.fetch_timeout_secs)),
+            )
+        };
+        self.fetch_and_extract(llm, confirmed_columns, all_queries, collected, pending_results, file_fragments, total_pages, fetcher)
+            .await
+    }
+
+    /// Phases 4 and 5: plans the search queries, runs them and saves the results to fetch.
+    async fn search_web(
+        &mut self,
+        intent: &crate::roles::query_interpreter::QueryIntent,
+        confirmed_columns: &[SchemaColumn],
+        llm: &Arc<LlmManager>,
+        search: &Arc<SearchManager>,
+    ) -> Result<(Vec<crate::roles::search_planner::PlannedSearch>, CollectedResults, Vec<crate::storage::repository::SearchResultRow>), PipelineError> {
+        let intent = intent.clone();
+        let confirmed_columns = confirmed_columns.to_vec();
+        let llm = llm.clone();
+        // --- Phase 4: Search planning ---
         self.log("INFO", "search_planner", "Generating search queries with LLM...").await;
 
         let search_plan = SearchPlanner::plan(
@@ -449,23 +514,26 @@ impl Pipeline {
             ).await.map_err(|e| PipelineError::Storage(e.to_string()))?;
         }
 
-        // --- Phase 6: Fetch + Extract loop ---
         let pending_results = self.repo.get_pending_search_results(&self.run_id).await
             .map_err(|e| PipelineError::Storage(e.to_string()))?;
+        Ok((all_queries, collected, pending_results))
+    }
 
-        let total_pages = pending_results.len();
-        self.log("INFO", "fetcher", &format!("Fetching {} pages (max {} parallel)...", total_pages, self.config.max_parallel_fetches)).await;
-        let fetcher = if let Some(f) = self.fetcher_override.take() {
-            f
-        } else {
-            let rate_limiter = RateLimiter::new(std::time::Duration::from_millis(self.config.rate_limit_ms));
-            Arc::new(
-                HttpFetcher::new(rate_limiter)
-                    .with_max_body_bytes(self.config.max_page_size_bytes)
-                    .with_timeout(std::time::Duration::from_secs(self.config.fetch_timeout_secs)),
-            )
-        };
-
+    /// Phases 6 to 8: extracts rows from file fragments and fetched pages, deduplicates them and
+    /// finishes the run.
+    #[allow(clippy::too_many_arguments)]
+    async fn fetch_and_extract(
+        &mut self,
+        llm: Arc<LlmManager>,
+        confirmed_columns: Vec<SchemaColumn>,
+        all_queries: Vec<crate::roles::search_planner::PlannedSearch>,
+        collected: CollectedResults,
+        pending_results: Vec<crate::storage::repository::SearchResultRow>,
+        file_fragments: Vec<crate::attachments::retrieve::FragmentHit>,
+        total_pages: usize,
+        fetcher: Arc<HttpFetcher>,
+    ) -> Result<PipelineState, PipelineError> {
+        let file_count = file_fragments.len();
         // Compute truncation limits (None means no truncation)
         let max_pdf_chars = if self.config.enable_content_truncation {
             Some(self.config.max_pdf_text_chars)
@@ -492,6 +560,28 @@ impl Pipeline {
             max_extraction_chars,
             self.control.pause_signal(),
         );
+
+        // File fragments go first: they are what the user brought. A separate sender keeps the
+        // extraction channel open until all of them are queued.
+        if !file_fragments.is_empty() {
+            let files_tx = extract_tx.clone();
+            tokio::spawn(async move {
+                for fragment in file_fragments {
+                    let job = ExtractionJob {
+                        // Files have no fetched page; the row source keeps the file's address.
+                        fetched_page_id: String::new(),
+                        document: ParsedDocument {
+                            title: fragment.locator.label(&fragment.file_name),
+                            text: fragment.text,
+                            url: fragment.url,
+                        },
+                    };
+                    if files_tx.send(job).await.is_err() {
+                        break;
+                    }
+                }
+            });
+        }
 
         // Submit fetch jobs in a background task to avoid deadlock:
         // If we submit all jobs synchronously before reading results, the result
@@ -601,7 +691,10 @@ impl Pipeline {
                     match extract_result {
                         Some(ExtractResult::Success(output)) => {
                             extract_pending = extract_pending.saturating_sub(1);
-
+                            if output.fetched_page_id.is_empty() {
+                                // A file fragment counts as a page read.
+                                pages_fetched += 1;
+                            }
 
                             // Validate extracted rows
                             let validated = Validator::validate(&output.rows, &confirmed_columns, self.config.min_confidence);
@@ -627,7 +720,7 @@ impl Pipeline {
                                     &row.source_url,
                                     Some(&row.source_title),
                                     None,
-                                    Some(&output.fetched_page_id),
+                                    Some(output.fetched_page_id.as_str()).filter(|id| !id.is_empty()),
                                 ).await.map_err(|e| PipelineError::Storage(e.to_string()))?;
 
                                 saved_row_ids.push(row_id.clone());
@@ -725,6 +818,7 @@ impl Pipeline {
             "rows_found": final_count,
             "pages_fetched": pages_fetched,
             "pages_failed": pages_failed,
+            "file_fragments": file_count,
             "queries_executed": collected.total_queries_executed,
             "queries_failed": collected.failed_queries,
             "duplicates_merged": dedup_result.duplicates_merged,
@@ -745,6 +839,32 @@ impl Pipeline {
         )).await;
 
         Ok(PipelineState::Completed)
+    }
+
+    /// The run's files with scans read and pictures described; None when nothing is attached.
+    async fn load_files(&self, llm: &LlmManager) -> Option<RunFiles> {
+        let store = AttachmentStore::new(self.repo.pool().clone(), self.config.attachments_dir.clone());
+        let plan = || VisionPlan::for_config(&self.config.llm, &self.config.llm_vision, &self.config.vision_model);
+        let files = match RunFiles::load_with(store, &self.run_id, plan).await {
+            Ok(Some(files)) => files,
+            Ok(None) => return None,
+            Err(e) => {
+                self.log("WARN", "files", &format!("Could not load the attached files: {e}")).await;
+                return None;
+            }
+        };
+        let report = files.prepare_as_text(llm, self.config.vision_max_pages).await;
+        if report.pages_read + report.images_described > 0 {
+            self.log("INFO", "files", &format!("Read {} scanned page(s) and described {} picture(s)", report.pages_read, report.images_described)).await;
+        }
+        if report.pages_skipped > 0 {
+            let reason = if files.plan.reader.is_none() { "no model for images is set up" } else { "the run's page limit was reached" };
+            self.log("WARN", "files", &format!("{} scanned page(s) were not read: {reason}", report.pages_skipped)).await;
+        }
+        if report.pages_failed + report.images_failed > 0 {
+            self.log("WARN", "files", &format!("{} scanned page(s) and {} picture(s) could not be read", report.pages_failed, report.images_failed)).await;
+        }
+        Some(files)
     }
 
     async fn wait_for_schema_confirmation(

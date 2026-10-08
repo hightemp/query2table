@@ -1,4 +1,5 @@
 <script lang="ts">
+	import FileChips from '$lib/components/common/FileChips.svelte';
 	import { formatDateTime, t, type MessageKey } from '$lib/i18n';
 	import { onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
@@ -148,6 +149,12 @@
 				.finally(() => {
 					if (current === request) issuesLoading = false;
 				});
+			// Files of every kind of run: research shows them by question, others under the header.
+			void getRunAttachments(id)
+				.then((files) => {
+					if (current === request) researchFiles = files ?? [];
+				})
+				.catch(() => {});
 			if (found.run_type === 'images') {
 				const result = await getImageResults(id);
 				if (current === request) images = result;
@@ -161,7 +168,6 @@
 				researchAnswer = result.answer_markdown;
 				researchTurns = researchTurnsFrom(result, found.query, found.status);
 				researchLimits = result.turns?.[0]?.limits ?? null;
-				researchFiles = await getRunAttachments(found.id).catch(() => []);
 			} else {
 				const [schemaInfo, saved] = await Promise.all([getRunSchema(id), getRunRows(id)]);
 				if (current !== request) return;
@@ -311,6 +317,7 @@
 				>
 			{/snippet}
 		</RunHeader>
+		{#if current.run_type !== 'research'}<FileChips files={researchFiles.map((f) => f.attachment)} />{/if}
 
 		{#if error || current.error || issueError}
 			<div class="notices">

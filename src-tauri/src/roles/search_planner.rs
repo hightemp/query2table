@@ -53,13 +53,18 @@ impl SearchPlanner {
         let messages = vec![
             Message::system(SYSTEM_PROMPT),
             Message::user(format!(
-                "Research goal: Find {} with these attributes: {}\n\nConstraints: {}\nGeo: {}\nLanguages: {}\n\nTable columns: {}",
+                "Research goal: Find {} with these attributes: {}\n\nConstraints: {}\nGeo: {}\nLanguages: {}\n\nTable columns: {}{}",
                 intent.entity_type,
                 intent.attributes.join(", "),
                 intent.constraints.join(", "),
                 intent.geo.as_deref().unwrap_or("none"),
                 intent.languages.join(", "),
                 column_names.join(", "),
+                if intent.files_context.is_some() {
+                    format!("\n\nThe user also attached files; search the web for what they do not cover:{}", intent.files_note(2500))
+                } else {
+                    String::new()
+                },
             )),
         ];
 
