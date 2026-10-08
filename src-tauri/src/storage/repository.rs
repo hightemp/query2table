@@ -20,6 +20,10 @@ impl Repository {
         Self { pool }
     }
 
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     // --- Runs ---
 
     /// Files attached to a run, or to one turn of a research conversation.

@@ -7,7 +7,8 @@
 	import { showContextMenu } from '$lib/stores/contextMenu';
 	import { linkMenuItems } from '$lib/utils/linkMenu';
 	import { webUrl } from '$lib/utils/values';
-	import { plainInline, uniqueSlugger } from '$lib/utils/research';
+	import { isAttachmentUrl, plainInline, uniqueSlugger } from '$lib/utils/research';
+	import { showAttachment } from '$lib/stores/attachmentPreview';
 	let {
 		content,
 		idPrefix,
@@ -28,7 +29,10 @@
 			const id = `${prefix}-${slug(plainInline(tokens).trim())}`;
 			return `<h${depth} id="${id}">${this.parser.parseInline(tokens)}</h${depth}>`;
 		};
-		return DOMPurify.sanitize(marked.parse(content, { async: false, renderer }) as string);
+		// Answers cite attached files as attachment:// links; keep those besides web links.
+		return DOMPurify.sanitize(marked.parse(content, { async: false, renderer }) as string, {
+			ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|attachment):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+		});
 	});
 	async function open(event: MouseEvent) {
 		const anchor = (event.target as Element)?.closest('a');
@@ -38,6 +42,10 @@
 		event.preventDefault();
 		if (href.startsWith('#')) {
 			document.getElementById(`${prefix}-${href.slice(1)}`)?.scrollIntoView({ block: 'start' });
+			return;
+		}
+		if (isAttachmentUrl(href)) {
+			showAttachment(href);
 			return;
 		}
 		try {

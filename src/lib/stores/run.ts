@@ -1,6 +1,8 @@
 import { t, type MessageKey } from '$lib/i18n';
 import { writable, get } from 'svelte/store';
 import type {
+	AttachmentInfo,
+	RunAttachment,
 	SchemaColumn,
 	Accounting,
 	ProgressStats,
@@ -36,6 +38,8 @@ import {
 	onResearchAnswer,
 	onLlmIssue,
 	askFollowUp as apiAskFollowUp,
+	getRunAttachments,
+	type SourceMode,
 	getRun,
 	getResearchResult,
 	getRunIssues,
@@ -95,6 +99,10 @@ export interface RunState {
 	linkResults: LinkResult[];
 	/** Turns of a research conversation, in order. */
 	researchTurns: ResearchTurnState[];
+	/** Files of the run, with the conversation turn each came with. */
+	attachments: RunAttachment[];
+	/** Where the run looks for answers. */
+	sourceMode: SourceMode;
 	/** All steps of the conversation. */
 	researchSteps: ResearchStep[];
 	/** The latest answer. */
@@ -123,6 +131,8 @@ const initialState: RunState = {
 	imageResults: [],
 	linkResults: [],
 	researchTurns: [],
+	attachments: [],
+	sourceMode: 'web',
 	researchSteps: [],
 	researchAnswer: null,
 	progress: null,
@@ -349,8 +359,9 @@ export async function startNewRun(
 	stopConditions?: import('$lib/api/tauri').StopConditions,
 	/** Table runs: columns to offer for review instead of planning new ones. */
 	schema?: SchemaColumn[] | null,
-	/** Ids of attached files. */
-	attachments?: string[]
+	/** Attached files. */
+	attachments: AttachmentInfo[] = [],
+	sourceMode: SourceMode = 'web'
 ) {
 	const currentGeneration = ++generation;
 	unsubscribeEvents();
@@ -361,6 +372,8 @@ export async function startNewRun(
 		status: 'pending',
 		limits: stopConditions ?? null,
 		researchTurns: runType === 'research' ? [newTurn(0, query)] : [],
+		attachments: attachments.map((attachment) => ({ turn_index: 0, attachment })),
+		sourceMode: attachments.length ? sourceMode : 'web',
 	});
 
 	const earlyEvents: (() => void)[] = [];
@@ -368,7 +381,14 @@ export async function startNewRun(
 		try {
 			await subscribeEvents(currentGeneration, earlyEvents);
 			if (currentGeneration !== generation) return;
-			const resp = await apiStartRun(query, runType, stopConditions, schema, attachments);
+			const resp = await apiStartRun(
+				query,
+				runType,
+				stopConditions,
+				schema,
+				attachments.map((a) => a.id),
+				attachments.length ? sourceMode : undefined
+			);
 			if (currentGeneration !== generation) return;
 			runState.update((s) => ({ ...s, runId: resp.run_id }));
 			for (const deliver of earlyEvents) deliver();
@@ -448,7 +468,12 @@ export function confirmCurrentSchema(columns: SchemaColumn[]) {
 }
 
 /** Asks a follow-up question in the open research conversation. */
-export async function askFollowUp(question: string, stopConditions: StopConditions) {
+export async function askFollowUp(
+	question: string,
+	stopConditions: StopConditions,
+	attachments: AttachmentInfo[] = [],
+	sourceMode?: SourceMode
+) {
 	const state = get(runState);
 	if (!state.runId || state.runType !== 'research') throw new Error(t('conversation.noneOpen'));
 	if (!TERMINAL.includes(state.status))
@@ -463,9 +488,17 @@ export async function askFollowUp(question: string, stopConditions: StopConditio
 		accounting: null,
 		progress: null,
 		researchTurns: [...s.researchTurns, newTurn(index, question)],
+		attachments: [...s.attachments, ...attachments.map((attachment) => ({ turn_index: index, attachment }))],
+		sourceMode: sourceMode ?? s.sourceMode,
 	}));
 	try {
-		await apiAskFollowUp(state.runId, question, stopConditions);
+		await apiAskFollowUp(
+			state.runId,
+			question,
+			stopConditions,
+			attachments.map((a) => a.id),
+			sourceMode ?? state.sourceMode
+		);
 		runState.update((s) => (s.status === 'pending' ? { ...s, status: 'running' } : s));
 	} catch (error) {
 		runState.update((s) => ({
@@ -473,6 +506,8 @@ export async function askFollowUp(question: string, stopConditions: StopConditio
 			status: state.status,
 			error: String(error),
 			researchTurns: s.researchTurns.filter((turn) => turn.index !== index),
+			attachments: s.attachments.filter((a) => a.turn_index !== index),
+			sourceMode: state.sourceMode,
 		}));
 		throw error;
 	}
@@ -515,11 +550,14 @@ export function researchTurnsFrom(
 export async function openConversation(runId: string) {
 	const currentGeneration = ++generation;
 	unsubscribeEvents();
-	const [run, result, issues] = await Promise.all([
+	const [run, result, issues, attachments] = await Promise.all([
 		getRun(runId),
 		getResearchResult(runId),
 		// Notices of earlier questions are helpful but not required to continue.
 		getRunIssues(runId).catch(() => []),
+		getRunAttachments(runId)
+			.then((files) => files ?? [])
+			.catch(() => []),
 	]);
 	if (!run) throw new Error('Run not found');
 	const turns = researchTurnsFrom(result, run.query, run.status);
@@ -536,6 +574,7 @@ export async function openConversation(runId: string) {
 		limits: last?.limits && Object.keys(last.limits).length ? last.limits : null,
 		llmIssues: issues,
 		noticesDismissed: parseDismissed(run.dismissed_notices),
+		attachments,
 	});
 	await subscribeEvents(currentGeneration, []);
 }

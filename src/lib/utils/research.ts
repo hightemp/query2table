@@ -3,10 +3,16 @@ import { marked, type Token, type Tokens } from 'marked';
 import type { ResearchStep } from '$lib/types';
 import { displayHost } from './hosts';
 import { markdownLink } from './linkMenu';
+import { attachmentPlace, placeLabel } from './attachments';
 
-export type StepKind = 'search' | 'fetch' | 'think' | 'error';
+export type StepKind = 'search' | 'fetch' | 'read' | 'think' | 'error';
 
-const STEP_KINDS = ['search', 'fetch', 'think', 'error'];
+const STEP_KINDS = ['search', 'fetch', 'read', 'think', 'error'];
+
+/** A place in an attached file: `attachment://<id>?page=3`. */
+export function isAttachmentUrl(url: string | null | undefined): boolean {
+	return !!url && url.startsWith('attachment://');
+}
 
 export interface StepView {
 	step: ResearchStep;
@@ -49,7 +55,7 @@ export function pageLabel(url: URL): string {
 const INVALID_REPLY = /^The model produced an invalid response:/;
 
 export function describeStep(step: ResearchStep, index: number): StepView {
-	const url = parseUrl(step.url);
+	const url = isAttachmentUrl(step.url) ? null : parseUrl(step.url);
 	const domain = url ? displayHost(url.hostname) : null;
 	const content = step.content.trim();
 	let summary = content;
@@ -59,6 +65,9 @@ export function describeStep(step: ResearchStep, index: number): StepView {
 		label = t('research.step.unreadable');
 		summary = t('research.step.unreadableSummary');
 		rawText = step.content;
+	} else if (step.step_type === 'read') {
+		const found = attachmentPlace(step.url);
+		if (found) summary = placeLabel(fileName(content), found.place);
 	} else if (step.step_type === 'fetch') {
 		if (!content || READ_COUNT.test(content)) summary = url ? pageLabel(url) : t('research.page');
 		else if (content.includes('\n') || content.length > 300) {
@@ -86,6 +95,8 @@ export interface ResearchSource {
 	read: boolean;
 	/** The answer links to the page. */
 	cited: boolean;
+	/** A place in an attached file rather than a web page. */
+	file?: boolean;
 }
 
 /** Comparable form of a URL: no fragment, lower-case host, no trailing slash. */
@@ -101,7 +112,7 @@ function withoutHash(raw: string): string {
 /** Links in Markdown text, in order: `[title](url)` and bare http(s) addresses. */
 export function answerLinks(markdown: string): { url: URL; raw: string; title: string }[] {
 	const found: { url: URL; raw: string; title: string; at: number }[] = [];
-	const linked = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
+	const linked = /\[([^\]]*)\]\(((?:https?|attachment):\/\/[^)\s]+)\)/g;
 	for (const match of markdown.matchAll(linked)) {
 		const url = parseUrl(match[2]);
 		if (url) found.push({ url, raw: match[2], title: match[1].trim(), at: match.index ?? 0 });
@@ -115,6 +126,11 @@ export function answerLinks(markdown: string): { url: URL; raw: string; title: s
 	return found.sort((a, b) => a.at - b.at);
 }
 
+/** "report.pdf" of "report.pdf, page 3". */
+function fileName(label: string): string {
+	return label.split(', ')[0].trim();
+}
+
 export function collectSources(steps: ResearchStep[], answer: string | null): ResearchSource[] {
 	const sources = new Map<string, ResearchSource>();
 	for (const { url, raw, title } of answer ? answerLinks(answer) : []) {
@@ -124,15 +140,30 @@ export function collectSources(steps: ResearchStep[], answer: string | null): Re
 			if (!existing.title && title) existing.title = title;
 			continue;
 		}
+		const file = isAttachmentUrl(raw);
 		sources.set(key, {
 			url: withoutHash(raw),
 			title,
-			domain: displayHost(url.hostname),
+			domain: file ? fileName(title) : displayHost(url.hostname),
 			read: false,
 			cited: true,
+			...(file ? { file } : {}),
 		});
 	}
 	for (const step of steps) {
+		if (step.step_type === 'read' && isAttachmentUrl(step.url)) {
+			const url = parseUrl(step.url)!;
+			const key = sourceKey(url);
+			const name = fileName(step.content);
+			const label = placeLabel(name, attachmentPlace(step.url)?.place ?? {});
+			const existing = sources.get(key);
+			if (existing) {
+				existing.read = true;
+				existing.title = label || existing.title;
+				existing.domain = name || existing.domain;
+			} else sources.set(key, { url: step.url!, title: label, domain: name, read: true, cited: false, file: true });
+			continue;
+		}
 		if (step.step_type !== 'fetch') continue;
 		const url = parseUrl(step.url);
 		if (!url) continue;

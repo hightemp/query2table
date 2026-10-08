@@ -287,7 +287,13 @@ test('Follow-up questions continue the conversation with its history', async ({ 
 	await box.press('Control+Enter');
 
 	const [ask] = await calls(page, 'ask_follow_up');
-	expect(ask.args).toEqual({ runId: 'live', question: 'Какие из них дешевле?', stopConditions: limits });
+	expect(ask.args).toEqual({
+		runId: 'live',
+		question: 'Какие из них дешевле?',
+		stopConditions: limits,
+		attachments: null,
+		sourceMode: 'web',
+	});
 	const second = page.getByRole('region', { name: 'Какие из них дешевле?' });
 	await expect(second.getByRole('heading', { name: 'Какие из них дешевле?' })).toBeVisible();
 	await expect(second.getByRole('tab', { name: /Activity/ })).toHaveAttribute('aria-selected', 'true');
@@ -349,6 +355,8 @@ test('A saved conversation can be continued from History', async ({ page }) => {
 		runId: 'research',
 		question: 'What about prices?',
 		stopConditions: { target_row_count: 12, max_budget_usd: 0.5, max_duration_seconds: 300 },
+		attachments: null,
+		sourceMode: 'web',
 	});
 	await expect(page.getByRole('region', { name: 'What about prices?' })).toBeVisible();
 	await expect(page.getByRole('region', { name: 'And then?' })).toContainText('Second answer.');

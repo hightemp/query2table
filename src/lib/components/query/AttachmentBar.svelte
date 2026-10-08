@@ -15,26 +15,26 @@
 	import { openAttachment } from '$lib/api/tauri';
 	import { settings } from '$lib/stores/settings';
 	import { toast } from '$lib/stores/toasts';
-	import {
-		attachPaths,
-		draftAttachments,
-		MAX_ATTACHMENTS,
-		removeDraftAttachment,
-		restoreDraftAttachments,
-		type DraftAttachment,
-	} from '$lib/stores/attachments';
+	import { MAX_ATTACHMENTS, queryFiles, type AttachmentDraft, type DraftAttachment } from '$lib/stores/attachments';
 	import { ATTACHMENT_EXTENSIONS, attachmentMeta, privacyNote } from '$lib/utils/attachments';
 	import { refreshVisionStatus, visionStatus } from '$lib/stores/vision';
 	import { errorText } from '$lib/utils/errors';
 
 	let {
+		draft = queryFiles,
 		disabled = false,
 		dragging = $bindable(false),
+		compact = false,
 	}: {
+		/** Which question the files belong to. */
+		draft?: AttachmentDraft;
 		disabled?: boolean;
 		/** True while files are dragged over the window. */
 		dragging?: boolean;
+		/** Without the hint line (inside the follow-up box). */
+		compact?: boolean;
 	} = $props();
+	let draftAttachments = $derived(draft.items);
 
 	let provider = $derived($settings.get('llm_provider') ?? 'openrouter');
 	let note = $derived(privacyNote(provider, $settings));
@@ -50,8 +50,8 @@
 	});
 	/** No model can read pictures or scans; unknown status does not warn. */
 	let noReader = $derived(!!$visionStatus && !$visionStatus.reader);
-	const blindPicture = (draft: DraftAttachment) => noReader && draft.info?.kind === 'image';
-	const blindScan = (draft: DraftAttachment) => noReader && draft.info?.status === 'needs_vision';
+	const blindPicture = (item: DraftAttachment) => noReader && item.info?.kind === 'image';
+	const blindScan = (item: DraftAttachment) => noReader && item.info?.status === 'needs_vision';
 	let needsReader = $derived($draftAttachments.some((d) => blindPicture(d) || blindScan(d)));
 
 	function tooMany(refused: number) {
@@ -72,20 +72,20 @@
 			],
 		});
 		const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
-		if (paths.length) tooMany(await attachPaths(paths));
+		if (paths.length) tooMany(await draft.attachPaths(paths));
 	}
 
-	async function openFile(draft: DraftAttachment) {
-		if (!draft.info) return;
+	async function openFile(item: DraftAttachment) {
+		if (!item.info) return;
 		try {
-			await openAttachment(draft.info.id);
+			await openAttachment(item.info.id);
 		} catch (error) {
 			toast(errorText(error), 'error');
 		}
 	}
 
 	onMount(() => {
-		void restoreDraftAttachments();
+		void draft.restore();
 		let unlisten: (() => void) | undefined;
 		let disposed = false;
 		void import('@tauri-apps/api/webview')
@@ -96,7 +96,7 @@
 					else if (payload.type === 'leave') dragging = false;
 					else if (payload.type === 'drop') {
 						dragging = false;
-						if (!disabled && payload.paths.length) tooMany(await attachPaths(payload.paths));
+						if (!disabled && payload.paths.length) tooMany(await draft.attachPaths(payload.paths));
 					}
 				})
 			)
@@ -116,45 +116,45 @@
 		<button type="button" class="button ghost sm attach" onclick={choose} {disabled}>
 			<PaperclipIcon size={15} />{t('attachments.attach')}
 		</button>
-		{#if !$draftAttachments.length}<span class="hint">{t('attachments.hint')}</span>{/if}
+		{#if !$draftAttachments.length && !compact}<span class="hint">{t('attachments.hint')}</span>{/if}
 	</div>
 	{#if $draftAttachments.length}
 		<ul class="files" aria-label={t('attachments.list')}>
-			{#each $draftAttachments as draft (draft.key)}
-				<li class="file" class:error={draft.state === 'error'}>
+			{#each $draftAttachments as item (item.key)}
+				<li class="file" class:error={item.state === 'error'}>
 					<span class="icon">
-						{#if draft.state === 'reading'}<LoaderCircleIcon size={18} class="spin" />
-						{:else if draft.info?.thumbnail}<img src={draft.info.thumbnail} alt={draft.name} />
-						{:else if draft.info?.kind === 'spreadsheet'}<FileSpreadsheetIcon size={18} />
-						{:else if draft.info?.kind === 'document' || draft.info?.kind === 'text'}<FileTextIcon size={18} />
+						{#if item.state === 'reading'}<LoaderCircleIcon size={18} class="spin" />
+						{:else if item.info?.thumbnail}<img src={item.info.thumbnail} alt={item.name} />
+						{:else if item.info?.kind === 'spreadsheet'}<FileSpreadsheetIcon size={18} />
+						{:else if item.info?.kind === 'document' || item.info?.kind === 'text'}<FileTextIcon size={18} />
 						{:else}<FileIcon size={18} />{/if}
 					</span>
 					<span class="text">
-						{#if draft.info}<button
+						{#if item.info}<button
 								type="button"
 								class="name"
-								aria-label={t('attachments.open', { name: draft.name })}
-								use:tooltip={{ text: draft.name, whenTruncated: true }}
-								onclick={() => openFile(draft)}>{draft.name}</button
-							>{:else}<span class="name plain" use:tooltip={{ text: draft.name, whenTruncated: true }}>{draft.name}</span>{/if}
+								aria-label={t('attachments.open', { name: item.name })}
+								use:tooltip={{ text: item.name, whenTruncated: true }}
+								onclick={() => openFile(item)}>{item.name}</button
+							>{:else}<span class="name plain" use:tooltip={{ text: item.name, whenTruncated: true }}>{item.name}</span>{/if}
 						<span class="meta">
-							{#if draft.state === 'reading'}{t('attachments.reading')}
-							{:else if draft.state === 'error'}{draft.error}
-							{:else if draft.info && blindPicture(draft)}<span class="warning" use:tooltip={t('attachments.blindHint')}
+							{#if item.state === 'reading'}{t('attachments.reading')}
+							{:else if item.state === 'error'}{item.error}
+							{:else if item.info && blindPicture(item)}<span class="warning" use:tooltip={t('attachments.blindHint')}
 									><TriangleAlertIcon size={12} /></span
 								>{t('attachments.blind')}
-							{:else if draft.info}{#if draft.info.status === 'needs_vision'}<span
+							{:else if item.info}{#if item.info.status === 'needs_vision'}<span
 										class="warning"
-										use:tooltip={blindScan(draft) ? t('attachments.scanNoReader') : t('attachments.scanHint')}
+										use:tooltip={blindScan(item) ? t('attachments.scanNoReader') : t('attachments.scanHint')}
 										><TriangleAlertIcon size={12} /></span
-									>{/if}{attachmentMeta(draft.info)}{/if}
+									>{/if}{attachmentMeta(item.info)}{/if}
 						</span>
 					</span>
 					<button
 						type="button"
 						class="icon-button ghost sm remove"
-						aria-label={t('attachments.remove', { name: draft.name })}
-						onclick={() => removeDraftAttachment(draft.key)}><XIcon size={14} /></button
+						aria-label={t('attachments.remove', { name: item.name })}
+						onclick={() => draft.remove(item.key)}><XIcon size={14} /></button
 					>
 				</li>
 			{/each}

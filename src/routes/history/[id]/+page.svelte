@@ -16,6 +16,7 @@
 		dismissRunNotices,
 		pinRun,
 		renameRun,
+		getRunAttachments,
 	} from '$lib/api/tauri';
 	import type {
 		RunInfo,
@@ -24,7 +25,9 @@
 		LinkResult,
 		ResearchStep,
 		LlmIssueEvent,
+		RunAttachment,
 	} from '$lib/types';
+	import type { FollowUpFiles } from '$lib/components/run/FollowUpBox.svelte';
 	import type { RunRow, ResearchTurnState } from '$lib/stores/run';
 	import type { StopConditions } from '$lib/api/tauri';
 	import {
@@ -68,6 +71,7 @@
 	let researchAnswer = $state<string | null>(null);
 	let researchTurns = $state<ResearchTurnState[]>([]);
 	let researchLimits = $state<StopConditions | null>(null);
+	let researchFiles = $state<RunAttachment[]>([]);
 	let loading = $state(true);
 	let error = $state('');
 	let issues = $state<LlmIssueEvent[]>([]);
@@ -113,6 +117,7 @@
 		researchAnswer = null;
 		researchTurns = [];
 		researchLimits = null;
+		researchFiles = [];
 		issues = [];
 		issueError = '';
 		issuesLoading = true;
@@ -156,6 +161,7 @@
 				researchAnswer = result.answer_markdown;
 				researchTurns = researchTurnsFrom(result, found.query, found.status);
 				researchLimits = result.turns?.[0]?.limits ?? null;
+				researchFiles = await getRunAttachments(found.id).catch(() => []);
 			} else {
 				const [schemaInfo, saved] = await Promise.all([getRunSchema(id), getRunRows(id)]);
 				if (current !== request) return;
@@ -181,10 +187,10 @@
 	}
 
 	/** Continues a saved conversation on the query page, as a live run. */
-	async function continueConversation(question: string, limits: Required<StopConditions>) {
+	async function continueConversation(question: string, limits: Required<StopConditions>, files: FollowUpFiles) {
 		if (!run) return;
 		await openConversation(run.id);
-		await askFollowUp(question, limits);
+		await askFollowUp(question, limits, files.attachments, files.sourceMode);
 		await goto('/');
 	}
 
@@ -345,7 +351,7 @@
 					>{/if}
 			{:else if current.run_type === 'research'}
 				{#if researchAnswer || researchSteps.length > 0}
-					<ResearchView turns={researchTurns} limits={researchLimits} onask={continueConversation} />
+					<ResearchView turns={researchTurns} limits={researchLimits} attachments={researchFiles} onask={continueConversation} />
 				{:else}<EmptyState>{t('runPage.noResearch')}</EmptyState>{/if}
 			{:else if schema.length > 0 && rows.length > 0}
 				<ResultsTable {schema} {rows} onrowclick={(row, order) => selection.select(row.id, order)} />

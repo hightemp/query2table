@@ -8,6 +8,8 @@
 	import { addLog, logPanelOpen } from '$lib/stores/logs';
 	import { appliedTheme, currentTheme, loadTheme, sidebarCollapsed, uiScale } from '$lib/stores/ui';
 	import Toaster from '$lib/components/layout/Toaster.svelte';
+	import AttachmentPreview from '$lib/components/common/AttachmentPreview.svelte';
+	import { attachmentPreview } from '$lib/stores/attachmentPreview';
 	import ContextMenu from '$lib/components/common/ContextMenu.svelte';
 	import { contextMenu, closeContextMenu, showContextMenu } from '$lib/stores/contextMenu';
 	import { textMenuFor } from '$lib/utils/textMenu';
@@ -123,6 +125,7 @@
 	</div>
 </div>
 <Toaster />
+{#if $attachmentPreview}<AttachmentPreview url={$attachmentPreview} />{/if}
 {#if $contextMenu}
 	{#key $contextMenu}
 		<ContextMenu

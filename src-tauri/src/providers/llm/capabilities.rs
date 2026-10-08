@@ -74,14 +74,22 @@ impl VisionPlan {
     /// From the settings `llm_vision` (`auto` | `on` | `off`) and `vision_model`.
     pub async fn resolve(settings: &HashMap<String, String>) -> Self {
         let config = LlmManager::config_from_settings(settings);
-        let main = main_model(&config).trim().to_string();
-        let detected = vision_support(&config, &main).await;
-        let main_sees = match settings.get("llm_vision").map(|s| s.as_str()) {
-            Some("on") => true,
-            Some("off") => false,
+        let mode = settings.get("llm_vision").map(String::as_str).unwrap_or("auto");
+        let separate = settings.get("vision_model").map(String::as_str).unwrap_or("");
+        Self::for_config(&config, mode, separate).await
+    }
+
+    /// For a run: the provider configuration, the `llm_vision` mode and the model for images.
+    pub async fn for_config(config: &LlmConfig, mode: &str, vision_model: &str) -> Self {
+        let main = main_model(config).trim().to_string();
+        // A switch set by hand does not need the catalog.
+        let detected = if matches!(mode, "on" | "off") { None } else { vision_support(config, &main).await };
+        let main_sees = match mode {
+            "on" => true,
+            "off" => false,
             _ => detected.unwrap_or(false),
         };
-        let separate = settings.get("vision_model").map(|m| m.trim().to_string()).filter(|m| !m.is_empty());
+        let separate = Some(vision_model.trim().to_string()).filter(|m| !m.is_empty());
         let reader = if main_sees && !main.is_empty() { Some(main) } else { separate };
         Self { main_sees, detected, reader }
     }

@@ -68,6 +68,7 @@ pub async fn start_run(
     stop_conditions: Option<StopConditions>,
     schema: Option<Vec<SchemaColumn>>,
     attachments: Option<Vec<String>>,
+    source_mode: Option<String>,
 ) -> Result<StartRunResponse, String> {
     let run_id = new_id();
     let run_type = run_type.unwrap_or_else(|| "table".to_string());
@@ -81,6 +82,7 @@ pub async fn start_run(
     // Run again: a table run offers the earlier schema for review.
     config.suggested_schema = schema;
     config.attachments = attachments.unwrap_or_default();
+    config.web_search = web_search(source_mode.as_deref(), &config.attachments);
     let repo = Arc::new(Repository::new(state.db.pool().clone()));
     let notifications_enabled = settings
         .get("notifications_enabled")
@@ -196,6 +198,11 @@ pub async fn start_run(
     info!(run_id = %run_id, query = %query, run_type = %run_type, "Run started");
 
     Ok(StartRunResponse { run_id })
+}
+
+/// Web search stays on unless the run asks for files only and has files to work from.
+fn web_search(source_mode: Option<&str>, attachments: &[String]) -> bool {
+    source_mode != Some("files") || attachments.is_empty()
 }
 
 #[tauri::command]
@@ -763,6 +770,8 @@ pub async fn ask_follow_up(
     run_id: String,
     question: String,
     stop_conditions: Option<StopConditions>,
+    attachments: Option<Vec<String>>,
+    source_mode: Option<String>,
 ) -> Result<(), String> {
     let question = question.trim().to_string();
     if question.is_empty() {
@@ -785,6 +794,16 @@ pub async fn ask_follow_up(
     let settings: HashMap<String, String> = settings_list.into_iter().collect();
     let mut config = PipelineConfig::from_settings(&settings);
     apply_stop_conditions(&mut config, stop_conditions);
+    config.attachments = attachments.unwrap_or_default();
+    // Earlier turns' files count too: a conversation about files may stay files-only.
+    let has_files = !config.attachments.is_empty()
+        || sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM run_attachments WHERE run_id = ?")
+            .bind(&run_id)
+            .fetch_one(state.db.pool())
+            .await
+            .map_err(|e| e.to_string())?
+            > 0;
+    config.web_search = source_mode.as_deref() != Some("files") || !has_files;
 
     let turns = repo.get_research_turns(&run_id).await.map_err(|e| e.to_string())?;
     let steps = repo.get_research_steps(&run_id).await.map_err(|e| e.to_string())?;

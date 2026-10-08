@@ -2,8 +2,9 @@
 	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import { tick } from 'svelte';
-	import type { Accounting } from '$lib/types';
-	import type { StopConditions } from '$lib/api/tauri';
+	import type { Accounting, RunAttachment } from '$lib/types';
+	import type { SourceMode, StopConditions } from '$lib/api/tauri';
+	import type { FollowUpFiles } from './FollowUpBox.svelte';
 	import type { ResearchTurnState } from '$lib/stores/run';
 	import { ArrowUpIcon } from '@lucide/svelte';
 	import EmptyState from '$lib/components/common/EmptyState.svelte';
@@ -21,6 +22,8 @@
 		running = false,
 		liveAccounting = null,
 		limits = null,
+		attachments = [],
+		sourceMode = 'web',
 		onask,
 	}: {
 		turns: ResearchTurnState[];
@@ -29,8 +32,11 @@
 		/** Usage of the turn being answered, before it is saved with the turn. */
 		liveAccounting?: Accounting | null;
 		limits?: StopConditions | null;
+		/** Files of the conversation, by the turn they came with. */
+		attachments?: RunAttachment[];
+		sourceMode?: SourceMode;
 		/** Enables follow-up questions. */
-		onask?: (question: string, limits: Required<StopConditions>) => Promise<void>;
+		onask?: (question: string, limits: Required<StopConditions>, files: FollowUpFiles) => Promise<void>;
 	} = $props();
 	let view = $state<HTMLDivElement>();
 	let scrolled = $state(false);
@@ -79,6 +85,7 @@
 					running={running && i === turns.length - 1}
 					question={turn.question}
 					showQuestion={i > 0}
+					files={attachments.filter((a) => a.turn_index === turn.index).map((a) => a.attachment)}
 					cost={turns.length > 1 ? (turn.accounting?.spent_usd ?? null) : null}
 				/>
 			</div>
@@ -90,7 +97,7 @@
 		<p class="conversation-cost">{t('research.conversationCost', { amount: formatUsd(conversationCost) })}</p>
 	{/if}
 	{#if onask}
-		<FollowUpBox {suggestions} disabled={running} limits={fullLimits} {onask} />
+		<FollowUpBox {suggestions} disabled={running} limits={fullLimits} hasFiles={attachments.length > 0} {sourceMode} {onask} />
 	{/if}
 	{#if scrolled}
 		<button

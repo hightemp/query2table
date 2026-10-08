@@ -93,6 +93,7 @@ export const test = base.extend({
 				calls: [] as { command: string; args: any; options?: any }[],
 				failSave: false,
 				clipboard: '',
+				runAttachments: [] as unknown[],
 				visionDetected: false as boolean | null,
 				dialogFiles: ['/docs/report.pdf', '/docs/prices.xlsx'] as string[] | null,
 				failDelete: false,
@@ -327,6 +328,18 @@ export const test = base.extend({
 						case 'remove_attachment':
 						case 'open_attachment':
 							return;
+						case 'get_attachment_fragment': {
+							const [id, query = ''] = String(args.url).replace('attachment://', '').split('?');
+							const params = new URLSearchParams(query);
+							return {
+								attachment_id: id,
+								file_name: id.replace(/^att-/, ''),
+								locator: params.has('page') ? { page: Number(params.get('page')) } : {},
+								text: `Passage of ${id.replace(/^att-/, '')}: revenue grew to 12 million.`,
+							};
+						}
+						case 'get_run_attachments':
+							return fixture.runAttachments;
 						case 'export_run':
 							return fixture.delayExport
 								? new Promise<void>((resolve) => (fixture.finishExport = resolve))

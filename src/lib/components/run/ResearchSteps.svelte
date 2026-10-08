@@ -2,7 +2,8 @@
 	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import type { ResearchStep } from '$lib/types';
-	import { SearchIcon, FileTextIcon, LightbulbIcon, TriangleAlertIcon } from '@lucide/svelte';
+	import { SearchIcon, FileTextIcon, FileSearchIcon, LightbulbIcon, TriangleAlertIcon } from '@lucide/svelte';
+	import { showAttachment } from '$lib/stores/attachmentPreview';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
 	import { describeStep, type StepView } from '$lib/utils/research';
 
@@ -10,6 +11,7 @@
 	const icons = {
 		search: SearchIcon,
 		fetch: FileTextIcon,
+		read: FileSearchIcon,
 		think: LightbulbIcon,
 		error: TriangleAlertIcon,
 	} as const;
@@ -21,7 +23,8 @@
 		if (!running) return null;
 		if (!last) return t('research.starting');
 		if (last.step.step_type === 'search') return t('research.searching', { query: last.summary });
-		if (last.step.step_type === 'fetch') return t('research.reading', { page: last.domain ?? last.summary });
+		if (last.step.step_type === 'fetch' || last.step.step_type === 'read')
+			return t('research.reading', { page: last.domain ?? last.summary });
 		return t('research.analyzing');
 	});
 	function toggle(list: string[], id: string) {
@@ -71,7 +74,10 @@
 					{#if view.step.url && view.step.step_type === 'fetch'}<ExternalLink
 							href={view.step.url}
 							class="step-url"
-						/>{/if}
+						/>{:else if view.step.url && view.step.step_type === 'read'}<button
+							class="file-place"
+							onclick={() => showAttachment(view.step.url!)}>{t('attachments.showPassage')}</button
+						>{/if}
 					{#if expandable(view) || view.rawText}
 						<div class="step-actions">
 							{#if expandable(view)}<button
@@ -175,6 +181,16 @@
 	.summary.open {
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
+	}
+	.file-place {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--app-accent);
+		font-size: var(--app-text-sm);
+	}
+	.file-place:hover {
+		text-decoration: underline;
 	}
 	.step :global(.step-url) {
 		font-size: var(--app-text-sm);

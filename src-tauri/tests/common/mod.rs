@@ -319,6 +319,10 @@ pub fn test_pipeline_config() -> PipelineConfig {
         suggested_schema: None,
         attachments: Vec::new(),
         vision_max_pages: 50,
+        attachments_dir: std::env::temp_dir().join("query2table-test-attachments"),
+        web_search: true,
+        llm_vision: "auto".into(),
+        vision_model: String::new(),
         fetch_timeout_secs: 15,
         max_pages_per_query: 100,
     }

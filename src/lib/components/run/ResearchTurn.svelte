@@ -1,4 +1,6 @@
 <script lang="ts">
+	import FileChips from '$lib/components/common/FileChips.svelte';
+	import type { AttachmentInfo } from '$lib/types';
 	import { t, type MessageKey } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import type { ResearchStep } from '$lib/types';
@@ -25,6 +27,7 @@
 		question = null,
 		showQuestion = false,
 		cost = null,
+		files = [],
 	}: {
 		answer: string | null;
 		steps: ResearchStep[];
@@ -36,6 +39,8 @@
 		showQuestion?: boolean;
 		/** Cost of this turn, shown in conversations. */
 		cost?: number | null;
+		/** Files attached with this question. */
+		files?: AttachmentInfo[];
 	} = $props();
 
 	type Tab = 'answer' | 'activity' | 'sources';
@@ -168,6 +173,7 @@
 
 <section class="turn" aria-label={question ?? t('research.turn')}>
 	{#if showQuestion && question}<h2 class="question">{question}</h2>{/if}
+	<FileChips {files} />
 	{#if !answer && !running && (status === 'cancelled' || status === 'failed')}
 		<p class="turn-note" class:failed={status === 'failed'}>
 			{status === 'cancelled'

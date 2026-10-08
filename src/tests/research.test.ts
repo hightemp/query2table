@@ -127,3 +127,23 @@ describe('answer navigation and copying', () => {
 		);
 	});
 });
+
+describe('file sources', () => {
+	const read = step({ step_type: 'read', content: 'report.pdf, page 3', url: 'attachment://abc?page=3' });
+
+	it('describes reading a file by its place', () => {
+		const view = describeStep(read, 0);
+		expect(view.label).toBe('Read file');
+		expect(view.summary).toBe('report.pdf, p. 3');
+		expect(view.domain).toBe(null);
+	});
+
+	it('lists files read and cited as sources', () => {
+		const answer = 'Revenue grew [report.pdf, p. 3](attachment://abc?page=3) and [prices](attachment://xyz?sheet=A&rows=2-4).';
+		const sources = collectSources([read, step({ step_type: 'read', content: 'Read 2 scanned pages', url: null })], answer);
+		expect(sources).toEqual([
+			{ url: 'attachment://abc?page=3', title: 'report.pdf, p. 3', domain: 'report.pdf', read: true, cited: true, file: true },
+			{ url: 'attachment://xyz?sheet=A&rows=2-4', title: 'prices', domain: 'prices', read: false, cited: true, file: true },
+		]);
+	});
+});

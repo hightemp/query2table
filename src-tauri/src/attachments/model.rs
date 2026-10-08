@@ -72,6 +72,24 @@ impl Locator {
         text.strip_suffix('?').map(str::to_string).unwrap_or(text)
     }
 
+    /// "report.pdf, page 3", "prices.xlsx, sheet Prices, rows 40–60", "notes.md, section Intro".
+    pub fn label(&self, file_name: &str) -> String {
+        let mut parts = vec![file_name.to_string()];
+        if let Some(page) = self.page {
+            parts.push(format!("page {page}"));
+        }
+        if let Some(sheet) = &self.sheet {
+            parts.push(format!("sheet {sheet}"));
+        }
+        if let Some((from, to)) = self.rows {
+            parts.push(if from == to { format!("row {from}") } else { format!("rows {from}–{to}") });
+        }
+        if let Some(section) = &self.section {
+            parts.push(format!("section {section}"));
+        }
+        parts.join(", ")
+    }
+
     /// The attachment id and place of an `attachment://` URL.
     pub fn from_url(value: &str) -> Option<(String, Self)> {
         let url = url::Url::parse(value).ok()?;
@@ -173,8 +191,10 @@ mod tests {
         assert_eq!(page.to_url("abc"), "attachment://abc?page=12");
         let rows = Locator { sheet: Some("Цены и сроки".into()), rows: Some((40, 60)), ..Locator::default() };
         let url = rows.to_url("abc");
-        assert_eq!(Locator::from_url(&url), Some(("abc".to_string(), rows)));
+        assert_eq!(Locator::from_url(&url), Some(("abc".to_string(), rows.clone())));
         assert_eq!(Locator::default().to_url("abc"), "attachment://abc");
         assert_eq!(Locator::from_url("https://example.com/?page=1"), None);
+        assert_eq!(page.label("report.pdf"), "report.pdf, page 12");
+        assert_eq!(rows.label("p.xlsx"), "p.xlsx, sheet Цены и сроки, rows 40–60");
     }
 }

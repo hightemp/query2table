@@ -1,8 +1,21 @@
+<script lang="ts" module>
+	import type { AttachmentInfo as Info } from '$lib/types';
+	import type { SourceMode as Mode } from '$lib/api/tauri';
+	/** Files sent with a follow-up question. */
+	export interface FollowUpFiles {
+		attachments: Info[];
+		sourceMode: Mode;
+	}
+</script>
+
 <script lang="ts">
 	import { t } from '$lib/i18n';
 	import NumberInput from '$lib/components/common/NumberInput.svelte';
 	import { SendIcon, ChevronDownIcon, ChevronUpIcon } from '@lucide/svelte';
-	import type { StopConditions } from '$lib/api/tauri';
+	import type { SourceMode, StopConditions } from '$lib/api/tauri';
+	import AttachmentBar from '$lib/components/query/AttachmentBar.svelte';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
+	import { followUpFiles } from '$lib/stores/attachments';
 	import { hasMod, modKey } from '$lib/utils/shortcuts';
 	import { errorText } from '$lib/utils/errors';
 	import {
@@ -16,6 +29,8 @@
 		suggestions = [],
 		disabled = false,
 		limits,
+		hasFiles = false,
+		sourceMode = 'web',
 		onask,
 	}: {
 		suggestions?: string[];
@@ -23,8 +38,19 @@
 		disabled?: boolean;
 		/** Limits of the conversation's first question, used for the next one. */
 		limits: Required<StopConditions>;
-		onask: (question: string, limits: Required<StopConditions>) => Promise<void>;
+		/** Files were attached earlier in the conversation. */
+		hasFiles?: boolean;
+		/** Where the conversation looked so far. */
+		sourceMode?: SourceMode;
+		onask: (question: string, limits: Required<StopConditions>, files: FollowUpFiles) => Promise<void>;
 	} = $props();
+	const pending = followUpFiles.items;
+	let searchWeb = $state(true);
+	$effect(() => {
+		searchWeb = sourceMode !== 'files';
+	});
+	let withFiles = $derived(hasFiles || $pending.some((d) => d.state === 'ready'));
+	let readingFiles = $derived($pending.some((d) => d.state === 'reading'));
 
 	let question = $state('');
 	let sending = $state(false);
@@ -46,14 +72,24 @@
 			? `${t('units.step', { count: parsed.conditions.target_row_count })} · ${formatUsd(parsed.conditions.max_budget_usd)} · ${formatMinutes(parsed.conditions.max_duration_seconds)}`
 			: t('query.checkValues')
 	);
-	let canSend = $derived(!!question.trim() && !disabled && !sending && !!parsed.conditions);
+	let canSend = $derived(!!question.trim() && !disabled && !sending && !!parsed.conditions && !readingFiles);
 
 	async function send() {
 		if (!canSend || !parsed.conditions) return;
 		sending = true;
 		error = '';
 		try {
-			await onask(question.trim(), parsed.conditions);
+			const attachments = followUpFiles.take();
+			try {
+				await onask(question.trim(), parsed.conditions, {
+					attachments,
+					sourceMode: withFiles && !searchWeb ? 'files' : 'web',
+				});
+			} catch (reason) {
+				// Keep the files for another try.
+				followUpFiles.items.set(attachments.map((info, i) => ({ key: `retry-${i}-${info.id}`, name: info.file_name, state: 'ready', info })));
+				throw reason;
+			}
 			question = '';
 		} catch (reason) {
 			error = errorText(reason);
@@ -85,6 +121,12 @@
 			placeholder={disabled ? t('followUp.answering') : t('followUp.placeholder')}
 			{disabled}
 			bind:value={question}
+			onpaste={async (event) => {
+				const files = [...(event.clipboardData?.files ?? [])];
+				if (!files.length) return;
+				event.preventDefault();
+				await followUpFiles.attachFiles(files);
+			}}
 			onkeydown={(event) => {
 				if (event.key === 'Enter' && hasMod(event)) {
 					event.preventDefault();
@@ -94,6 +136,10 @@
 		<button class="button primary" disabled={!canSend} onclick={send} aria-keyshortcuts="Control+Enter"
 			><SendIcon size={15} />{t('followUp.send')}</button
 		>
+	</div>
+	<div class="files">
+		<AttachmentBar draft={followUpFiles} disabled={disabled} compact />
+		{#if withFiles}<span class="source-mode"><Checkbox bind:checked={searchWeb}>{t('attachments.searchWeb')}</Checkbox></span>{/if}
 	</div>
 	<div class="meta">
 		<button
@@ -148,6 +194,18 @@
 		z-index: 3;
 		padding: 12px 0 4px;
 		background: linear-gradient(transparent, var(--app-bg) 16px);
+	}
+	.files {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin-top: 4px;
+	}
+	.files :global(.attachments) {
+		margin-top: 0;
+	}
+	.source-mode {
+		font-size: var(--app-text-sm);
 	}
 	.suggestions {
 		display: flex;

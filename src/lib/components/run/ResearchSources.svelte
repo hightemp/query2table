@@ -3,6 +3,8 @@
 	import { t } from '$lib/i18n';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
 	import SiteIcon from './SiteIcon.svelte';
+	import { FileTextIcon } from '@lucide/svelte';
+	import { showAttachment } from '$lib/stores/attachmentPreview';
 	import type { ResearchSource } from '$lib/utils/research';
 	let { sources }: { sources: ResearchSource[] } = $props();
 	function host(url: string) {
@@ -21,9 +23,10 @@
 		{#each sources as source, i (source.url)}
 			<li class="source">
 				<span class="number">{i + 1}</span>
-				<SiteIcon domain={source.domain} host={host(source.url)} />
+				{#if source.file}<span class="file-icon"><FileTextIcon size={16} /></span>{:else}<SiteIcon domain={source.domain} host={host(source.url)} />{/if}
 				<div class="body">
-					<ExternalLink href={source.url} label={source.title} class="source-title" />
+					{#if source.file}<button class="file-title" onclick={() => showAttachment(source.url)}>{source.title}</button
+						>{:else}<ExternalLink href={source.url} label={source.title} class="source-title" />{/if}
 					<div class="meta">
 						<span class="domain">{source.domain}</span>
 						{#if source.cited}<span class="tag cited" use:tooltip={t('research.citedHint')}>{t('research.cited')}</span>{/if}
@@ -64,6 +67,22 @@
 	}
 	.body {
 		min-width: 0;
+	}
+	.file-icon {
+		display: flex;
+		margin-top: 3px;
+		color: var(--app-muted);
+	}
+	.file-title {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--app-accent);
+		font-weight: 600;
+		text-align: left;
+	}
+	.file-title:hover {
+		text-decoration: underline;
 	}
 	.body :global(.source-title) {
 		font-weight: 600;

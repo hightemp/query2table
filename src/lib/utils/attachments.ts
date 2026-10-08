@@ -8,6 +8,9 @@ export const ATTACHMENT_EXTENSIONS = {
 	images: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
 };
 
+/** Modes that can answer from the attached files alone, without searching the web. */
+export const filesOnlyModes: string[] = ['research'];
+
 export function formatSize(bytes: number): string {
 	if (bytes < 1024 * 1024) return t('attachments.kb', { size: formatNumber(Math.max(1, Math.round(bytes / 1024))) });
 	return t('attachments.mb', { size: formatNumber(bytes / 1024 / 1024, { maximumFractionDigits: 1 }) });
@@ -23,6 +26,38 @@ export function attachmentMeta(info: AttachmentInfo): string {
 		parts.push(t('attachments.chars', { count: info.char_count, chars: formatNumber(info.char_count, { notation: 'compact', maximumFractionDigits: 1 }) }));
 	if (info.scanned_pages > 0) parts.push(t('attachments.scan'));
 	return parts.join(' · ') || formatSize(info.size);
+}
+
+export type FilePlace = { page?: number; sheet?: string; rows?: [number, number]; section?: string };
+
+/** The file id and place of an `attachment://` address, or null for other addresses. */
+export function attachmentPlace(url: string | null | undefined): { id: string; place: FilePlace } | null {
+	if (!url?.startsWith('attachment://')) return null;
+	const [head, query = ''] = url.slice('attachment://'.length).split('?');
+	const params = new URLSearchParams(query);
+	const place: FilePlace = {};
+	const page = Number(params.get('page'));
+	if (params.has('page') && Number.isFinite(page)) place.page = page;
+	if (params.get('sheet')) place.sheet = params.get('sheet')!;
+	const rows = params.get('rows')?.split('-').map(Number);
+	if (rows?.length === 2 && rows.every(Number.isFinite)) place.rows = [rows[0], rows[1]];
+	if (params.get('section')) place.section = params.get('section')!;
+	return { id: decodeURIComponent(head.replace(/\/$/, '')), place };
+}
+
+/** "report.pdf, p. 3", "prices.xlsx, sheet Prices, rows 40–60" — a place in a file for people. */
+export function placeLabel(fileName: string, place: { page?: number; sheet?: string; rows?: [number, number]; section?: string }): string {
+	const parts = [fileName];
+	if (place.page != null) parts.push(t('attachments.place.page', { page: place.page }));
+	if (place.sheet) parts.push(t('attachments.place.sheet', { sheet: place.sheet }));
+	if (place.rows)
+		parts.push(
+			place.rows[0] === place.rows[1]
+				? t('attachments.place.row', { row: place.rows[0] })
+				: t('attachments.place.rows', { from: place.rows[0], to: place.rows[1] })
+		);
+	if (place.section) parts.push(t('attachments.place.section', { section: place.section }));
+	return parts.join(', ');
 }
 
 const KNOWN_ERRORS = ['unsupported', 'empty', 'damaged', 'protected', 'tooLarge', 'unreadable', 'storage', 'tooMany'];

@@ -82,6 +82,8 @@ describe('research conversations', () => {
 			runId: 'run-1',
 			question: 'Which are cheapest?',
 			stopConditions: { ...limits, target_row_count: 8 },
+			attachments: null,
+			sourceMode: 'web',
 		});
 		expect(get(runState).status).toBe('running');
 		expect(get(runState).limits?.target_row_count).toBe(8);

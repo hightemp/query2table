@@ -1,4 +1,5 @@
 pub mod pipeline;
+pub mod files;
 pub mod events;
 pub mod budget_tracker;
 pub mod fetch_pool;

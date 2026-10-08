@@ -21,6 +21,8 @@
 	import SchemaEditor from '$lib/components/run/SchemaEditor.svelte';
 	import AttachmentBar from '$lib/components/query/AttachmentBar.svelte';
 	import { attachFiles, draftAttachments, MAX_ATTACHMENTS, takeDraftAttachments } from '$lib/stores/attachments';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
+	import { filesOnlyModes } from '$lib/utils/attachments';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
 	import RowDetailPanel from '$lib/components/run/RowDetailPanel.svelte';
 	import CostSummary from '$lib/components/run/CostSummary.svelte';
@@ -98,6 +100,9 @@
 	let readingFiles = $derived($draftAttachments.some((d) => d.state === 'reading'));
 	let canSubmit = $derived(!!query.trim() && !configProblems.length && !readingFiles);
 	let dragging = $state(false);
+	/** With files attached, a run can skip the web and answer from the files only. */
+	let searchWeb = $state(true);
+	let hasFiles = $derived($draftAttachments.some((d) => d.state === 'ready'));
 
 	/** Files pasted into the query (screenshots, copied files) are attached instead of typed. */
 	async function handlePaste(event: ClipboardEvent) {
@@ -156,7 +161,9 @@
 		submitError = '';
 		const input = { ...stopInput };
 		try {
-			await startNewRun(query, runType, conditions, null, takeDraftAttachments());
+			const filesOnly = !searchWeb && filesOnlyModes.includes(runType);
+			await startNewRun(query, runType, conditions, null, takeDraftAttachments(), filesOnly ? 'files' : 'web');
+			searchWeb = true;
 			stopEdited = false;
 			void rememberStopConditions(input, runType);
 		} catch (err) {
@@ -325,6 +332,9 @@
 						}
 					}}></textarea>
 				<AttachmentBar bind:dragging />
+				{#if hasFiles && filesOnlyModes.includes(runType)}
+					<div class="source-mode"><Checkbox bind:checked={searchWeb}>{t('attachments.searchWeb')}</Checkbox></div>
+				{/if}
 				{#if !query.trim()}
 					<div class="examples" aria-label={t('query.examples')} role="group">
 						<span>{t('query.try')}</span>
@@ -544,7 +554,11 @@
 						running={$runState.status === 'running' || $runState.status === 'pending'}
 						liveAccounting={$runState.accounting}
 						limits={$runState.limits}
-						onask={$runState.runId ? (question, limits) => askFollowUp(question, limits) : undefined}
+						attachments={$runState.attachments}
+						sourceMode={$runState.sourceMode}
+						onask={$runState.runId
+							? (question, limits, files) => askFollowUp(question, limits, files.attachments, files.sourceMode)
+							: undefined}
 					/>
 				{:else}<ResultsTable
 						schema={$runState.schema}
@@ -625,6 +639,10 @@
 		border: 1px solid var(--app-border);
 		padding: 24px;
 		border-radius: var(--app-radius-lg);
+	}
+	.source-mode {
+		margin-top: 8px;
+		font-size: var(--app-text-md);
 	}
 	.query-form.dragging {
 		border-color: var(--app-accent);

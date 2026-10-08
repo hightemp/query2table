@@ -49,6 +49,14 @@ pub struct PipelineConfig {
     pub attachments: Vec<String>,
     /// Most scanned pages the model for images reads in one run.
     pub vision_max_pages: u32,
+    /// Where attached files are stored.
+    pub attachments_dir: std::path::PathBuf,
+    /// Search the web; off when the run works from attached files only.
+    pub web_search: bool,
+    /// Whether the main model sees images: `auto`, `on` or `off`.
+    pub llm_vision: String,
+    /// Model of the same provider that reads images when the main one cannot.
+    pub vision_model: String,
     /// Seconds allowed for loading one page.
     pub fetch_timeout_secs: u64,
     /// New pages taken from the results of each search query.
@@ -106,6 +114,10 @@ impl PipelineConfig {
                 .unwrap_or(5 * 1024 * 1024),
             suggested_schema: None,
             attachments: Vec::new(),
+            attachments_dir: crate::attachments::store::AttachmentStore::default_dir(),
+            web_search: true,
+            llm_vision: settings.get("llm_vision").cloned().unwrap_or_else(|| "auto".into()),
+            vision_model: settings.get("vision_model").map(|m| m.trim().to_string()).unwrap_or_default(),
             vision_max_pages: settings.get("vision_max_pages")
                 .and_then(|v| v.parse::<u32>().ok())
                 .unwrap_or(50)

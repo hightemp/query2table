@@ -11,6 +11,9 @@ pub enum AgentAction {
     Search { query: String },
     /// Fetch a web page (converted to markdown) at the given URL.
     Fetch { url: String },
+    /// Read an attached file: a page, sheet rows, a section, the fragments matching a query, or
+    /// its beginning.
+    ReadFile { file: String, place: crate::attachments::Locator, query: Option<String> },
     /// Record an internal reasoning step.
     Think { thought: String },
     /// Produce the final markdown answer and finish, with up to three suggested follow-up questions.
@@ -33,30 +36,81 @@ const MAX_FOLLOW_UPS: usize = 3;
 /// The research agent decides the next tool call given the conversation so far.
 pub struct ResearchAgent;
 
+/// Which tools the agent may use in a turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tools {
+    /// Web search and page fetching.
+    pub web: bool,
+    /// Reading attached files.
+    pub files: bool,
+}
+
+impl Default for Tools {
+    fn default() -> Self {
+        Self { web: true, files: false }
+    }
+}
+
 impl ResearchAgent {
-    /// System prompt describing the agent goal, available tools and the
-    /// strict JSON output contract used for every step.
+    /// System prompt for web research without attached files.
     pub fn system_prompt(max_steps: usize) -> String {
+        Self::system_prompt_with(max_steps, Tools::default())
+    }
+
+    /// System prompt describing the agent goal, the tools it may use and the
+    /// strict JSON output contract used for every step.
+    pub fn system_prompt_with(max_steps: usize, tools: Tools) -> String {
+        let mut list = Vec::new();
+        if tools.web {
+            list.push(r#"search    — run a web search.            JSON: {"action": "search", "query": "<search query>"}"#.to_string());
+            list.push(r#"fetch     — read a web page as markdown. JSON: {"action": "fetch", "url": "<absolute http(s) url>"}"#.to_string());
+        }
+        if tools.files {
+            list.push(
+                r#"read_file — read an attached file.      JSON: {"action": "read_file", "file": "F1", "page": 3}
+             Instead of "page" give "sheet" and "rows": "40-60" for spreadsheets, "section" for a heading,
+             "query" for the passages matching some words, or nothing for the beginning of the file."#
+                    .to_string(),
+            );
+        }
+        list.push(r#"think     — record private reasoning.     JSON: {"action": "think", "thought": "<your reasoning>"}"#.to_string());
+        list.push(r#"answer    — finish with the answer.       JSON: {"action": "answer", "markdown": "<final answer in Markdown>"}"#.to_string());
+        let tool_list = list.iter().enumerate().map(|(i, t)| format!("{}. {t}", i + 1)).collect::<Vec<_>>().join("\n");
+
+        let (role, goal) = match (tools.web, tools.files) {
+            (true, false) => ("web research agent", "by searching the web, reading pages, and reasoning"),
+            (true, true) => ("research agent", "by reading the attached files, searching the web, reading pages, and reasoning"),
+            _ => ("document research agent", "using only the attached files and reasoning; web search is turned off"),
+        };
+        let mut rules = vec![
+            if tools.web { "Always begin by planning with a search or a think step." } else { "Always begin by planning with a think step or by reading a file." }.to_string(),
+            "Use \"think\" steps to briefly explain your reasoning and plan between other steps, so your progress stays transparent to the user.".to_string(),
+        ];
+        if tools.web {
+            rules.push("Only fetch URLs that appeared in earlier search results.".into());
+            rules.push("Use multiple searches and fetches to gather enough evidence before answering.".into());
+            rules.push("Cite sources in the final answer as Markdown links where appropriate.".into());
+        }
+        if tools.files {
+            rules.push("The attached files are part of the request: read the parts you need before answering, and prefer them over the web for what they cover.".into());
+            rules.push("Cite file passages as Markdown links to their attachment addresses with the place, e.g. [report.pdf, p. 3](attachment://ID?page=3).".into());
+        }
+        if !tools.web {
+            rules.push("Answer from only the attached files. If they do not contain the answer, say so.".into());
+        }
+        let rules = rules.iter().map(|r| format!("- {r}")).collect::<Vec<_>>().join("\n");
         format!(
-            r#"You are an autonomous web research agent. Your goal is to answer the user's
-request thoroughly and accurately by searching the web, reading pages, and reasoning.
+            r#"You are an autonomous {role}. Your goal is to answer the user's
+request thoroughly and accurately {goal}.
 
 You operate in a loop. On EACH turn you must call exactly ONE tool by replying with a
 single JSON object and nothing else (no markdown fences, no commentary).
 
 Available tools:
-1. search  — run a web search.        JSON: {{"action": "search", "query": "<search query>"}}
-2. fetch   — read a web page as markdown. JSON: {{"action": "fetch", "url": "<absolute http(s) url>"}}
-3. think   — record private reasoning.  JSON: {{"action": "think", "thought": "<your reasoning>"}}
-4. answer  — finish with the answer.    JSON: {{"action": "answer", "markdown": "<final answer in Markdown>"}}
+{tool_list}
 
 Rules:
-- Always begin by planning with a search or a think step.
-- Use "think" steps to briefly explain your reasoning and plan between searches and
-  fetches, so your progress stays transparent to the user.
-- Only fetch URLs that appeared in earlier search results.
-- Use multiple searches and fetches to gather enough evidence before answering.
-- Cite sources in the final answer as Markdown links where appropriate.
+{rules}
 - You have at most {max_steps} steps. When you have enough information, call "answer".
 - The "answer" markdown must directly and completely address the user's request.
 - Do not end the answer with offers of further help ("If you want, I can also…");
@@ -235,6 +289,16 @@ fn parse_json_action(json_str: &str) -> Result<AgentAction, String> {
         #[serde(default)]
         thought: Option<String>,
         #[serde(default)]
+        file: Option<String>,
+        #[serde(default)]
+        page: Option<serde_json::Value>,
+        #[serde(default)]
+        sheet: Option<String>,
+        #[serde(default)]
+        rows: Option<serde_json::Value>,
+        #[serde(default)]
+        section: Option<String>,
+        #[serde(default)]
         markdown: Option<String>,
         #[serde(default)]
         follow_ups: Option<Vec<String>>,
@@ -257,6 +321,30 @@ fn parse_json_action(json_str: &str) -> Result<AgentAction, String> {
                 .filter(|u| !u.trim().is_empty())
                 .ok_or_else(|| "fetch action missing 'url'".to_string())?;
             Ok(AgentAction::Fetch { url })
+        }
+        "read_file" | "read" => {
+            let file = parsed
+                .file
+                .or(parsed.url)
+                .filter(|f| !f.trim().is_empty())
+                .ok_or_else(|| "read_file action missing 'file'".to_string())?;
+            let number = |value: &serde_json::Value| value.as_u64().or_else(|| value.as_str()?.trim().parse().ok()).map(|n| n as u32);
+            let rows = parsed.rows.as_ref().and_then(|value| match value {
+                serde_json::Value::Array(pair) if pair.len() == 2 => Some((number(&pair[0])?, number(&pair[1])?)),
+                serde_json::Value::String(text) => {
+                    let (a, b) = text.split_once(['-', '–']).unwrap_or((text, text));
+                    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+                }
+                other => number(other).map(|n| (n, n)),
+            });
+            let place = crate::attachments::Locator {
+                page: parsed.page.as_ref().and_then(number),
+                sheet: parsed.sheet.filter(|s| !s.trim().is_empty()),
+                rows,
+                section: parsed.section.filter(|s| !s.trim().is_empty()),
+            };
+            let query = parsed.query.filter(|q| !q.trim().is_empty());
+            Ok(AgentAction::ReadFile { file, place, query })
         }
         "think" => {
             let thought = parsed.thought.unwrap_or_default();
@@ -469,6 +557,39 @@ mod tests {
                 url: "https://example.com/post".to_string()
             }
         );
+    }
+
+    #[test]
+    fn read_file_actions_name_a_place_or_a_query() {
+        use crate::attachments::Locator;
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"read_file","file":"F1","page":"3"}"#).unwrap(),
+            AgentAction::ReadFile { file: "F1".into(), place: Locator::page(3), query: None }
+        );
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"read_file","file":"prices.xlsx","sheet":"Data","rows":"40-60"}"#).unwrap(),
+            AgentAction::ReadFile {
+                file: "prices.xlsx".into(),
+                place: Locator { sheet: Some("Data".into()), rows: Some((40, 60)), ..Locator::default() },
+                query: None
+            }
+        );
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"read_file","file":"F2","rows":[5,9],"query":"revenue"}"#).unwrap(),
+            AgentAction::ReadFile { file: "F2".into(), place: Locator { rows: Some((5, 9)), ..Locator::default() }, query: Some("revenue".into()) }
+        );
+        assert!(ResearchAgent::parse_action(r#"{"action":"read_file"}"#).is_err());
+    }
+
+    #[test]
+    fn the_prompt_offers_only_the_tools_of_the_run() {
+        let web = ResearchAgent::system_prompt(10);
+        assert!(web.contains(r#""action": "search""#) && !web.contains("read_file"));
+        let both = ResearchAgent::system_prompt_with(10, Tools { web: true, files: true });
+        assert!(both.contains(r#""action": "search""#) && both.contains("read_file") && both.contains("attachment://ID?page=3"));
+        let files = ResearchAgent::system_prompt_with(10, Tools { web: false, files: true });
+        assert!(!files.contains(r#""action": "search""#) && !files.contains(r#""action": "fetch""#));
+        assert!(files.contains("only the attached files") && files.contains("You have at most 10 steps"));
     }
 
     #[test]

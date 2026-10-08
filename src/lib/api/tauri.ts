@@ -114,7 +114,9 @@ export async function startRun(
 	/** Table runs: columns to offer for review instead of planning new ones. */
 	schema?: SchemaColumn[] | null,
 	/** Ids of attached files. */
-	attachments?: string[]
+	attachments?: string[],
+	/** `files`: work from the attached files only, without web search. */
+	sourceMode?: SourceMode
 ): Promise<StartRunResponse> {
 	return invoke('start_run', {
 		query,
@@ -122,8 +124,12 @@ export async function startRun(
 		stopConditions: stopConditions ?? null,
 		schema: schema ?? null,
 		attachments: attachments?.length ? attachments : null,
+		sourceMode: sourceMode ?? null,
 	});
 }
+
+/** Where a run looks: attached files and the web, or the files only. */
+export type SourceMode = 'web' | 'files';
 
 // --- Attachments ---
 
@@ -417,9 +423,17 @@ export async function getResearchResult(runId: string): Promise<ResearchResult> 
 export function askFollowUp(
 	runId: string,
 	question: string,
-	stopConditions: StopConditions
+	stopConditions: StopConditions,
+	attachments?: string[],
+	sourceMode?: SourceMode
 ): Promise<void> {
-	return invoke('ask_follow_up', { runId, question, stopConditions });
+	return invoke('ask_follow_up', {
+		runId,
+		question,
+		stopConditions,
+		attachments: attachments?.length ? attachments : null,
+		sourceMode: sourceMode ?? null,
+	});
 }
 
 export function onResearchStep(cb: (e: ResearchStepEvent) => void): Promise<UnlistenFn> {

@@ -115,9 +115,20 @@ describe('draft attachments', () => {
 	it('hands ready files to a new run and clears the draft without deleting them', async () => {
 		vi.mocked(addAttachments).mockResolvedValue([{ attachment: info('a'), error: null }]);
 		await attachPaths(['/a.pdf']);
-		expect(takeDraftAttachments()).toEqual(['a']);
+		expect(takeDraftAttachments().map((a) => a.id)).toEqual(['a']);
 		expect(get(draftAttachments)).toEqual([]);
 		expect(removeAttachment).not.toHaveBeenCalled();
 		expect(localStorage.getItem('q2t-draft-attachments')).toBe('[]');
+	});
+});
+
+describe('places in files', () => {
+	it('are read from attachment addresses and named for people', async () => {
+		const { attachmentPlace, placeLabel } = await import('$lib/utils/attachments');
+		expect(attachmentPlace('attachment://abc?page=3')).toEqual({ id: 'abc', place: { page: 3 } });
+		expect(attachmentPlace('attachment://abc?sheet=Prices&rows=40-60')).toEqual({ id: 'abc', place: { sheet: 'Prices', rows: [40, 60] } });
+		expect(attachmentPlace('https://example.com/?page=2')).toBe(null);
+		expect(placeLabel('prices.xlsx', { sheet: 'Prices', rows: [40, 60] })).toBe('prices.xlsx, sheet Prices, rows 40–60');
+		expect(placeLabel('notes.md', { section: 'Intro' })).toBe('notes.md, section “Intro”');
 	});
 });

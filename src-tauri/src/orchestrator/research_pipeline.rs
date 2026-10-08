@@ -11,7 +11,11 @@ use crate::providers::search::manager::SearchManager;
 use crate::storage::repository::Repository;
 
 use crate::roles::pdf_parser::PdfParser;
-use crate::roles::research_agent::{AgentAction, PriorTurn, ResearchAgent};
+use crate::roles::research_agent::{AgentAction, PriorTurn, ResearchAgent, Tools};
+use crate::attachments::store::AttachmentStore;
+use crate::providers::llm::capabilities::VisionPlan;
+
+use super::files::RunFiles;
 
 use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
@@ -28,6 +32,10 @@ pub fn max_steps(config: &PipelineConfig) -> u32 {
 }
 /// Max characters of fetched page markdown to feed back to the agent.
 const FETCH_MARKDOWN_CHAR_LIMIT: usize = 8000;
+/// Characters of matching file fragments given with the first message.
+const FILE_CONTEXT_CHARS: usize = 6000;
+/// The reply to a web tool in a files-only run.
+const WEB_OFF: &str = "Web search is turned off for this run. Answer from the attached files with read_file.";
 
 /// Agentic research pipeline.
 /// The LLM drives a tool-calling loop (search / fetch / think) and finishes by
@@ -171,14 +179,22 @@ impl ResearchPipeline {
             }
         };
 
-        let search = match SearchManager::from_config(self.config.search.clone()) {
-            Ok(s) => Arc::new(s.with_accounting(self.budget.observer())),
-            Err(e) => {
-                let msg = format!("Search not configured: {e}");
-                self.log("ERROR", "research", &msg).await;
-                return Ok(PipelineState::Failed(msg));
+        // A files-only run needs no search provider.
+        let search = if self.config.web_search {
+            match SearchManager::from_config(self.config.search.clone()) {
+                Ok(s) => Some(Arc::new(s.with_accounting(self.budget.observer()))),
+                Err(e) => {
+                    let msg = format!("Search not configured: {e}");
+                    self.log("ERROR", "research", &msg).await;
+                    return Ok(PipelineState::Failed(msg));
+                }
             }
+        } else {
+            None
         };
+
+        // Files of the whole conversation, with scans read and pictures described as needed.
+        let files = self.load_files(&llm).await;
 
         let rate_limiter = RateLimiter::new(std::time::Duration::from_millis(self.config.rate_limit_ms));
         let fetcher = Arc::new(
@@ -192,10 +208,14 @@ impl ResearchPipeline {
 
         let max_steps = max_steps(&self.config);
 
-        // Build the running transcript: earlier turns as context, then this turn's request.
-        let mut messages = vec![Message::system(ResearchAgent::system_prompt(max_steps as usize))];
+        // Build the running transcript: earlier turns as context, the files, then this turn's request.
+        let tools = Tools { web: search.is_some(), files: files.is_some() };
+        let mut messages = vec![Message::system(ResearchAgent::system_prompt_with(max_steps as usize, tools))];
         if let Some(context) = ResearchAgent::conversation_context(&self.history) {
             messages.push(Message::user(context));
+        }
+        if let Some(files) = &files {
+            messages.push(Message::user_with_images(files.context(&self.query, FILE_CONTEXT_CHARS).await, files.images().await));
         }
         messages.push(Message::user(format!("Research request:\n{}", self.query)));
 
@@ -231,7 +251,36 @@ impl ResearchPipeline {
                 };
 
             match action {
+                AgentAction::Search { query } if search.is_none() => {
+                    messages.push(Message::assistant(serde_json::json!({ "action": "search", "query": query }).to_string()));
+                    messages.push(Message::user(WEB_OFF.to_string()));
+                }
+                AgentAction::Fetch { url } if search.is_none() => {
+                    messages.push(Message::assistant(serde_json::json!({ "action": "fetch", "url": url }).to_string()));
+                    messages.push(Message::user(WEB_OFF.to_string()));
+                }
+                AgentAction::ReadFile { file, place, query } => {
+                    let action = serde_json::json!({ "action": "read_file", "file": file, "place": place, "query": query }).to_string();
+                    let observation = match &files {
+                        None => "No files are attached to this conversation.".to_string(),
+                        Some(files) => match files.read(&file, place, query.as_deref(), FETCH_MARKDOWN_CHAR_LIMIT).await {
+                            Ok(read) => {
+                                self.log("INFO", "research", &format!("Read file: {}", read.label)).await;
+                                fetch_count += 1;
+                                self.record_step(step_index, "read", &read.label, Some(&read.url)).await;
+                                format!("File content ({}):\n{}", read.label, read.text)
+                            }
+                            Err(e) => {
+                                self.record_error(step_index, &format!("Could not read the file: {e}")).await;
+                                e
+                            }
+                        },
+                    };
+                    messages.push(Message::assistant(action));
+                    messages.push(Message::user(observation));
+                }
                 AgentAction::Search { query } => {
+                    let Some(search) = &search else { unreachable!("handled above") };
                     self.log("INFO", "research", &format!("Search: {query}"))
                         .await;
 
@@ -365,6 +414,40 @@ impl ResearchPipeline {
         self.log("INFO", "research", "Research completed").await;
         self.set_status("completed").await;
         Ok(PipelineState::Completed)
+    }
+
+    /// The conversation's files with scans read and pictures described for this run's models;
+    /// None when nothing is attached.
+    async fn load_files(&self, llm: &LlmManager) -> Option<RunFiles> {
+        let store = AttachmentStore::new(self.repo.pool().clone(), self.config.attachments_dir.clone());
+        // Who reads images is asked of the provider only when there are files.
+        let plan = || VisionPlan::for_config(&self.config.llm, &self.config.llm_vision, &self.config.vision_model);
+        let files = match RunFiles::load_with(store, &self.run_id, plan).await {
+            Ok(Some(files)) => files,
+            Ok(None) => return None,
+            Err(e) => {
+                self.log("WARN", "research", &format!("Could not load the attached files: {e}")).await;
+                return None;
+            }
+        };
+        let report = files.prepare(llm, self.config.vision_max_pages).await;
+        if report.pages_read + report.images_described > 0 {
+            let message = format!(
+                "Read {} scanned page(s) and described {} picture(s) with {}",
+                report.pages_read,
+                report.images_described,
+                files.plan.reader.as_deref().unwrap_or("the model")
+            );
+            self.log("INFO", "research", &message).await;
+        }
+        if report.pages_skipped > 0 {
+            let reason = if files.plan.reader.is_none() { "no model for images is set up" } else { "the run's page limit was reached" };
+            self.log("WARN", "research", &format!("{} scanned page(s) were not read: {reason}", report.pages_skipped)).await;
+        }
+        if report.pages_failed + report.images_failed > 0 {
+            self.log("WARN", "research", &format!("{} scanned page(s) and {} picture(s) could not be read", report.pages_failed, report.images_failed)).await;
+        }
+        Some(files)
     }
 
     async fn store_answer(&self, markdown: &str, follow_ups: &[String]) {

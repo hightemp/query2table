@@ -1894,7 +1894,7 @@ Goal: attach PDF, Word, Excel and other files and images to a query. Files serve
 
 - [x] **A1** Storage, parsing of all formats, fragments, FTS search, commands; attach UI (button, drop, paste, chips, draft). Tests: parsers on fixture files, dedup and cleanup, commands, Playwright for the chips.
 - [x] **A2** Multimodal messages, vision capability detection, vision settings, OCR of scans, image descriptions.
-- [ ] **A3** Research: context, `read_file`, images, follow-up attachments, file sources in the answer.
+- [x] **A3** Research: context, `read_file`, images, follow-up attachments, file sources in the answer.
 - [ ] **A4** Table: context, files as sources, *files only* mode, file sources in rows.
 - [ ] **A5** Links and Images (reference image ranking with a cost warning).
 - [ ] **A6** History, Run again, export of sources, cleanup, polish.
