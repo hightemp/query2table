@@ -8,6 +8,8 @@ export const ru: Record<MessageKey, Message> = {
 	"attachments.chars": { few: "{chars} символа", many: "{chars} символов", one: "{chars} символ", other: "{chars} символа" },
 	"attachments.choose": "Прикрепить файлы",
 	"attachments.chooseVision": "Выбрать модель для изображений",
+	"attachments.compareCost": "Найденные картинки будут сравниваться с приложенной: до {count} штук отправятся модели для изображений, поэтому прогон обойдётся дороже.",
+	"attachments.compareUnavailable": "Ни одна модель не видит изображения, поэтому найденные картинки не будут сравниваться с приложенной.",
 	"attachments.documents": "Документы",
 	"attachments.drop": "Отпустите, чтобы прикрепить файлы",
 	"attachments.error.damaged": "Файл повреждён и не читается.",

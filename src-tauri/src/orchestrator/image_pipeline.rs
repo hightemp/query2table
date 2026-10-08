@@ -18,6 +18,11 @@ use crate::roles::stopping_controller::{StoppingController, PipelineStats, StopR
 
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
 
+/// Characters of the attached files' overview given to the query planner.
+const FILES_NOTE_CHARS: usize = 1500;
+/// Most attached pictures used as references in one comparison.
+const MAX_REFERENCES: usize = 2;
+
 /// Simplified pipeline for image search mode.
 /// Flow: Search Images → (optional) LLM Rank → Store Results → Done
 pub struct ImagePipeline {
@@ -30,6 +35,8 @@ pub struct ImagePipeline {
     supervisor: Option<RunSupervisor>,
     budget: BudgetTracker,
     start_time: Instant,
+    /// Search provider set by tests instead of the configured one.
+    search_override: Option<Arc<SearchManager>>,
 }
 
 impl ImagePipeline {
@@ -56,9 +63,15 @@ impl ImagePipeline {
             supervisor: Some(supervisor),
             budget,
             start_time: Instant::now(),
+            search_override: None,
         };
 
         (pipeline, cmd_tx)
+    }
+
+    /// Uses this search provider instead of the configured one (tests).
+    pub fn set_search(&mut self, search: Arc<SearchManager>) {
+        self.search_override = Some(search);
     }
 
     pub async fn run(mut self) -> Result<PipelineState, String> {
@@ -75,16 +88,19 @@ impl ImagePipeline {
         supervisor.run(self.run_inner()).await
     }
 
-    async fn run_inner(self) -> Result<PipelineState, String> {
+    async fn run_inner(mut self) -> Result<PipelineState, String> {
         self.set_status("running").await;
         self.log("INFO", "image_pipeline", "Starting image search...").await;
 
         // Initialize providers
-        let search = Arc::new(
-            SearchManager::from_config(self.config.search.clone())
-                .map_err(|e| format!("Search config: {e}"))?
-                .with_accounting(self.budget.observer()),
-        );
+        let search = match self.search_override.take() {
+            Some(search) => Arc::new(search.as_ref().clone().with_accounting(self.budget.observer())),
+            None => Arc::new(
+                SearchManager::from_config(self.config.search.clone())
+                    .map_err(|e| format!("Search config: {e}"))?
+                    .with_accounting(self.budget.observer()),
+            ),
+        };
         let llm = LlmManager::from_config_with_diagnostics(
             self.config.llm.clone(),
             self.control.issue_sender(),
@@ -92,11 +108,39 @@ impl ImagePipeline {
         .map(|manager| manager.with_accounting(self.budget.observer()))
         .ok();
 
+        // Attached files: what they show shapes the queries; pictures are references to compare with.
+        let files = match &llm {
+            Some(llm_mgr) => {
+                let (files, logs) = super::files::load_for_run(
+                    self.repo.pool().clone(),
+                    &self.config,
+                    &self.run_id,
+                    llm_mgr,
+                    super::files::Prepare::AsText,
+                )
+                .await;
+                for (level, message) in logs {
+                    self.log(level, "files", &message).await;
+                }
+                files
+            }
+            None => None,
+        };
+        let files_note = match &files {
+            Some(files) => Some(files.summary(FILES_NOTE_CHARS).await),
+            None => None,
+        };
+        let references = match &files {
+            Some(files) => files.reference_images(MAX_REFERENCES).await,
+            None => Vec::new(),
+        };
+        let comparer = files.as_ref().and_then(|f| f.plan.reader.clone()).filter(|_| !references.is_empty());
+
         // Generate search query variations (LLM-based or static fallback)
         let queries = match &llm {
             Some(llm_mgr) => {
                 self.log("INFO", "image_pipeline", "Generating image search queries with LLM...").await;
-                match Self::generate_queries_with_llm(&self.query, llm_mgr).await {
+                match Self::generate_queries_with_llm(&self.query, files_note.as_deref(), llm_mgr).await {
                     Ok(q) => q,
                     Err(e) => {
                         warn!(error = %e, "LLM query generation failed, using static fallback");
@@ -166,7 +210,9 @@ impl ImagePipeline {
             self.log("INFO", "image_ranker", "Ranking images with LLM...")
                 .await;
             // Keep the search results so a ranking failure does not discard them.
-            match ImageRanker::rank(&self.query, collected.results.clone(), llm_mgr, 0.7).await {
+            // With a reference to compare with, the text ranking only weeds out the clearly wrong.
+            let text_min = if comparer.is_some() { 0.4 } else { 0.7 };
+            match ImageRanker::rank(&self.query, collected.results.clone(), llm_mgr, text_min).await {
                 Ok(ranked) => {
                     self.log(
                         "INFO",
@@ -174,7 +220,33 @@ impl ImagePipeline {
                         &format!("Ranked: {} images passed relevance filter", ranked.len()),
                     )
                     .await;
-                    ranked
+                    match &comparer {
+                        Some(model) => {
+                            self.log(
+                                "INFO",
+                                "image_ranker",
+                                &format!(
+                                    "Comparing up to {} found images with the attached picture using {model}",
+                                    crate::roles::image_ranker::MAX_COMPARED
+                                ),
+                            )
+                            .await;
+                            let compared = ImageRanker::rank_with_reference(&self.query, ranked, &references, llm_mgr, model, 0.7).await;
+                            self.log("INFO", "image_ranker", &format!("{} images look like the attached picture", compared.len())).await;
+                            compared
+                        }
+                        None => {
+                            if !references.is_empty() {
+                                self.log(
+                                    "WARN",
+                                    "image_ranker",
+                                    "Found images were not compared with the attached picture: no model for images is set up",
+                                )
+                                .await;
+                            }
+                            ranked
+                        }
+                    }
                 }
                 Err(e) => {
                     warn!(error = %e, "LLM ranking failed, using unranked results");
@@ -271,7 +343,7 @@ impl ImagePipeline {
     }
 
     /// Generate image search queries using LLM for better diversity and coverage.
-    async fn generate_queries_with_llm(query: &str, llm: &LlmManager) -> Result<Vec<String>, String> {
+    async fn generate_queries_with_llm(query: &str, files: Option<&str>, llm: &LlmManager) -> Result<Vec<String>, String> {
         use crate::providers::llm::Message;
 
         let system = r#"You are an image search query generator. Given a user's image search request, generate 6-10 diverse search queries optimized for finding relevant images.
@@ -288,7 +360,13 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
 
         let messages = vec![
             Message::system(system),
-            Message::user(format!("Generate image search queries for: {}", query)),
+            Message::user(match files {
+                Some(files) => format!(
+                    "Generate image search queries for: {query}\n\nThe user attached these files; when the request refers to them \
+                     (\"like this picture\"), describe what they show in the queries:\n{files}"
+                ),
+                None => format!("Generate image search queries for: {query}"),
+            }),
         ];
 
         let response = llm.complete_for_stage("image_search_planner", messages, true).await

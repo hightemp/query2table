@@ -38,6 +38,57 @@ const OVERVIEW_CHARS: usize = 900;
 /// Most pictures put in one message for a model that sees images.
 pub const MAX_INLINE_IMAGES: usize = 8;
 
+/// How a run wants its files prepared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Prepare {
+    /// Pictures go to a model that sees them; descriptions only for a blind model.
+    ForModel,
+    /// Every picture is described too, so all content can be read as text.
+    AsText,
+}
+
+/// Loads a run's files and prepares them; returns the files (None without any) and the log lines
+/// (level, message) the pipeline should record.
+pub async fn load_for_run(
+    pool: sqlx::SqlitePool,
+    config: &super::pipeline::PipelineConfig,
+    run_id: &str,
+    llm: &LlmManager,
+    prepare: Prepare,
+) -> (Option<RunFiles>, Vec<(&'static str, String)>) {
+    let store = AttachmentStore::new(pool, config.attachments_dir.clone());
+    let plan = || VisionPlan::for_config(&config.llm, &config.llm_vision, &config.vision_model);
+    let files = match RunFiles::load_with(store, run_id, plan).await {
+        Ok(Some(files)) => files,
+        Ok(None) => return (None, Vec::new()),
+        Err(e) => return (None, vec![("WARN", format!("Could not load the attached files: {e}"))]),
+    };
+    let report = match prepare {
+        Prepare::ForModel => files.prepare(llm, config.vision_max_pages).await,
+        Prepare::AsText => files.prepare_as_text(llm, config.vision_max_pages).await,
+    };
+    let mut logs = Vec::new();
+    if report.pages_read + report.images_described > 0 {
+        logs.push((
+            "INFO",
+            format!(
+                "Read {} scanned page(s) and described {} picture(s) with {}",
+                report.pages_read,
+                report.images_described,
+                files.plan.reader.as_deref().unwrap_or("the model")
+            ),
+        ));
+    }
+    if report.pages_skipped > 0 {
+        let reason = if files.plan.reader.is_none() { "no model for images is set up" } else { "the run's page limit was reached" };
+        logs.push(("WARN", format!("{} scanned page(s) were not read: {reason}", report.pages_skipped)));
+    }
+    if report.pages_failed + report.images_failed > 0 {
+        logs.push(("WARN", format!("{} scanned page(s) and {} picture(s) could not be read", report.pages_failed, report.images_failed)));
+    }
+    (Some(files), logs)
+}
+
 impl RunFiles {
     /// Like [`Self::load`], working out the vision plan only when the run has files.
     pub async fn load_with<F, Fut>(store: AttachmentStore, run_id: &str, plan: F) -> Result<Option<Self>, String>
@@ -164,6 +215,27 @@ impl RunFiles {
             }
         }
         out
+    }
+
+    /// Attached pictures as references to compare found images with, whatever the main model sees.
+    pub async fn reference_images(&self, max: usize) -> Vec<ImageInput> {
+        let mut out = Vec::new();
+        for file in self.files.iter().filter(|f| f.kind == AttachmentKind::Image).take(max) {
+            if let Ok(Some((media_type, bytes))) = self.store.model_image(&file.id).await {
+                out.push(ImageInput::from_bytes(media_type, &bytes));
+            }
+        }
+        out
+    }
+
+    /// The files' overviews only, for prompts that just need to know what the files are about.
+    pub async fn summary(&self, max_chars: usize) -> String {
+        let mut out = String::from("Attached files:");
+        for (file, (_, outline)) in self.files.iter().zip(self.outlines().await) {
+            let outline: String = outline.chars().take(400).collect();
+            out.push_str(&format!("\n[{}] {}", file.label, outline.replace('\n', "; ")));
+        }
+        crate::utils::text::truncate_chars(&out, max_chars).to_string()
     }
 
     /// A file by its label (`F2`), name, id or `attachment://` address.

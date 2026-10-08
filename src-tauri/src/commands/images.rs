@@ -17,7 +17,7 @@ fn client() -> Result<reqwest::Client, String> {
 
 /// Downloads an image and returns its content type and bytes.
 /// Pages, other non-image responses and files above `limit` are rejected.
-async fn download_image(url: &str, limit: usize) -> Result<(String, Vec<u8>), String> {
+pub(crate) async fn download_image(url: &str, limit: usize) -> Result<(String, Vec<u8>), String> {
     let resp = client()?
         .get(url)
         .send()

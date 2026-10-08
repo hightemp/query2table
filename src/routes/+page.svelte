@@ -21,6 +21,7 @@
 	import SchemaEditor from '$lib/components/run/SchemaEditor.svelte';
 	import AttachmentBar from '$lib/components/query/AttachmentBar.svelte';
 	import FileChips from '$lib/components/common/FileChips.svelte';
+	import { visionStatus } from '$lib/stores/vision';
 	import { attachFiles, draftAttachments, MAX_ATTACHMENTS, takeDraftAttachments } from '$lib/stores/attachments';
 	import Checkbox from '$lib/components/common/Checkbox.svelte';
 	import { filesOnlyModes } from '$lib/utils/attachments';
@@ -104,6 +105,8 @@
 	/** With files attached, a run can skip the web and answer from the files only. */
 	let searchWeb = $state(true);
 	let hasFiles = $derived($draftAttachments.some((d) => d.state === 'ready'));
+	/** Images mode with an attached picture: found images are compared with it. */
+	let hasReference = $derived(runType === 'images' && $draftAttachments.some((d) => d.info?.kind === 'image'));
 
 	/** Files pasted into the query (screenshots, copied files) are attached instead of typed. */
 	async function handlePaste(event: ClipboardEvent) {
@@ -333,6 +336,14 @@
 						}
 					}}></textarea>
 				<AttachmentBar bind:dragging />
+				{#if hasReference}
+					<p class="reference-note" role="note">
+						<TriangleAlertIcon size={14} />
+						{$visionStatus?.reader
+							? t('attachments.compareCost', { count: 30 })
+							: t('attachments.compareUnavailable')}
+					</p>
+				{/if}
 				{#if hasFiles && filesOnlyModes.includes(runType)}
 					<div class="source-mode"><Checkbox bind:checked={searchWeb}>{t('attachments.searchWeb')}</Checkbox></div>
 				{/if}
@@ -641,6 +652,18 @@
 		border: 1px solid var(--app-border);
 		padding: 24px;
 		border-radius: var(--app-radius-lg);
+	}
+	.reference-note {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		margin-top: 8px;
+		color: var(--app-warning);
+		font-size: var(--app-text-sm);
+	}
+	.reference-note :global(svg) {
+		flex-shrink: 0;
+		margin-top: 2px;
 	}
 	.source-mode {
 		margin-top: 8px;

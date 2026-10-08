@@ -6,6 +6,8 @@ export const en = {
 	"attachments.chars": { one: "{chars} character", other: "{chars} characters" },
 	"attachments.choose": "Attach files",
 	"attachments.chooseVision": "Choose a model for images",
+	"attachments.compareCost": "Found images will be compared with the attached picture: up to {count} of them are sent to the model for images, which makes the run cost more.",
+	"attachments.compareUnavailable": "No model can see images, so found images will not be compared with the attached picture.",
 	"attachments.documents": "Documents",
 	"attachments.drop": "Drop files to attach them",
 	"attachments.error.damaged": "The file is damaged and cannot be read.",

@@ -12,8 +12,6 @@ use crate::storage::repository::Repository;
 
 use crate::roles::pdf_parser::PdfParser;
 use crate::roles::research_agent::{AgentAction, PriorTurn, ResearchAgent, Tools};
-use crate::attachments::store::AttachmentStore;
-use crate::providers::llm::capabilities::VisionPlan;
 
 use super::files::RunFiles;
 
@@ -419,35 +417,12 @@ impl ResearchPipeline {
     /// The conversation's files with scans read and pictures described for this run's models;
     /// None when nothing is attached.
     async fn load_files(&self, llm: &LlmManager) -> Option<RunFiles> {
-        let store = AttachmentStore::new(self.repo.pool().clone(), self.config.attachments_dir.clone());
-        // Who reads images is asked of the provider only when there are files.
-        let plan = || VisionPlan::for_config(&self.config.llm, &self.config.llm_vision, &self.config.vision_model);
-        let files = match RunFiles::load_with(store, &self.run_id, plan).await {
-            Ok(Some(files)) => files,
-            Ok(None) => return None,
-            Err(e) => {
-                self.log("WARN", "research", &format!("Could not load the attached files: {e}")).await;
-                return None;
-            }
-        };
-        let report = files.prepare(llm, self.config.vision_max_pages).await;
-        if report.pages_read + report.images_described > 0 {
-            let message = format!(
-                "Read {} scanned page(s) and described {} picture(s) with {}",
-                report.pages_read,
-                report.images_described,
-                files.plan.reader.as_deref().unwrap_or("the model")
-            );
-            self.log("INFO", "research", &message).await;
+        let (files, logs) =
+            super::files::load_for_run(self.repo.pool().clone(), &self.config, &self.run_id, llm, super::files::Prepare::ForModel).await;
+        for (level, message) in logs {
+            self.log(level, "files", &message).await;
         }
-        if report.pages_skipped > 0 {
-            let reason = if files.plan.reader.is_none() { "no model for images is set up" } else { "the run's page limit was reached" };
-            self.log("WARN", "research", &format!("{} scanned page(s) were not read: {reason}", report.pages_skipped)).await;
-        }
-        if report.pages_failed + report.images_failed > 0 {
-            self.log("WARN", "research", &format!("{} scanned page(s) and {} picture(s) could not be read", report.pages_failed, report.images_failed)).await;
-        }
-        Some(files)
+        files
     }
 
     async fn store_answer(&self, markdown: &str, follow_ups: &[String]) {

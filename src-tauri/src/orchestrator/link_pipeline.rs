@@ -19,6 +19,11 @@ use super::events::{EventPublisher, ProgressStats};
 use super::fetch_pool::{self, FetchJob, FetchResult};
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
 
+/// Characters of file fragments given to the query planner.
+const FILES_CONTEXT_CHARS: usize = 3000;
+/// Characters of the files' overview given with each page to rank.
+const FILES_NOTE_CHARS: usize = 1200;
+
 /// Simplified pipeline for relevance-filtered link search mode.
 /// Flow: Generate Queries → Web Search → Fetch & Parse → LLM Relevance Score → Filter → Store
 pub struct LinkPipeline {
@@ -31,6 +36,8 @@ pub struct LinkPipeline {
     supervisor: Option<RunSupervisor>,
     budget: BudgetTracker,
     start_time: Instant,
+    /// Search provider set by tests instead of the configured one.
+    search_override: Option<Arc<SearchManager>>,
 }
 
 impl LinkPipeline {
@@ -57,9 +64,15 @@ impl LinkPipeline {
             supervisor: Some(supervisor),
             budget,
             start_time: Instant::now(),
+            search_override: None,
         };
 
         (pipeline, cmd_tx)
+    }
+
+    /// Uses this search provider instead of the configured one (tests).
+    pub fn set_search(&mut self, search: Arc<SearchManager>) {
+        self.search_override = Some(search);
     }
 
     pub async fn run(mut self) -> Result<PipelineState, String> {
@@ -80,16 +93,19 @@ impl LinkPipeline {
         supervisor.run(self.run_inner()).await
     }
 
-    async fn run_inner(self) -> Result<PipelineState, String> {
+    async fn run_inner(mut self) -> Result<PipelineState, String> {
         self.set_status("running").await;
         self.log("INFO", "link_pipeline", "Starting link search...").await;
 
         // Initialize providers
-        let search = Arc::new(
-            SearchManager::from_config(self.config.search.clone())
-                .map_err(|e| format!("Search config: {e}"))?
-                .with_accounting(self.budget.observer()),
-        );
+        let search = match self.search_override.take() {
+            Some(search) => Arc::new(search.as_ref().clone().with_accounting(self.budget.observer())),
+            None => Arc::new(
+                SearchManager::from_config(self.config.search.clone())
+                    .map_err(|e| format!("Search config: {e}"))?
+                    .with_accounting(self.budget.observer()),
+            ),
+        };
         let llm = LlmManager::from_config_with_diagnostics(
             self.config.llm.clone(),
             self.control.issue_sender(),
@@ -97,11 +113,39 @@ impl LinkPipeline {
         .map(|manager| manager.with_accounting(self.budget.observer()))
         .ok();
 
+        // Attached files shape the searches and tell the ranking what the user means.
+        let files = match &llm {
+            Some(llm_mgr) => {
+                let (files, logs) = super::files::load_for_run(
+                    self.repo.pool().clone(),
+                    &self.config,
+                    &self.run_id,
+                    llm_mgr,
+                    super::files::Prepare::AsText,
+                )
+                .await;
+                for (level, message) in logs {
+                    self.log(level, "files", &message).await;
+                }
+                files
+            }
+            None => None,
+        };
+        let files_context = match &files {
+            Some(files) => Some(files.context(&self.query, FILES_CONTEXT_CHARS).await),
+            None => None,
+        };
+        // The ranker judges pages against the request together with what the files are about.
+        let ranking_query = match &files {
+            Some(files) => format!("{}\n\n{}", self.query, files.summary(FILES_NOTE_CHARS).await),
+            None => self.query.clone(),
+        };
+
         // Generate search query variations (LLM-based or static fallback)
         let queries = match &llm {
             Some(llm_mgr) => {
                 self.log("INFO", "link_pipeline", "Generating search queries with LLM...").await;
-                match Self::generate_queries_with_llm(&self.query, llm_mgr).await {
+                match Self::generate_queries_with_llm(&self.query, files_context.as_deref(), llm_mgr).await {
                     Ok(q) => q,
                     Err(e) => {
                         warn!(error = %e, "LLM query generation failed, using static fallback");
@@ -247,7 +291,7 @@ impl LinkPipeline {
                         None
                     }
                     Some(ref llm_mgr) => {
-                        match LinkRanker::score(&self.query, &candidate, llm_mgr, max_text_chars).await {
+                        match LinkRanker::score(&ranking_query, &candidate, llm_mgr, max_text_chars).await {
                             Ok(link) => Some((link, true)),
                             Err(e) => {
                                 warn!(url = %candidate.url, error = %e, "Link relevance scoring failed, skipping page");
@@ -346,7 +390,7 @@ impl LinkPipeline {
     }
 
     /// Generate web search queries using LLM for better diversity and coverage.
-    async fn generate_queries_with_llm(query: &str, llm: &LlmManager) -> Result<Vec<String>, String> {
+    async fn generate_queries_with_llm(query: &str, files: Option<&str>, llm: &LlmManager) -> Result<Vec<String>, String> {
         use crate::providers::llm::Message;
 
         let system = r#"You are a web search query generator. Given a user's research request, generate 6-10 diverse search queries optimized for finding the most relevant web pages.
@@ -361,7 +405,13 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
 
         let messages = vec![
             Message::system(system),
-            Message::user(format!("Generate web search queries for: {}", query)),
+            Message::user(match files {
+                Some(files) => format!(
+                    "Generate web search queries for: {query}\n\nThe request comes with these attached files; use their topic, \
+                     names and terms in the queries when the request refers to them:\n\n{files}"
+                ),
+                None => format!("Generate web search queries for: {query}"),
+            }),
         ];
 
         let response = llm

@@ -264,6 +264,12 @@ impl SearchManager {
         }
     }
 
+    /// Uses this image search provider (tests).
+    pub fn with_image_provider(mut self, provider: Arc<dyn ImageSearchProvider>) -> Self {
+        self.image_primary = provider;
+        self
+    }
+
     /// Execute an image search, with retry on transient errors, then falling back.
     pub async fn search_images(&self, query: &str) -> Result<Vec<ImageSearchResult>, SearchError> {
         self.search_images_with_count(query, self.config.num_results).await

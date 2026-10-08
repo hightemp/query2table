@@ -1,7 +1,7 @@
 use tracing::{debug, warn};
 
 use crate::providers::llm::manager::LlmManager;
-use crate::providers::llm::types::Message;
+use crate::providers::llm::types::{ImageInput, Message};
 use crate::providers::search::ImageSearchResult;
 
 /// An image result with a relevance score assigned by the ranker.
@@ -13,6 +13,12 @@ pub struct RankedImageResult {
 
 /// Max images per LLM batch to avoid count mismatches.
 const BATCH_SIZE: usize = 15;
+/// Most candidates compared with an attached reference picture in one run.
+pub const MAX_COMPARED: usize = 30;
+/// Candidates per comparison request (each one is a picture in the request).
+const COMPARE_BATCH: usize = 4;
+/// Longest side of a candidate picture sent for comparison.
+const COMPARE_SIDE: u32 = 384;
 
 /// Uses LLM to rank/filter image search results for relevance to the original query.
 pub struct ImageRanker;
@@ -115,6 +121,97 @@ impl ImageRanker {
         );
 
         Ok(all_ranked)
+    }
+
+    /// Re-scores the best candidates by how well they match the request and look like the
+    /// `references` (attached pictures), with a model that sees images. The candidates come
+    /// already ranked by text; at most [`MAX_COMPARED`] of them are compared, a few per request.
+    /// Candidates whose picture cannot be loaded keep their text score.
+    pub async fn rank_with_reference(
+        query: &str,
+        ranked: Vec<RankedImageResult>,
+        references: &[ImageInput],
+        llm: &LlmManager,
+        model: &str,
+        min_relevance: f64,
+    ) -> Vec<RankedImageResult> {
+        let mut compared: Vec<RankedImageResult> = Vec::new();
+        let candidates: Vec<RankedImageResult> = ranked.into_iter().take(MAX_COMPARED).collect();
+        // Load the pictures first; the order of the batches follows the text ranking.
+        let mut loaded: Vec<(RankedImageResult, Option<ImageInput>)> = Vec::new();
+        for candidate in candidates {
+            let picture = Self::load_picture(&candidate.result).await;
+            loaded.push((candidate, picture));
+        }
+        let (with_picture, without): (Vec<_>, Vec<_>) = loaded.into_iter().partition(|(_, p)| p.is_some());
+        compared.extend(without.into_iter().map(|(c, _)| c));
+        for batch in with_picture.chunks(COMPARE_BATCH) {
+            if llm.spending_limit_reached() {
+                compared.extend(batch.iter().map(|(c, _)| c.clone()));
+                continue;
+            }
+            let mut images: Vec<ImageInput> = references.to_vec();
+            images.extend(batch.iter().filter_map(|(_, p)| p.clone()));
+            let prompt = format!(
+                "User request: \"{query}\"\n\n\
+                 The first {refs} picture(s) are the reference picture(s) the user attached. The next {count} pictures are \
+                 candidates found on the web, in order. Score each candidate 0.0-1.0 by how well it matches the request \
+                 AND resembles the reference: same kind of object, model, style, colors and composition score high; \
+                 a different object or style scores low.\n\n\
+                 Respond with ONLY a JSON array of exactly {count} numbers, one per candidate.",
+                refs = references.len(),
+                count = batch.len(),
+            );
+            let messages = vec![
+                Message::system("You compare pictures with a reference picture. Output ONLY a JSON array of float scores."),
+                Message::user_with_images(prompt, images),
+            ];
+            let scores = match llm.complete_for_stage_with_model("image_compare", messages, model, true).await {
+                Ok(response) => Self::parse_scores(&response.content, batch.len()).unwrap_or_else(|e| {
+                    llm.report_invalid_response(
+                        "image_compare",
+                        &format!("Invalid similarity scores: {e}. These images keep their text scores."),
+                        &response,
+                        crate::providers::llm::IssueOutcome::Skipped,
+                    );
+                    batch.iter().map(|(c, _)| c.relevance_score).collect()
+                }),
+                Err(error) => {
+                    warn!(error = %error, "Comparing with the reference failed; keeping text scores");
+                    batch.iter().map(|(c, _)| c.relevance_score).collect()
+                }
+            };
+            for ((candidate, _), score) in batch.iter().zip(scores) {
+                compared.push(RankedImageResult { result: candidate.result.clone(), relevance_score: score });
+            }
+        }
+        compared.retain(|r| r.relevance_score >= min_relevance);
+        compared.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+        compared
+    }
+
+    /// A small copy of a found picture (the thumbnail, or the full image) to show a model.
+    async fn load_picture(result: &ImageSearchResult) -> Option<ImageInput> {
+        for url in [&result.thumbnail_url, &result.image_url] {
+            if url.is_empty() {
+                continue;
+            }
+            let Ok((_, bytes)) = crate::commands::images::download_image(url, 8 * 1024 * 1024).await else { continue };
+            let small = tokio::task::spawn_blocking(move || {
+                let image = image::load_from_memory(&bytes).ok()?;
+                let image = image.thumbnail(COMPARE_SIDE, COMPARE_SIDE);
+                let mut out = std::io::Cursor::new(Vec::new());
+                image::DynamicImage::ImageRgb8(image.to_rgb8()).write_to(&mut out, image::ImageFormat::Jpeg).ok()?;
+                Some(out.into_inner())
+            })
+            .await
+            .ok()
+            .flatten();
+            if let Some(bytes) = small {
+                return Some(ImageInput::from_bytes("image/jpeg", &bytes));
+            }
+        }
+        None
     }
 
     /// Parse a JSON array of f64 scores from LLM response.
