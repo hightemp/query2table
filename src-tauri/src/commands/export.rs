@@ -5,6 +5,8 @@ use crate::AppState;
 use crate::export::{ExportFormat, ExportRow, ExportSource, export_to_file};
 use crate::storage::models::SchemaColumn;
 use crate::storage::repository::Repository;
+use std::collections::HashMap;
+use crate::attachments::Locator;
 
 #[derive(Debug, Deserialize)]
 pub struct ExportRequest {
@@ -109,7 +111,8 @@ pub async fn export_run_to(
             .map_err(|e| format!("Failed to get research conversation: {e}"))?;
         let steps = repo.get_research_steps(run_id).await
             .map_err(|e| format!("Failed to get research steps: {e}"))?;
-        std::fs::write(path, conversation_markdown(&turns, &steps, turn_index))
+        let files = file_names(repo, run_id).await;
+        std::fs::write(path, conversation_markdown(&turns, &steps, turn_index, &files))
             .map_err(|e| format!("Failed to write file: {e}"))?;
         return Ok(());
     }
@@ -169,6 +172,7 @@ pub async fn export_run_to(
         let entity_rows = repo.get_entity_rows_by_run(run_id).await
             .map_err(|e| format!("Failed to get entity rows: {e}"))?;
 
+        let files = file_names(repo, run_id).await;
         let mut export_rows = Vec::with_capacity(entity_rows.len());
         for er in &entity_rows {
             let sources_rows = repo.get_row_sources(&er.id).await
@@ -177,7 +181,7 @@ pub async fn export_run_to(
             let sources: Vec<ExportSource> = sources_rows
                 .into_iter()
                 .map(|s| ExportSource {
-                    url: s.url,
+                    url: readable_source(&s.url, &files),
                     title: s.title,
                     snippet: s.snippet,
                 })
@@ -229,10 +233,44 @@ const READ_COUNT_PREFIX: &str = "Read page (";
 
 /// Markdown of a research conversation: each turn's question, answer and the pages read for it.
 /// `only` limits the export to one turn.
+/// A source for people reading an export: places in attached files by file name and place
+/// ("report.pdf, page 3"), since `attachment://` addresses mean nothing outside the app.
+pub(crate) fn readable_source(url: &str, files: &HashMap<String, String>) -> String {
+    match Locator::from_url(url) {
+        Some((id, place)) => place.label(files.get(&id).map(String::as_str).unwrap_or("attached file")),
+        None => url.to_string(),
+    }
+}
+
+/// Links to attached files in an answer become plain text naming the place.
+fn readable_answer(answer: &str, files: &HashMap<String, String>) -> String {
+    let link = regex::Regex::new(r"\[([^\]]*)\]\((attachment://[^)\s]+)\)").expect("valid pattern");
+    link.replace_all(answer, |caps: &regex::Captures| {
+        let text = caps[1].trim();
+        let place = readable_source(&caps[2], files);
+        let file = place.split(", ").next().unwrap_or("");
+        if !file.is_empty() && text.contains(file) { text.to_string() } else { format!("{text} ({place})") }
+    })
+    .into_owned()
+}
+
+/// File names of a run's attachments by id.
+async fn file_names(repo: &Repository, run_id: &str) -> HashMap<String, String> {
+    sqlx::query_as::<_, (String, String)>(
+        "SELECT a.id, a.file_name FROM attachments a JOIN run_attachments r ON r.attachment_id = a.id WHERE r.run_id = ?",
+    )
+    .bind(run_id)
+    .fetch_all(repo.pool())
+    .await
+    .map(|rows| rows.into_iter().collect())
+    .unwrap_or_default()
+}
+
 fn conversation_markdown(
     turns: &[crate::storage::repository::ResearchTurnRow],
     steps: &[crate::storage::repository::ResearchStepRow],
     only: Option<i64>,
+    files: &HashMap<String, String>,
 ) -> String {
     turns
         .iter()
@@ -240,7 +278,7 @@ fn conversation_markdown(
         .map(|turn| {
             let mut out = format!("# {}\n\n", turn.question.trim());
             match turn.answer_markdown.as_deref().map(str::trim).filter(|a| !a.is_empty()) {
-                Some(answer) => out.push_str(answer),
+                Some(answer) => out.push_str(&readable_answer(answer, files)),
                 None => out.push_str("_No answer was produced._"),
             }
             out.push('\n');
@@ -263,6 +301,21 @@ fn conversation_markdown(
                 out.push_str("\n**Pages read**\n\n");
                 for (i, page) in pages.iter().enumerate() {
                     out.push_str(&format!("{}. {page}\n", i + 1));
+                }
+            }
+            let mut read_files: Vec<String> = Vec::new();
+            for step in steps.iter().filter(|s| s.turn_index == turn.turn_index && s.step_type == "read") {
+                if let Some(url) = step.url.as_deref() {
+                    let place = readable_source(url, files);
+                    if !read_files.contains(&place) {
+                        read_files.push(place);
+                    }
+                }
+            }
+            if !read_files.is_empty() {
+                out.push_str("\n**Files read**\n\n");
+                for (i, place) in read_files.iter().enumerate() {
+                    out.push_str(&format!("{}. {place}\n", i + 1));
                 }
             }
             out
@@ -346,19 +399,36 @@ mod research_export_tests {
         let turns = [turn(0, "Find proxies", Some("Use Proxy-Seller.")), turn(1, "Cheapest?", Some("Proxy5."))];
         let steps = [read(0, "https://proxy-seller.me/", "Proxy-Seller"), read(1, "https://proxy5.net/", "Read page (10 characters of content).")];
         assert_eq!(
-            conversation_markdown(&turns, &steps, None),
+            conversation_markdown(&turns, &steps, None, &HashMap::new()),
             "# Find proxies\n\nUse Proxy-Seller.\n\n**Pages read**\n\n1. [Proxy-Seller](https://proxy-seller.me/)\n\n---\n\n# Cheapest?\n\nProxy5.\n\n**Pages read**\n\n1. [proxy5.net](https://proxy5.net/)\n"
         );
         assert_eq!(
-            conversation_markdown(&turns, &steps, Some(1)),
+            conversation_markdown(&turns, &steps, Some(1), &HashMap::new()),
             "# Cheapest?\n\nProxy5.\n\n**Pages read**\n\n1. [proxy5.net](https://proxy5.net/)\n"
         );
     }
 
     #[test]
+    fn file_citations_become_readable_places() {
+        let files = HashMap::from([("abc".to_string(), "report.pdf".to_string())]);
+        let answer = "Revenue grew [report.pdf, p. 3](attachment://abc?page=3) and [details](attachment://abc?page=5). See [site](https://a.example).";
+        let turns = [turn(0, "Revenue?", Some(answer))];
+        let mut file_read = read(0, "attachment://abc?page=3", "report.pdf, page 3");
+        file_read.step_type = "read".into();
+        let out = conversation_markdown(&turns, &[file_read], None, &files);
+        assert_eq!(
+            out,
+            "# Revenue?\n\nRevenue grew report.pdf, p. 3 and details (report.pdf, page 5). See [site](https://a.example).\n\n**Files read**\n\n1. report.pdf, page 3\n"
+        );
+        assert_eq!(readable_source("attachment://abc?sheet=Data&rows=2-4", &files), "report.pdf, sheet Data, rows 2–4");
+        assert_eq!(readable_source("attachment://gone?page=1", &files), "attached file, page 1");
+        assert_eq!(readable_source("https://a.example/", &files), "https://a.example/");
+    }
+
+    #[test]
     fn unanswered_turns_say_so() {
         let turns = [turn(0, "Find proxies", None)];
-        assert_eq!(conversation_markdown(&turns, &[], None), "# Find proxies\n\n_No answer was produced._\n");
+        assert_eq!(conversation_markdown(&turns, &[], None, &HashMap::new()), "# Find proxies\n\n_No answer was produced._\n");
     }
 }
 

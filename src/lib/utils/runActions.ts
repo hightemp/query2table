@@ -13,13 +13,20 @@ import {
 	TrashIcon,
 } from '@lucide/svelte';
 import type { MenuItem } from '$lib/components/common/ContextMenu.svelte';
-import { getRun, getRunSchema } from '$lib/api/tauri';
+import { getRun, getRunAttachments, getRunSchema } from '$lib/api/tauri';
 import { queryDraft, runInProgress, startNewRun } from '$lib/stores/run';
 import { settings } from '$lib/stores/settings';
 import { toast } from '$lib/stores/toasts';
 import { errorText } from '$lib/utils/errors';
 import { copyWithToast } from '$lib/utils/linkMenu';
-import { runLimits } from '$lib/utils/history';
+import { runLimits, runSourceMode } from '$lib/utils/history';
+import type { AttachmentInfo } from '$lib/types';
+
+/** Files of the run's first question (later research questions bring their own). */
+async function firstFiles(runId: string): Promise<AttachmentInfo[]> {
+	const files = (await getRunAttachments(runId).catch(() => [])) ?? [];
+	return files.filter((f) => f.turn_index === 0).map((f) => f.attachment);
+}
 import { parseStopConditions, stopInputFromSettings } from '$lib/utils/stopConditions';
 
 
@@ -38,7 +45,8 @@ export async function runAgain(runId: string) {
 		if (!run) throw new Error(t('history.notFound'));
 		const schema = run.run_type === 'table' ? ((await getRunSchema(runId))?.columns ?? null) : null;
 		const limits = limitsFor(run.config, run.run_type) ?? undefined;
-		const started = startNewRun(run.query, run.run_type, limits, schema);
+		const files = await firstFiles(runId);
+		const started = startNewRun(run.query, run.run_type, limits, schema, files, runSourceMode(run.config));
 		await goto('/');
 		await started;
 	} catch (error) {
@@ -52,7 +60,13 @@ export async function editAndRun(runId: string) {
 		if (runInProgress()) throw new Error(t('runActions.busy'));
 		const run = await getRun(runId);
 		if (!run) throw new Error(t('history.notFound'));
-		queryDraft.set({ query: run.query, runType: run.run_type, limits: runLimits(run.config) });
+		queryDraft.set({
+			query: run.query,
+			runType: run.run_type,
+			limits: runLimits(run.config),
+			attachments: await firstFiles(runId),
+			sourceMode: runSourceMode(run.config),
+		});
 		await goto('/');
 	} catch (error) {
 		toast(errorText(error), 'error');

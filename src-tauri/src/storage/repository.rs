@@ -131,7 +131,8 @@ impl Repository {
         let sql = format!(
             "SELECT r.id, r.query, r.title, r.status, r.run_type, r.stats, r.error, r.created_at, r.completed_at, \
              r.pinned_at, r.dismissed_notices, \
-             (SELECT COUNT(*) FROM research_turns t WHERE t.run_id = r.id) AS turn_count \
+             (SELECT COUNT(*) FROM research_turns t WHERE t.run_id = r.id) AS turn_count, \
+             (SELECT COUNT(DISTINCT a.attachment_id) FROM run_attachments a WHERE a.run_id = r.id) AS attachment_count \
              FROM runs r WHERE {conditions} \
              ORDER BY (r.pinned_at IS NULL), r.pinned_at DESC, {order} LIMIT {} OFFSET {}",
             filter.limit.clamp(1, 500),
@@ -1015,6 +1016,8 @@ pub struct RunListRow {
     pub dismissed_notices: Option<String>,
     /// Questions asked in a research conversation.
     pub turn_count: i64,
+    /// Distinct files attached to the run.
+    pub attachment_count: i64,
 }
 
 /// Search, filters and paging of the History list.
@@ -1049,7 +1052,9 @@ fn history_conditions(filter: &RunListFilter, with_type: bool) -> (String, Vec<S
         let pattern = format!("%{escaped}%");
         sql.push_str(
             " AND (lower(r.query) LIKE ?1 ESCAPE '\\' OR lower(COALESCE(r.title, '')) LIKE ?1 ESCAPE '\\' \
-             OR EXISTS (SELECT 1 FROM research_turns t WHERE t.run_id = r.id AND lower(t.question) LIKE ?1 ESCAPE '\\'))",
+             OR EXISTS (SELECT 1 FROM research_turns t WHERE t.run_id = r.id AND lower(t.question) LIKE ?1 ESCAPE '\\') \
+             OR EXISTS (SELECT 1 FROM run_attachments ra JOIN attachments a ON a.id = ra.attachment_id \
+                        WHERE ra.run_id = r.id AND lower(a.file_name) LIKE ?1 ESCAPE '\\'))",
         );
         binds.push(pattern);
     }
@@ -1289,6 +1294,24 @@ mod tests {
         assert_eq!(ids(&repo.list_runs_filtered(&search("ROBOT")).await.unwrap()), ["t1", "t2"]);
         // LIKE wildcards in the search text are literal.
         assert!(repo.list_runs_filtered(&search("%")).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn history_counts_attached_files_and_finds_runs_by_file_name() {
+        let (repo, _db) = test_repo().await;
+        history_fixture(&repo).await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::attachments::store::AttachmentStore::new(repo.pool.clone(), dir.path().to_path_buf());
+        let report = store.add_bytes("Annual-Report.pdf", crate::attachments::test_files::pdf(&["Annual report of Acme"])).await.unwrap();
+        let notes = store.add_bytes("notes.txt", b"plain notes".to_vec()).await.unwrap();
+        repo.link_attachments("r1", &[report.id.clone()], 0).await.unwrap();
+        repo.link_attachments("r1", &[notes.id.clone(), report.id.clone()], 1).await.unwrap();
+        let all = repo.list_runs_filtered(&RunListFilter { limit: 10, ..Default::default() }).await.unwrap();
+        let count = |id: &str| all.iter().find(|r| r.id == id).unwrap().attachment_count;
+        // The same file in two turns counts once.
+        assert_eq!((count("r1"), count("t1")), (2, 0));
+        let search = RunListFilter { search: Some("annual-report".into()), limit: 10, ..Default::default() };
+        assert_eq!(ids(&repo.list_runs_filtered(&search).await.unwrap()), ["r1"]);
     }
 
     #[tokio::test]

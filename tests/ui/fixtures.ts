@@ -66,6 +66,7 @@ export const test = base.extend({
 				pinned_at: null as number | null,
 				dismissed_notices: null as string | null,
 				turn_count: type === 'research' ? 1 : 0,
+				attachment_count: 0,
 				config: '{}',
 				deleted: false,
 			}));

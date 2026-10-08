@@ -22,7 +22,7 @@
 	import AttachmentBar from '$lib/components/query/AttachmentBar.svelte';
 	import FileChips from '$lib/components/common/FileChips.svelte';
 	import { visionStatus } from '$lib/stores/vision';
-	import { attachFiles, draftAttachments, MAX_ATTACHMENTS, takeDraftAttachments } from '$lib/stores/attachments';
+	import { attachFiles, draftAttachments, MAX_ATTACHMENTS, queryFiles, takeDraftAttachments } from '$lib/stores/attachments';
 	import Checkbox from '$lib/components/common/Checkbox.svelte';
 	import { filesOnlyModes } from '$lib/utils/attachments';
 	import ResultsTable from '$lib/components/run/ResultsTable.svelte';
@@ -260,6 +260,10 @@
 			// Set the mode first so its remembered limit does not replace the run's own.
 			stopMode = draft.runType as Mode;
 			runType = draft.runType as Mode;
+		}
+		if (draft.attachments?.length) {
+			queryFiles.replace(draft.attachments);
+			searchWeb = draft.sourceMode !== 'files';
 		}
 		if (draft.limits) {
 			stopInput = {

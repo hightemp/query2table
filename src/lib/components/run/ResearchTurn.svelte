@@ -15,6 +15,7 @@
 	import {
 		answerHeadings,
 		answerWithSources,
+		readableAnswer,
 		collectSources,
 		markdownToText,
 	} from '$lib/utils/research';
@@ -148,14 +149,16 @@
 
 	function copyMenu(event: MouseEvent) {
 		if (!answer) return;
-		const text = answer;
+		const raw = answer;
+		// File citations become readable places in everything that leaves the app.
+		const text = readableAnswer(raw, sources);
 		showContextMenu(menuPointFor(event.currentTarget as Element), t('research.copyAnswer'), [
 			{ label: t('research.copyMarkdown'), icon: CopyIcon, action: () => copyWithToast(text, t('research.copiedMarkdown')) },
 			{ label: t('research.copyText'), icon: FileTextIcon, action: () => copyWithToast(markdownToText(text), t('research.copiedText')) },
 			{
 				label: t('research.copyWithSources'),
 				icon: LinkIcon,
-				action: () => copyWithToast(answerWithSources(text, sources), t('research.copiedWithSources')),
+				action: () => copyWithToast(answerWithSources(raw, sources), t('research.copiedWithSources')),
 			},
 		]);
 	}

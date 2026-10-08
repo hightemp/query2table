@@ -76,6 +76,8 @@ impl PipelineConfig {
     pub fn run_config(&self, mode: &str) -> serde_json::Value {
         serde_json::json!({
             "mode": mode,
+            // Files only, or files and the web; "Run again" repeats it.
+            "source_mode": if self.web_search { "web" } else { "files" },
             "stop": {
                 "target_row_count": self.stop.target_row_count,
                 "max_budget_usd": self.stop.max_budget_usd,
@@ -995,6 +997,9 @@ mod settings_tests {
     fn fetch_timeout_and_pages_per_query_come_from_settings() {
         let defaults = PipelineConfig::from_settings(&HashMap::new());
         assert_eq!((defaults.fetch_timeout_secs, defaults.max_pages_per_query, defaults.vision_max_pages), (15, 10, 50));
+        assert_eq!(defaults.run_config("table")["source_mode"], "web");
+        let files_only = PipelineConfig { web_search: false, ..PipelineConfig::from_settings(&HashMap::new()) };
+        assert_eq!(files_only.run_config("research")["source_mode"], "files");
         let pages = PipelineConfig::from_settings(&HashMap::from([("vision_max_pages".to_string(), "5000".to_string())]));
         assert_eq!(pages.vision_max_pages, 1000);
         let settings = HashMap::from([

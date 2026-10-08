@@ -104,10 +104,17 @@ export function createAttachmentDraft(storageKey: string) {
 			if (!Array.isArray(ids) || !ids.length || get(items).length) return;
 			try {
 				const infos = await getAttachments(ids);
+				// Files put in the form meanwhile (Edit and run) win over the saved draft.
+				if (get(items).length) return;
 				items.set(infos.map((info) => ({ key: newKey(), name: info.file_name, state: 'ready', info })));
 			} catch {
 				// Without the files the question still works; the chips simply do not come back.
 			}
+		},
+		/** Puts these files in the form instead of the current ones (Edit and run). */
+		replace(files: AttachmentInfo[]) {
+			items.set(files.map((info) => ({ key: newKey(), name: info.file_name, state: 'ready', info })));
+			persist();
 		},
 		/** The attached files for a new question; the form starts empty again. */
 		take(): AttachmentInfo[] {

@@ -154,6 +154,9 @@ export interface QueryDraft {
 	query: string;
 	runType: string;
 	limits: Required<import('$lib/api/tauri').StopConditions> | null;
+	/** Files of the run's first question. */
+	attachments?: AttachmentInfo[];
+	sourceMode?: SourceMode;
 }
 export const queryDraft = writable<QueryDraft | null>(null);
 

@@ -305,8 +305,20 @@ export function markdownToText(markdown: string): string {
 	return blockText(marked.lexer(markdown)).join('\n\n').trim();
 }
 
+/** Links to attached files become text naming the place: they mean nothing outside the app. */
+export function readableAnswer(markdown: string, sources: ResearchSource[]): string {
+	return markdown.replace(/\[([^\]]*)\]\((attachment:\/\/[^)\s]+)\)/g, (_, text: string, url: string) => {
+		const found = attachmentPlace(url);
+		const known = sources.find((s) => s.file && attachmentPlace(s.url)?.id === found?.id);
+		const name = known?.domain || t('attachments.preview');
+		const place = placeLabel(name, found?.place ?? {});
+		return text.includes(name) ? text.trim() : `${text.trim()} (${place})`;
+	});
+}
+
 export function answerWithSources(markdown: string, sources: ResearchSource[]): string {
-	if (!sources.length) return markdown;
-	const list = sources.map((source, i) => `${i + 1}. ${markdownLink(source.title, source.url)}`);
-	return `${markdown.trimEnd()}\n\n## ${t('research.sourcesHeading')}\n\n${list.join('\n')}\n`;
+	const text = readableAnswer(markdown, sources);
+	if (!sources.length) return text;
+	const list = sources.map((source, i) => `${i + 1}. ${source.file ? source.title : markdownLink(source.title, source.url)}`);
+	return `${text.trimEnd()}\n\n## ${t('research.sourcesHeading')}\n\n${list.join('\n')}\n`;
 }

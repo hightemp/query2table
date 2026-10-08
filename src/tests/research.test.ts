@@ -147,3 +147,19 @@ describe('file sources', () => {
 		]);
 	});
 });
+
+describe('copying answers with file citations', () => {
+	it('turns file links into readable places', async () => {
+		const { readableAnswer } = await import('$lib/utils/research');
+		const sources = [
+			{ url: 'attachment://abc?page=3', title: 'report.pdf, p. 3', domain: 'report.pdf', read: true, cited: true, file: true },
+			{ url: 'https://a.example', title: 'Site', domain: 'a.example', read: false, cited: true },
+		];
+		expect(readableAnswer('Grew [report.pdf, p. 3](attachment://abc?page=3) and [more](attachment://abc?page=5).', sources)).toBe(
+			'Grew report.pdf, p. 3 and more (report.pdf, p. 5).'
+		);
+		expect(answerWithSources('Grew [here](attachment://abc?page=3).', sources)).toBe(
+			'Grew here (report.pdf, p. 3).\n\n## Sources\n\n1. report.pdf, p. 3\n2. [Site](https://a.example)\n'
+		);
+	});
+});

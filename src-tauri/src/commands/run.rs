@@ -314,6 +314,7 @@ pub struct HistoryRun {
     pub pinned_at: Option<i64>,
     pub dismissed_notices: Option<String>,
     pub turn_count: i64,
+    pub attachment_count: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -347,6 +348,7 @@ pub async fn list_history(
                 pinned_at: r.pinned_at,
                 dismissed_notices: r.dismissed_notices,
                 turn_count: r.turn_count,
+                attachment_count: r.attachment_count,
             })
             .collect(),
         counts: counts.into_iter().collect(),

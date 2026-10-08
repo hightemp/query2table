@@ -130,6 +130,11 @@ export function groupRuns(runs: HistoryRun[], now: number, sort: HistorySort): R
 }
 
 /** Stop conditions saved with a run, for Run again; null for runs saved before they were. */
+/** Where the run looked: the attached files only, or the files and the web. */
+export function runSourceMode(config: string | null | undefined): 'web' | 'files' {
+	return parse(config)?.source_mode === 'files' ? 'files' : 'web';
+}
+
 export function runLimits(config: string | null | undefined): Required<StopConditions> | null {
 	const stop = parse(config)?.stop;
 	if (

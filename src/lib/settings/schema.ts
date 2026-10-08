@@ -26,7 +26,7 @@ export interface FieldDef {
 	max?: number;
 	step?: number;
 	/** Shown after the value. */
-	unit?: 'tokens' | 'chars' | 's' | 'KB' | 'USD';
+	unit?: 'tokens' | 'chars' | 's' | 'KB' | 'MB' | 'USD';
 	/** Rarely changed: inside the section's Advanced block. */
 	advanced?: boolean;
 	/** Shown only for this LLM provider. */
@@ -113,6 +113,7 @@ export const FIELDS: FieldDef[] = [
 	{ key: 'enable_content_truncation', section: 'runs', group: 'Content', kind: 'switch', default: 'true', advanced: true, keywords: 'truncation' },
 	{ key: 'max_extraction_text_chars', section: 'runs', group: 'Content', kind: 'number', default: '12000', min: 1000, max: 500000, step: 1, unit: 'chars', advanced: true },
 	{ key: 'max_pdf_text_chars', section: 'runs', group: 'Content', kind: 'number', default: '500000', min: 1000, max: 5000000, step: 1, unit: 'chars', advanced: true },
+	{ key: 'attachment_max_mb', section: 'runs', group: 'Content', kind: 'number', default: '50', min: 1, max: 500, step: 1, unit: 'MB', advanced: true, keywords: 'attach files upload size' },
 	// Application
 	{ key: 'notifications_enabled', section: 'app', group: 'Notifications', kind: 'switch', default: 'true' },
 	{ key: 'show_site_icons', section: 'app', group: 'Appearance', kind: 'switch', default: 'true', keywords: 'favicon' },

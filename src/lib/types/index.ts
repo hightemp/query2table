@@ -98,6 +98,8 @@ export interface HistoryRun {
 	dismissed_notices: string | null;
 	/** Questions asked in a research conversation. */
 	turn_count: number;
+	/** Distinct files attached to the run. */
+	attachment_count?: number;
 }
 
 export type HistorySort = 'newest' | 'oldest' | 'results' | 'cost';

@@ -9,6 +9,7 @@
 		LinkIcon,
 		BrainIcon,
 		PinIcon,
+		PaperclipIcon,
 		EllipsisIcon,
 	} from '@lucide/svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
@@ -110,6 +111,13 @@
 				>
 			{/if}
 			{#if run.pinned_at}<span class="pin" use:tooltip={t('history.pinned')}><PinIcon size={13} /></span>{/if}
+			{#if run.attachment_count}<span
+					class="files"
+					role="img"
+					aria-label={t('history.files', { count: run.attachment_count })}
+					use:tooltip={t('history.files', { count: run.attachment_count })}
+					><PaperclipIcon size={13} />{run.attachment_count}</span
+				>{/if}
 		</div>
 		<p class="meta">
 			{#if run.title}<span class="query">{run.query}</span>{/if}
@@ -205,6 +213,14 @@
 		display: flex;
 		flex-shrink: 0;
 		color: var(--app-accent);
+	}
+	.files {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		flex-shrink: 0;
+		color: var(--app-muted);
+		font-size: var(--app-text-xs);
 	}
 	.meta {
 		display: flex;

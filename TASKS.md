@@ -1897,4 +1897,4 @@ Goal: attach PDF, Word, Excel and other files and images to a query. Files serve
 - [x] **A3** Research: context, `read_file`, images, follow-up attachments, file sources in the answer.
 - [x] **A4** Table: context, files as sources, *files only* mode, file sources in rows.
 - [x] **A5** Links and Images (reference image ranking with a cost warning).
-- [ ] **A6** History, Run again, export of sources, cleanup, polish.
+- [x] **A6** History, Run again, export of sources, cleanup, polish.
