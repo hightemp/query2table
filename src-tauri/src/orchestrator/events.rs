@@ -170,6 +170,14 @@ impl EventPublisher {
         }
     }
 
+    /// How far the current stage is: `done` of `total` items (pages, images).
+    pub fn emit_stage_progress(&self, stage: &str, done: usize, total: usize) {
+        let payload = serde_json::json!({ "run_id": self.run_id, "stage": stage, "done": done, "total": total });
+        if let Err(e) = self.app.emit("run:stage_progress", &payload) {
+            tracing::error!(error = %e, "Failed to emit stage_progress event");
+        }
+    }
+
     pub fn emit_schema_proposed(&self, columns: &serde_json::Value) {
         let payload = SchemaProposedEvent {
             run_id: self.run_id.clone(),

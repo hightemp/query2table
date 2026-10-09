@@ -138,11 +138,8 @@ test('Cancel asks for confirmation and the run summary stays compact', async ({ 
 	const cost = await page.locator('.cost-summary > summary').boundingBox();
 	expect(Math.abs(operation!.y - cost!.y)).toBeLessThan(12);
 
-	// Activity opens over the results instead of pushing them down.
-	const tableTop = (await page.locator('.result-workspace').boundingBox())!.y;
-	await page.getByText('Activity', { exact: true }).click();
-	await expect(page.locator('.activity-popover')).toContainText('Fetching pages');
-	expect((await page.locator('.result-workspace').boundingBox())!.y).toBe(tableTop);
+	// Stages and the Logs panel tell what happens; there is no separate activity popover.
+	await expect(page.getByText('Activity', { exact: true })).toHaveCount(0);
 
 	await page.getByRole('button', { name: 'Cancel', exact: true }).click();
 	const dialog = page.getByRole('dialog', { name: 'Cancel this run?' });

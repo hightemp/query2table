@@ -442,6 +442,7 @@ impl Pipeline {
         let file_count = file_fragments.len();
         let total_pages = pending_results.len() + file_count;
         self.stage("read");
+        self.stage_progress("read", 0, total_pages);
         self.log("INFO", "fetcher", &format!("Fetching {} pages (max {} parallel)...", pending_results.len(), self.config.max_parallel_fetches)).await;
         let fetcher = if let Some(f) = self.fetcher_override.take() {
             f
@@ -651,6 +652,8 @@ impl Pipeline {
         let mut saved_row_ids = Vec::new();
         let mut pages_fetched: u64 = 0;
         let mut pages_failed: u64 = 0;
+        // Pages and file fragments fully handled: extracted, empty, or failed to load.
+        let mut processed: usize = 0;
         let mut fetch_done = false;
         let mut extract_pending: u64 = 0;
         let mut extract_tx = Some(extract_tx);
@@ -698,6 +701,11 @@ impl Pipeline {
                                 .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
                             // Only extract if we have meaningful content
+                            let extracting = doc.document.text.len() > 50 && extract_tx.is_some();
+                            if !extracting {
+                                processed += 1;
+                                self.stage_progress("read", processed, total_pages);
+                            }
                             if doc.document.text.len() > 50 {
                                 if let Some(ref tx) = extract_tx {
                                     let extraction_job = ExtractionJob {
@@ -714,6 +722,8 @@ impl Pipeline {
                         }
                         Some(FetchResult::Failure(fail)) => {
                             pages_failed += 1;
+                            processed += 1;
+                            self.stage_progress("read", processed, total_pages);
                             self.log("WARN", "fetcher", &format!("Failed to fetch: {}", &fail.url)).await;
                             self.repo.create_fetched_page(
                                 &fail.search_result_id,
@@ -736,6 +746,8 @@ impl Pipeline {
                     match extract_result {
                         Some(ExtractResult::Success(output)) => {
                             extract_pending = extract_pending.saturating_sub(1);
+                            processed += 1;
+                            self.stage_progress("read", processed, total_pages);
                             if output.fetched_page_id.is_empty() {
                                 // A file fragment counts as a page read.
                                 pages_fetched += 1;
@@ -786,6 +798,8 @@ impl Pipeline {
                         }
                         Some(ExtractResult::Failure(fail)) => {
                             extract_pending = extract_pending.saturating_sub(1);
+                            processed += 1;
+                            self.stage_progress("read", processed, total_pages);
                             self.log("WARN", "extractor", &format!("Extraction failed for {}: {}", fail.page_url, fail.error)).await;
                         }
                         None => {
@@ -891,6 +905,13 @@ impl Pipeline {
     fn stage(&self, stage: &str) {
         if let Some(events) = &self.events {
             events.emit_stage(stage);
+        }
+    }
+
+    /// Tells the interface how far the current stage is.
+    fn stage_progress(&self, stage: &str, done: usize, total: usize) {
+        if let Some(events) = &self.events {
+            events.emit_stage_progress(stage, done, total);
         }
     }
 

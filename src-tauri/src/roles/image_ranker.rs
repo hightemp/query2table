@@ -29,6 +29,7 @@ impl ImageRanker {
         results: Vec<ImageSearchResult>,
         llm: &LlmManager,
         min_relevance: f64,
+        progress: Option<&(dyn Fn(usize, usize) + Sync)>,
     ) -> Result<Vec<RankedImageResult>, String> {
         if results.is_empty() {
             return Ok(vec![]);
@@ -36,6 +37,14 @@ impl ImageRanker {
 
         // Process in batches to improve LLM accuracy
         let mut all_ranked: Vec<RankedImageResult> = Vec::new();
+        let total = results.len();
+        let mut done = 0;
+        let tell = |done: usize| {
+            if let Some(progress) = progress {
+                progress(done, total);
+            }
+        };
+        tell(0);
 
         for chunk in results.chunks(BATCH_SIZE) {
             if llm.spending_limit_reached() {
@@ -106,6 +115,8 @@ impl ImageRanker {
                     relevance_score: score,
                 });
             }
+            done += chunk.len();
+            tell(done);
         }
 
         // Filter and sort
@@ -133,6 +144,7 @@ impl ImageRanker {
         model: &str,
         min_relevance: f64,
         max_compared: usize,
+        progress: Option<&(dyn Fn(usize, usize) + Sync)>,
     ) -> Vec<RankedImageResult> {
         let mut compared: Vec<RankedImageResult> = Vec::new();
         // Candidates beyond the limit are not compared and do not make the cut.
@@ -145,9 +157,21 @@ impl ImageRanker {
         }
         let (with_picture, without): (Vec<_>, Vec<_>) = loaded.into_iter().partition(|(_, p)| p.is_some());
         compared.extend(without.into_iter().map(|(c, _)| c));
+        let total = with_picture.len();
+        let mut done = 0;
+        if let Some(progress) = progress {
+            progress(0, total);
+        }
         for batch in with_picture.chunks(COMPARE_BATCH) {
+            done += batch.len();
+            let tell = || {
+                if let Some(progress) = progress {
+                    progress(done, total);
+                }
+            };
             if llm.spending_limit_reached() {
                 compared.extend(batch.iter().map(|(c, _)| c.clone()));
+                tell();
                 continue;
             }
             let mut images: Vec<ImageInput> = references.to_vec();
@@ -184,6 +208,7 @@ impl ImageRanker {
             for ((candidate, _), score) in batch.iter().zip(scores) {
                 compared.push(RankedImageResult { result: candidate.result.clone(), relevance_score: score });
             }
+            tell();
         }
         compared.retain(|r| r.relevance_score >= min_relevance);
         compared.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));

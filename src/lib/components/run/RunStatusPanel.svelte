@@ -34,12 +34,6 @@
 
 <div class="current-operation">
 	<span class="activity-dot" class:running></span><span role="status">{label}</span>
-	{#if activity.length}<details>
-			<summary>{t('operation.activity')}</summary>
-			<div class="activity-popover">
-				{#each activity.slice(-8) as entry}<p>{entry.message}</p>{/each}
-			</div>
-		</details>{/if}
 </div>
 
 <style>
@@ -62,33 +56,6 @@
 	.running {
 		background: var(--app-accent);
 		animation: pulse 1.6s ease-in-out infinite;
-	}
-	details {
-		position: relative;
-	}
-	summary {
-		cursor: pointer;
-		font-size: var(--app-text-sm);
-	}
-	.activity-popover {
-		position: absolute;
-		top: calc(100% + 6px);
-		left: 0;
-		z-index: 20;
-		width: min(560px, 70vw);
-		max-height: 220px;
-		overflow: auto;
-		padding: 8px 12px;
-		border: 1px solid var(--app-border);
-		border-radius: var(--app-radius);
-		background: var(--app-panel);
-		box-shadow: var(--app-shadow-popover);
-		color: var(--app-text);
-		font-size: var(--app-text-sm);
-		overflow-wrap: anywhere;
-	}
-	p {
-		margin: 4px 0;
 	}
 	@keyframes pulse {
 		50% {

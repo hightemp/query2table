@@ -347,6 +347,8 @@ impl LinkPipeline {
             }
 
             if let Some(ref events) = self.events {
+                // A page counts once it is loaded and scored, or failed to load.
+                events.emit_stage_progress("read", (pages_fetched + pages_failed) as usize, total_pages);
                 events.emit_progress(ProgressStats {
                     rows_found: relevant_count,
                     pages_fetched,

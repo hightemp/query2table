@@ -27,16 +27,21 @@ function searchDetail(queries: SearchQueryInfo[], active: boolean): string | nul
 }
 
 /** The stages of a run in order, with where it is now and counts where they help. */
+export type StageCounts = Record<string, { done: number; total: number }>;
+
 export function stageViews(
 	runType: string,
 	current: string | null,
 	status: string,
 	progress: ProgressStats | null,
-	queries: SearchQueryInfo[]
+	queries: SearchQueryInfo[],
+	counts: StageCounts = {},
+	/** Short names for the folded line. */
+	short = false
 ): StageView[] {
 	const ids = [...(STAGES[runType] ?? STAGES.table)];
 	// Comparing with a reference picture happens only in some image runs.
-	if (runType === 'images' && current === 'compare') ids.push('compare');
+	if (runType === 'images' && (current === 'compare' || counts.compare)) ids.push('compare');
 	const finished = FINISHED.includes(status);
 	const at = current ? ids.indexOf(current) : -1;
 	// A run without queries past the search stage did not search (files only).
@@ -45,10 +50,13 @@ export function stageViews(
 		let state: StageState = finished || index < at ? 'done' : index === at ? 'active' : 'waiting';
 		if ((id === 'plan' || id === 'search') && !searched && (finished || at > index) && runType === 'table') state = 'skipped';
 		let detail: string | null = null;
+		const count = counts[id];
 		if (id === 'search') detail = searchDetail(queries, state === 'active');
-		if (id === 'read' && progress && progress.pages_total > 0 && state !== 'waiting')
+		else if (count && count.total > 0 && state !== 'waiting')
+			detail = t(id === 'read' ? 'stages.pages' : 'stages.of', { done: count.done, total: count.total });
+		else if (id === 'read' && progress && progress.pages_total > 0 && state !== 'waiting')
 			detail = t('stages.pages', { done: progress.pages_fetched, total: progress.pages_total });
-		return { id, label: t(`stages.${id}` as MessageKey), state, detail };
+		return { id, label: t(`stages.${short ? 'short.' : ''}${id}` as MessageKey), state, detail };
 	});
 }
 

@@ -583,6 +583,7 @@
 					status={$runState.status}
 					progress={$runState.progress}
 					queries={$runState.queries}
+					counts={$runState.stageCounts}
 				/>{/if}
 			<div class="result-workspace">
 				{#if showStagesPanel}<RunStages
@@ -591,6 +592,7 @@
 						status={$runState.status}
 						progress={$runState.progress}
 						queries={$runState.queries}
+						counts={$runState.stageCounts}
 					/>
 				{:else if isImageRun}<ImageGallery images={$runState.imageResults} />
 				{:else if isLinkRun}<LinkList links={$runState.linkResults} />

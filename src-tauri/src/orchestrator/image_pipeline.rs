@@ -229,7 +229,13 @@ impl ImagePipeline {
             // Keep the search results so a ranking failure does not discard them.
             // With a reference to compare with, the text ranking only weeds out the clearly wrong.
             let text_min = if comparer.is_some() { 0.4 } else { 0.7 };
-            match ImageRanker::rank(&self.query, collected.results.clone(), llm_mgr, text_min).await {
+            let events = self.events.clone();
+            let rank_progress = move |done: usize, total: usize| {
+                if let Some(events) = &events {
+                    events.emit_stage_progress("rank", done, total);
+                }
+            };
+            match ImageRanker::rank(&self.query, collected.results.clone(), llm_mgr, text_min, Some(&rank_progress)).await {
                 Ok(ranked) => {
                     self.log(
                         "INFO",
@@ -246,7 +252,23 @@ impl ImagePipeline {
                                 &format!("Comparing the {compare_max} best found images with the attached picture using {model}"),
                             )
                             .await;
-                            let compared = ImageRanker::rank_with_reference(&self.query, ranked, &references, llm_mgr, model, 0.7, compare_max).await;
+                            let events = self.events.clone();
+                            let compare_progress = move |done: usize, total: usize| {
+                                if let Some(events) = &events {
+                                    events.emit_stage_progress("compare", done, total);
+                                }
+                            };
+                            let compared = ImageRanker::rank_with_reference(
+                                &self.query,
+                                ranked,
+                                &references,
+                                llm_mgr,
+                                model,
+                                0.7,
+                                compare_max,
+                                Some(&compare_progress),
+                            )
+                            .await;
                             self.log("INFO", "image_ranker", &format!("{} images look like the attached picture", compared.len())).await;
                             compared
                         }

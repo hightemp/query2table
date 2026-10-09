@@ -53,6 +53,25 @@ test('A table run shows its stages and searches until rows arrive', async ({ pag
 	await expect(line.getByRole('list', { name: 'Search queries' }).getByRole('listitem')).toHaveCount(3);
 });
 
+test('Image ranking and comparing count the images done', async ({ page }) => {
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Images', exact: true }).click();
+	await page.getByLabel('What would you like to find?').fill('Red tractors');
+	await page.getByRole('button', { name: 'Search Images' }).click();
+	await emit(page, 'run:status_changed', { run_id: 'live', status: 'running' });
+	await emit(page, 'run:stage', { run_id: 'live', stage: 'rank' });
+	await emit(page, 'run:stage_progress', { run_id: 'live', stage: 'rank', done: 45, total: 120 });
+	const stages = page.getByRole('region', { name: 'Run stages' });
+	await expect(stages.locator('[aria-current="step"]')).toContainText('Ranking images');
+	await expect(stages.locator('[aria-current="step"]')).toContainText('45 of 120');
+	await emit(page, 'run:stage_progress', { run_id: 'live', stage: 'rank', done: 120, total: 120 });
+	await emit(page, 'run:stage', { run_id: 'live', stage: 'compare' });
+	await emit(page, 'run:stage_progress', { run_id: 'live', stage: 'compare', done: 8, total: 30 });
+	await expect(stages.locator('[aria-current="step"]')).toContainText('Comparing with the picture');
+	await expect(stages.locator('[aria-current="step"]')).toContainText('8 of 30');
+	await expect(stages.getByRole('listitem').filter({ hasText: 'Ranking images' })).toContainText('120 of 120');
+});
+
 test('A saved run keeps a folded summary of its searches', async ({ page }) => {
 	await page.addInitScript(() => {
 		(window as any).__uiFixture.runQueries = [

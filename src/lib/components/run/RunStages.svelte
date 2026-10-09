@@ -3,7 +3,7 @@
 	import { t } from '$lib/i18n';
 	import { tooltip } from '$lib/actions/tooltip';
 	import type { ProgressStats, SearchQueryInfo } from '$lib/types';
-	import { queriesSummary, stageViews } from '$lib/utils/stages';
+	import { queriesSummary, stageViews, type StageCounts } from '$lib/utils/stages';
 
 	let {
 		runType,
@@ -11,6 +11,7 @@
 		status,
 		progress = null,
 		queries = [],
+		counts = {},
 		compact = false,
 	}: {
 		runType: string;
@@ -18,11 +19,13 @@
 		status: string;
 		progress?: ProgressStats | null;
 		queries?: SearchQueryInfo[];
+		/** How far each stage got (`run:stage_progress`). */
+		counts?: StageCounts;
 		/** One line above the results; the full panel stands in for results not yet found. */
 		compact?: boolean;
 	} = $props();
 
-	let views = $derived(stageViews(runType, stage, status, progress, queries));
+	let views = $derived(stageViews(runType, stage, status, progress, queries, counts, compact));
 	let finished = $derived(['completed', 'cancelled', 'failed'].includes(status));
 	let listOpen = $state(false);
 	// The full panel shows the queries while they run.
@@ -96,8 +99,9 @@
 		overflow: auto;
 	}
 	.run-stages.compact {
-		gap: 6px;
+		gap: 4px;
 		padding: 0;
+		margin-bottom: 10px;
 		border: 0;
 		background: none;
 		overflow: visible;
@@ -110,8 +114,16 @@
 	.compact .ladder {
 		flex-direction: row;
 		flex-wrap: wrap;
-		gap: 4px 14px;
+		align-items: center;
+		gap: 2px 14px;
 		font-size: var(--app-text-sm);
+		line-height: 1.5;
+	}
+	.compact .stage {
+		gap: 4px;
+	}
+	.compact .stage .icon {
+		width: 14px;
 	}
 	.stage {
 		display: flex;
@@ -164,7 +176,32 @@
 		font-weight: 600;
 	}
 	.compact .list-toggle {
+		gap: 4px;
+		margin-left: -2px;
+		padding: 2px 6px 2px 2px;
+		border-radius: var(--app-radius-sm);
+		color: var(--app-muted);
 		font-size: var(--app-text-sm);
+		font-weight: 500;
+		line-height: 1.4;
+	}
+	.compact .list-toggle:hover {
+		background: var(--app-subtle);
+		color: var(--app-text);
+	}
+	.compact .list-toggle .summary::before {
+		content: '·';
+		margin-right: 4px;
+	}
+	.compact .queries {
+		max-height: 240px;
+		padding: 0 10px;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius);
+		background: var(--app-panel);
+	}
+	.compact .queries .query:last-child {
+		border-bottom: 0;
 	}
 	.summary {
 		color: var(--app-muted);

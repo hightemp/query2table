@@ -40,6 +40,26 @@ describe('run stages', () => {
 		expect(done.map((v) => v.id)).toEqual(['plan', 'search', 'read']);
 	});
 
+	it('count images and pages from the stage progress', () => {
+		const counts = { rank: { done: 45, total: 120 }, read: { done: 12, total: 40 } };
+		const ranking = stageViews('images', 'rank', 'running', null, [], counts);
+		expect(ranking.find((v) => v.id === 'rank')?.detail).toBe('45 of 120');
+		const reading = stageViews('table', 'read', 'running', progress, [], counts);
+		// Pages done (extracted or failed) beat pages merely fetched.
+		expect(reading.find((v) => v.id === 'read')?.detail).toBe('12 of 40 pages');
+	});
+
+	it('use short names in the folded line', () => {
+		expect(stageViews('table', 'read', 'running', null, [], {}, true).map((v) => v.label)).toEqual([
+			'Query',
+			'Columns',
+			'Queries',
+			'Search',
+			'Reading',
+			'Duplicates',
+		]);
+	});
+
 	it('show comparing only for image runs that compare with a reference', () => {
 		expect(stageViews('images', 'rank', 'running', null, []).map((v) => v.id)).toEqual(['plan', 'search', 'rank']);
 		expect(stageViews('images', 'compare', 'running', null, []).map((v) => v.id)).toEqual(['plan', 'search', 'rank', 'compare']);

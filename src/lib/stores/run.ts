@@ -40,6 +40,7 @@ import {
 	onLlmIssue,
 	askFollowUp as apiAskFollowUp,
 	onRunStage,
+	onStageProgress,
 	onSearchQueries,
 	onSearchQuery,
 	getRunAttachments,
@@ -109,6 +110,8 @@ export interface RunState {
 	stage: string | null;
 	/** Planned search queries and what happened to each. */
 	queries: SearchQueryInfo[];
+	/** How far each stage got: pages read, images ranked, … */
+	stageCounts: Record<string, { done: number; total: number }>;
 	/** Where the run looks for answers. */
 	sourceMode: SourceMode;
 	/** All steps of the conversation. */
@@ -143,6 +146,7 @@ const initialState: RunState = {
 	sourceMode: 'web',
 	stage: null,
 	queries: [],
+	stageCounts: {},
 	researchSteps: [],
 	researchAnswer: null,
 	progress: null,
@@ -243,6 +247,13 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 		}),
 		subscribe(onRunStage, (e) => {
 			runState.update((s) => (s.runId === e.run_id ? { ...s, stage: e.stage } : s));
+		}),
+		subscribe(onStageProgress, (e) => {
+			runState.update((s) =>
+				s.runId === e.run_id
+					? { ...s, stageCounts: { ...s.stageCounts, [e.stage]: { done: e.done, total: e.total } } }
+					: s
+			);
 		}),
 		subscribe(onSearchQueries, (e) => {
 			runState.update((s) => (s.runId === e.run_id ? { ...s, queries: e.queries } : s));

@@ -189,7 +189,7 @@ async fn ranking_preserves_the_paid_batch_when_its_cost_reaches_the_limit() {
             height: None,
         })
         .collect();
-    let ranked = ImageRanker::rank("images", images, &manager, 0.7)
+    let ranked = ImageRanker::rank("images", images, &manager, 0.7, None)
         .await
         .unwrap();
     assert_eq!(ranked.len(), 15);

@@ -77,7 +77,7 @@ describe('run controls and startup events', () => {
 		apiInvoke.mockRejectedValueOnce('Provider not configured');
 		await expect(startNewRun('query')).rejects.toBe('Provider not configured');
 		expect(get(runState)).toMatchObject({ status: 'failed', error: 'Provider not configured' });
-		expect(unlisten).toHaveBeenCalledTimes(16);
+		expect(unlisten).toHaveBeenCalledTimes(17);
 	});
 
 	it('cleans partial subscriptions and reports a listener setup failure', async () => {
@@ -85,7 +85,7 @@ describe('run controls and startup events', () => {
 		await expect(startNewRun('query')).rejects.toThrow('Listener unavailable');
 		expect(get(runState).status).toBe('failed');
 		expect(apiInvoke).not.toHaveBeenCalled();
-		expect(unlisten).toHaveBeenCalledTimes(15);
+		expect(unlisten).toHaveBeenCalledTimes(16);
 	});
 
 	it('reconciles canonical rows and accounting only for the current run and generation', async () => {

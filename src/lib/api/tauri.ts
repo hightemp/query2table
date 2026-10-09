@@ -280,6 +280,14 @@ export function onRunStage(cb: (e: { run_id: string; stage: string }) => void): 
 	return listen<{ run_id: string; stage: string }>('run:stage', (event) => cb(event.payload));
 }
 
+export function onStageProgress(
+	cb: (e: { run_id: string; stage: string; done: number; total: number }) => void
+): Promise<UnlistenFn> {
+	return listen<{ run_id: string; stage: string; done: number; total: number }>('run:stage_progress', (event) =>
+		cb(event.payload)
+	);
+}
+
 export function onSearchQueries(cb: (e: { run_id: string; queries: SearchQueryInfo[] }) => void): Promise<UnlistenFn> {
 	return listen<{ run_id: string; queries: SearchQueryInfo[] }>('run:search_queries', (event) => cb(event.payload));
 }

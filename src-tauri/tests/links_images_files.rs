@@ -194,3 +194,23 @@ async fn comparing_can_be_turned_off_in_settings() {
     assert!(logs.iter().any(|l| l.message.contains("comparing is turned off in Settings")));
     assert_eq!(repo.get_image_results("img3").await.unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn ranking_reports_how_many_images_are_done() {
+    use query2table_lib::providers::llm::manager::LlmManager;
+    use query2table_lib::roles::image_ranker::ImageRanker;
+    let server = MockServer::start().await;
+    Mock::given(method("POST")).and(body_string_contains("Images (15 total)")).respond_with(reply(&format!("{:?}", vec![0.9; 15]))).mount(&server).await;
+    Mock::given(method("POST")).and(body_string_contains("Images (5 total)")).respond_with(reply(&format!("{:?}", vec![0.9; 5]))).mount(&server).await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = config(&server, dir.path(), &[]);
+    let llm = LlmManager::from_config(config.llm.clone()).unwrap();
+    let images: Vec<ImageSearchResult> = (0..20)
+        .map(|i| ImageSearchResult { image_url: format!("https://x.example/{i}.png"), thumbnail_url: String::new(), title: format!("Tractor {i}"), source_url: String::new(), width: None, height: None })
+        .collect();
+    let seen = std::sync::Mutex::new(Vec::new());
+    let report = |done: usize, total: usize| seen.lock().unwrap().push((done, total));
+    let ranked = ImageRanker::rank("tractors", images, &llm, 0.7, Some(&report)).await.unwrap();
+    assert_eq!(ranked.len(), 20);
+    assert_eq!(*seen.lock().unwrap(), vec![(0, 20), (15, 20), (20, 20)]);
+}
