@@ -339,6 +339,10 @@ pub fn test_pipeline_config() -> PipelineConfig {
         web_search: true,
         llm_vision: "auto".into(),
         vision_model: String::new(),
+        image_compare_max: 30,
+        max_file_fragments: 400,
+        max_inline_images: 8,
+        context: query2table_lib::orchestrator::pipeline::ContextBudget::for_size("medium"),
         fetch_timeout_secs: 15,
         max_pages_per_query: 100,
     }

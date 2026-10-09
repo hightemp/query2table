@@ -29,7 +29,7 @@ pub struct PriorTurn {
     pub sources: Vec<(String, String)>,
 }
 
-/// Upper bound for the conversation history passed to the agent, in characters.
+/// Default upper bound for the conversation history passed to the agent, in characters.
 pub const CONTEXT_CHAR_LIMIT: usize = 12_000;
 const MAX_FOLLOW_UPS: usize = 3;
 
@@ -167,7 +167,7 @@ Rules:
 
     /// Earlier turns as one context message, or `None` for the first question.
     /// Page text is not repeated; when the history is too long, older answers are shortened first.
-    pub fn conversation_context(turns: &[PriorTurn]) -> Option<String> {
+    pub fn conversation_context(turns: &[PriorTurn], limit: usize) -> Option<String> {
         if turns.is_empty() {
             return None;
         }
@@ -194,10 +194,10 @@ Rules:
         let mut text = render(&limits);
         // Shorten the oldest answers first, keeping at least a short summary of each.
         for i in 0..turns.len() {
-            if text.chars().count() <= CONTEXT_CHAR_LIMIT {
+            if text.chars().count() <= limit {
                 break;
             }
-            let excess = text.chars().count() - CONTEXT_CHAR_LIMIT;
+            let excess = text.chars().count() - limit;
             limits[i] = limits[i].saturating_sub(excess).max(400.min(limits[i]));
             text = render(&limits);
         }
@@ -496,7 +496,7 @@ mod tests {
 
     #[test]
     fn earlier_turns_become_context_without_page_text() {
-        assert_eq!(ResearchAgent::conversation_context(&[]), None);
+        assert_eq!(ResearchAgent::conversation_context(&[], CONTEXT_CHAR_LIMIT), None);
         let turns = vec![
             PriorTurn {
                 question: "Find Malaysian proxies".into(),
@@ -505,7 +505,7 @@ mod tests {
             },
             PriorTurn { question: "Which are cheapest?".into(), answer: "Proxy5.".into(), sources: vec![] },
         ];
-        let context = ResearchAgent::conversation_context(&turns).unwrap();
+        let context = ResearchAgent::conversation_context(&turns, CONTEXT_CHAR_LIMIT).unwrap();
         assert!(context.contains("Question 1: Find Malaysian proxies"));
         assert!(context.contains("Answer 1:\nUse Proxy-Seller."));
         assert!(context.contains("- Proxy-Seller — https://proxy-seller.me/my"));
@@ -519,7 +519,7 @@ mod tests {
             PriorTurn { question: "Old".into(), answer: long.clone(), sources: vec![] },
             PriorTurn { question: "Recent".into(), answer: "Short recent answer".into(), sources: vec![] },
         ];
-        let context = ResearchAgent::conversation_context(&turns).unwrap();
+        let context = ResearchAgent::conversation_context(&turns, CONTEXT_CHAR_LIMIT).unwrap();
         assert!(context.chars().count() < CONTEXT_CHAR_LIMIT + 500);
         assert!(context.contains("[answer shortened]"));
         assert!(context.contains("Short recent answer"));

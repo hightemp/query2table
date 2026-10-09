@@ -35,8 +35,6 @@ pub struct RunFiles {
 
 /// Characters of overview per file in the first message.
 const OVERVIEW_CHARS: usize = 900;
-/// Most pictures put in one message for a model that sees images.
-pub const MAX_INLINE_IMAGES: usize = 8;
 
 /// How a run wants its files prepared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,13 +201,14 @@ impl RunFiles {
         out
     }
 
-    /// Pictures to show a model that sees images; none for a blind model (it gets descriptions).
-    pub async fn images(&self) -> Vec<ImageInput> {
+    /// Pictures to show a model that sees images, at most `max`; none for a blind model (it gets
+    /// descriptions).
+    pub async fn images(&self, max: usize) -> Vec<ImageInput> {
         if !self.plan.main_sees {
             return Vec::new();
         }
         let mut out = Vec::new();
-        for file in self.files.iter().filter(|f| f.kind == AttachmentKind::Image).take(MAX_INLINE_IMAGES) {
+        for file in self.files.iter().filter(|f| f.kind == AttachmentKind::Image).take(max) {
             if let Ok(Some((media_type, bytes))) = self.store.model_image(&file.id).await {
                 out.push(ImageInput::from_bytes(media_type, &bytes));
             }

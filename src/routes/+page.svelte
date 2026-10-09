@@ -106,6 +106,7 @@
 	let searchWeb = $state(true);
 	let hasFiles = $derived($draftAttachments.some((d) => d.state === 'ready'));
 	/** Images mode with an attached picture: found images are compared with it. */
+	let compareMax = $derived(Number($settings.get('image_compare_max') ?? 30));
 	let hasReference = $derived(runType === 'images' && $draftAttachments.some((d) => d.info?.kind === 'image'));
 
 	/** Files pasted into the query (screenshots, copied files) are attached instead of typed. */
@@ -343,9 +344,11 @@
 				{#if hasReference}
 					<p class="reference-note" role="note">
 						<TriangleAlertIcon size={14} />
-						{$visionStatus?.reader
-							? t('attachments.compareCost', { count: 30 })
-							: t('attachments.compareUnavailable')}
+						{compareMax === 0
+							? t('attachments.compareOff')
+							: $visionStatus?.reader
+								? t('attachments.compareCost', { count: compareMax })
+								: t('attachments.compareUnavailable')}
 					</p>
 				{/if}
 				{#if hasFiles && filesOnlyModes.includes(runType)}

@@ -28,10 +28,6 @@ pub const MAX_RESEARCH_STEPS: u32 = 200;
 pub fn max_steps(config: &PipelineConfig) -> u32 {
     (config.stop.target_row_count as u32).clamp(1, MAX_RESEARCH_STEPS)
 }
-/// Max characters of fetched page markdown to feed back to the agent.
-const FETCH_MARKDOWN_CHAR_LIMIT: usize = 8000;
-/// Characters of matching file fragments given with the first message.
-const FILE_CONTEXT_CHARS: usize = 6000;
 /// The reply to a web tool in a files-only run.
 const WEB_OFF: &str = "Web search is turned off for this run. Answer from the attached files with read_file.";
 
@@ -209,11 +205,11 @@ impl ResearchPipeline {
         // Build the running transcript: earlier turns as context, the files, then this turn's request.
         let tools = Tools { web: search.is_some(), files: files.is_some() };
         let mut messages = vec![Message::system(ResearchAgent::system_prompt_with(max_steps as usize, tools))];
-        if let Some(context) = ResearchAgent::conversation_context(&self.history) {
+        if let Some(context) = ResearchAgent::conversation_context(&self.history, self.config.context.history_chars) {
             messages.push(Message::user(context));
         }
         if let Some(files) = &files {
-            messages.push(Message::user_with_images(files.context(&self.query, FILE_CONTEXT_CHARS).await, files.images().await));
+            messages.push(Message::user_with_images(files.context(&self.query, self.config.context.file_chars).await, files.images(self.config.max_inline_images).await));
         }
         messages.push(Message::user(format!("Research request:\n{}", self.query)));
 
@@ -261,7 +257,7 @@ impl ResearchPipeline {
                     let action = serde_json::json!({ "action": "read_file", "file": file, "place": place, "query": query }).to_string();
                     let observation = match &files {
                         None => "No files are attached to this conversation.".to_string(),
-                        Some(files) => match files.read(&file, place, query.as_deref(), FETCH_MARKDOWN_CHAR_LIMIT).await {
+                        Some(files) => match files.read(&file, place, query.as_deref(), self.config.context.page_chars).await {
                             Ok(read) => {
                                 self.log("INFO", "research", &format!("Read file: {}", read.label)).await;
                                 fetch_count += 1;
@@ -321,7 +317,7 @@ impl ResearchPipeline {
                             };
                             let truncated = crate::utils::text::truncate_chars(
                                 &markdown,
-                                FETCH_MARKDOWN_CHAR_LIMIT,
+                                self.config.context.page_chars,
                             )
                             .to_string();
                             (truncated, false)

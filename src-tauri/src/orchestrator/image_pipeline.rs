@@ -134,7 +134,11 @@ impl ImagePipeline {
             Some(files) => files.reference_images(MAX_REFERENCES).await,
             None => Vec::new(),
         };
-        let comparer = files.as_ref().and_then(|f| f.plan.reader.clone()).filter(|_| !references.is_empty());
+        let compare_max = self.config.image_compare_max;
+        let comparer = files
+            .as_ref()
+            .and_then(|f| f.plan.reader.clone())
+            .filter(|_| !references.is_empty() && compare_max > 0);
 
         // Generate search query variations (LLM-based or static fallback)
         let queries = match &llm {
@@ -225,22 +229,24 @@ impl ImagePipeline {
                             self.log(
                                 "INFO",
                                 "image_ranker",
-                                &format!(
-                                    "Comparing up to {} found images with the attached picture using {model}",
-                                    crate::roles::image_ranker::MAX_COMPARED
-                                ),
+                                &format!("Comparing the {compare_max} best found images with the attached picture using {model}"),
                             )
                             .await;
-                            let compared = ImageRanker::rank_with_reference(&self.query, ranked, &references, llm_mgr, model, 0.7).await;
+                            let compared = ImageRanker::rank_with_reference(&self.query, ranked, &references, llm_mgr, model, 0.7, compare_max).await;
                             self.log("INFO", "image_ranker", &format!("{} images look like the attached picture", compared.len())).await;
                             compared
                         }
                         None => {
                             if !references.is_empty() {
+                                let reason = if compare_max == 0 {
+                                    "comparing is turned off in Settings"
+                                } else {
+                                    "no model for images is set up"
+                                };
                                 self.log(
                                     "WARN",
                                     "image_ranker",
-                                    "Found images were not compared with the attached picture: no model for images is set up",
+                                    &format!("Found images were not compared with the attached picture: {reason}"),
                                 )
                                 .await;
                             }

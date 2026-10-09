@@ -13,8 +13,6 @@ pub struct RankedImageResult {
 
 /// Max images per LLM batch to avoid count mismatches.
 const BATCH_SIZE: usize = 15;
-/// Most candidates compared with an attached reference picture in one run.
-pub const MAX_COMPARED: usize = 30;
 /// Candidates per comparison request (each one is a picture in the request).
 const COMPARE_BATCH: usize = 4;
 /// Longest side of a candidate picture sent for comparison.
@@ -125,7 +123,7 @@ impl ImageRanker {
 
     /// Re-scores the best candidates by how well they match the request and look like the
     /// `references` (attached pictures), with a model that sees images. The candidates come
-    /// already ranked by text; at most [`MAX_COMPARED`] of them are compared, a few per request.
+    /// already ranked by text; at most `max_compared` of them are compared, a few per request.
     /// Candidates whose picture cannot be loaded keep their text score.
     pub async fn rank_with_reference(
         query: &str,
@@ -134,9 +132,11 @@ impl ImageRanker {
         llm: &LlmManager,
         model: &str,
         min_relevance: f64,
+        max_compared: usize,
     ) -> Vec<RankedImageResult> {
         let mut compared: Vec<RankedImageResult> = Vec::new();
-        let candidates: Vec<RankedImageResult> = ranked.into_iter().take(MAX_COMPARED).collect();
+        // Candidates beyond the limit are not compared and do not make the cut.
+        let candidates: Vec<RankedImageResult> = ranked.into_iter().take(max_compared).collect();
         // Load the pictures first; the order of the batches follows the text ranking.
         let mut loaded: Vec<(RankedImageResult, Option<ImageInput>)> = Vec::new();
         for candidate in candidates {

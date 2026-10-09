@@ -83,11 +83,17 @@ export const FIELDS: FieldDef[] = [
 			'max',
 		],
 	},
+	{
+		key: 'llm_context_size', section: 'llm', group: 'Generation',
+		kind: 'select', default: 'medium', keywords: 'context window length tokens pages history',
+		options: ['small', 'medium', 'large', 'huge'],
+	},
 	{ key: 'llm_max_tokens', section: 'llm', group: 'Generation', kind: 'number', default: '4096', min: 256, max: 200000, step: 1, advanced: true, unit: 'tokens' },
 	{ key: 'openai_json_mode', section: 'llm', group: 'Generation', provider: 'openai_compatible', kind: 'switch', default: 'true', advanced: true },
 	// LLM — images (attached pictures and scanned pages)
 	{ key: 'llm_vision', section: 'llm', group: 'Images', kind: 'select', default: 'auto', options: ['auto', 'on', 'off'], keywords: 'vision pictures photos scans' },
 	{ key: 'vision_model', section: 'llm', group: 'Images', kind: 'model', default: '', keepOnReset: true, keywords: 'vision pictures photos scans ocr' },
+	{ key: 'max_inline_images', section: 'llm', group: 'Images', kind: 'number', default: '8', min: 1, max: 20, step: 1, advanced: true, keywords: 'pictures attached vision' },
 	{ key: 'vision_max_pages', section: 'llm', group: 'Images', kind: 'number', default: '50', min: 1, max: 1000, step: 1, advanced: true, keywords: 'scans ocr pdf' },
 	// Search
 	{
@@ -102,6 +108,7 @@ export const FIELDS: FieldDef[] = [
 	{ key: 'serper_api_key', section: 'search', group: 'Provider', kind: 'password', default: '', keepOnReset: true },
 	{ key: 'search_fallback_enabled', section: 'search', group: 'Provider', kind: 'switch', default: 'true' },
 	{ key: 'search_results_per_query', section: 'search', group: 'Provider', kind: 'range', default: '20', min: 1, max: 100, step: 1 },
+	{ key: 'image_compare_max', section: 'search', group: 'Provider', kind: 'range', default: '30', min: 0, max: 200, step: 1, keywords: 'images reference picture similar vision cost' },
 	{ key: 'brave_price_per_1000', section: 'search', group: 'Pricing', kind: 'number', default: '0', min: 0, step: 0.01, unit: 'USD' },
 	{ key: 'serper_price_per_1000', section: 'search', group: 'Pricing', kind: 'number', default: '0', min: 0, step: 0.01, unit: 'USD' },
 	// Runs
@@ -113,6 +120,7 @@ export const FIELDS: FieldDef[] = [
 	{ key: 'enable_content_truncation', section: 'runs', group: 'Content', kind: 'switch', default: 'true', advanced: true, keywords: 'truncation' },
 	{ key: 'max_extraction_text_chars', section: 'runs', group: 'Content', kind: 'number', default: '12000', min: 1000, max: 500000, step: 1, unit: 'chars', advanced: true },
 	{ key: 'max_pdf_text_chars', section: 'runs', group: 'Content', kind: 'number', default: '500000', min: 1000, max: 5000000, step: 1, unit: 'chars', advanced: true },
+	{ key: 'max_file_fragments', section: 'runs', group: 'Content', kind: 'number', default: '400', min: 10, max: 5000, step: 1, advanced: true, keywords: 'attached files table rows cost' },
 	{ key: 'attachment_max_mb', section: 'runs', group: 'Content', kind: 'number', default: '50', min: 1, max: 500, step: 1, unit: 'MB', advanced: true, keywords: 'attach files upload size' },
 	// Application
 	{ key: 'notifications_enabled', section: 'app', group: 'Notifications', kind: 'switch', default: 'true' },

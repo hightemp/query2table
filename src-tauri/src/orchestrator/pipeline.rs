@@ -30,10 +30,34 @@ use super::files::RunFiles;
 use crate::roles::document_parser::ParsedDocument;
 use crate::roles::search_executor::CollectedResults;
 
-/// Most file fragments extracted in one run (about 1.2 million characters).
-const MAX_FILE_FRAGMENTS: usize = 400;
-/// Characters of matching file fragments given to the interpreter and schema planner.
-const FILE_CONTEXT_CHARS: usize = 6000;
+/// A whole-number setting within `min..=max`; missing or unreadable values give `default`.
+fn bounded(settings: &HashMap<String, String>, key: &str, default: usize, min: usize, max: usize) -> usize {
+    settings.get(key).and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(default).clamp(min, max)
+}
+
+/// How much text one request may carry, chosen by the model's context size
+/// (setting `llm_context_size`: small ≈ 16K, medium ≈ 32K, large ≈ 128K, huge ≈ 1M tokens).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContextBudget {
+    /// Text of one web page or file passage given to the research agent.
+    pub page_chars: usize,
+    /// Matching file fragments given with the first message.
+    pub file_chars: usize,
+    /// Earlier questions and answers of a research conversation.
+    pub history_chars: usize,
+}
+
+impl ContextBudget {
+    pub fn for_size(size: &str) -> Self {
+        let (page_chars, file_chars, history_chars) = match size {
+            "small" => (6_000, 4_000, 8_000),
+            "large" => (30_000, 24_000, 40_000),
+            "huge" => (100_000, 80_000, 150_000),
+            _ => (8_000, 6_000, 12_000),
+        };
+        Self { page_chars, file_chars, history_chars }
+    }
+}
 
 /// Pipeline configuration derived from settings.
 #[derive(Debug, Clone)]
@@ -65,6 +89,14 @@ pub struct PipelineConfig {
     pub llm_vision: String,
     /// Model of the same provider that reads images when the main one cannot.
     pub vision_model: String,
+    /// Found images compared with an attached reference picture; 0 turns comparing off.
+    pub image_compare_max: usize,
+    /// Most fragments of attached files a table extracts rows from.
+    pub max_file_fragments: usize,
+    /// Most attached pictures put in one message to a model that sees images.
+    pub max_inline_images: usize,
+    /// How much text the model is given at once, from the model's context size.
+    pub context: ContextBudget,
     /// Seconds allowed for loading one page.
     pub fetch_timeout_secs: u64,
     /// New pages taken from the results of each search query.
@@ -128,6 +160,10 @@ impl PipelineConfig {
             web_search: true,
             llm_vision: settings.get("llm_vision").cloned().unwrap_or_else(|| "auto".into()),
             vision_model: settings.get("vision_model").map(|m| m.trim().to_string()).unwrap_or_default(),
+            image_compare_max: bounded(settings, "image_compare_max", 30, 0, 200),
+            max_file_fragments: bounded(settings, "max_file_fragments", 400, 10, 5000),
+            max_inline_images: bounded(settings, "max_inline_images", 8, 1, 20),
+            context: ContextBudget::for_size(settings.get("llm_context_size").map(String::as_str).unwrap_or("medium")),
             vision_max_pages: settings.get("vision_max_pages")
                 .and_then(|v| v.parse::<u32>().ok())
                 .unwrap_or(50)
@@ -312,7 +348,7 @@ impl Pipeline {
         self.log("INFO", "interpreter", "Analyzing query with LLM...").await;
 
         let files_context = match &files {
-            Some(files) => Some(files.context(&self.query, FILE_CONTEXT_CHARS).await),
+            Some(files) => Some(files.context(&self.query, self.config.context.file_chars).await),
             None => None,
         };
         let intent = QueryInterpreter::interpret_with_files(&self.query, files_context.as_deref(), &llm)
@@ -394,7 +430,7 @@ impl Pipeline {
 
         // --- Phase 6: Fetch + Extract loop ---
         let file_fragments = match &files {
-            Some(files) => files.fragments(MAX_FILE_FRAGMENTS).await,
+            Some(files) => files.fragments(self.config.max_file_fragments).await,
             None => Vec::new(),
         };
         if !file_fragments.is_empty() {
@@ -992,6 +1028,36 @@ mod tests {
 #[cfg(test)]
 mod settings_tests {
     use super::*;
+
+    #[test]
+    fn limits_for_files_images_and_context_come_from_settings() {
+        let defaults = PipelineConfig::from_settings(&HashMap::new());
+        assert_eq!((defaults.image_compare_max, defaults.max_file_fragments, defaults.max_inline_images), (30, 400, 8));
+        assert_eq!(defaults.context, ContextBudget { page_chars: 8_000, file_chars: 6_000, history_chars: 12_000 });
+
+        let settings = HashMap::from([
+            ("image_compare_max".to_string(), "0".to_string()),
+            ("max_file_fragments".to_string(), "1200".to_string()),
+            ("max_inline_images".to_string(), "3".to_string()),
+            ("llm_context_size".to_string(), "large".to_string()),
+        ]);
+        let config = PipelineConfig::from_settings(&settings);
+        assert_eq!((config.image_compare_max, config.max_file_fragments, config.max_inline_images), (0, 1200, 3));
+        assert_eq!(config.context, ContextBudget::for_size("large"));
+        assert!(config.context.page_chars > defaults.context.page_chars);
+        assert!(ContextBudget::for_size("small").history_chars < defaults.context.history_chars);
+
+        // Values outside the range fall back into it; unknown sizes mean the default.
+        let odd = HashMap::from([
+            ("image_compare_max".to_string(), "5000".to_string()),
+            ("max_file_fragments".to_string(), "x".to_string()),
+            ("max_inline_images".to_string(), "0".to_string()),
+            ("llm_context_size".to_string(), "galaxy".to_string()),
+        ]);
+        let config = PipelineConfig::from_settings(&odd);
+        assert_eq!((config.image_compare_max, config.max_file_fragments, config.max_inline_images), (200, 400, 1));
+        assert_eq!(config.context, defaults.context);
+    }
 
     #[test]
     fn fetch_timeout_and_pages_per_query_come_from_settings() {

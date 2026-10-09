@@ -162,3 +162,27 @@ async fn link_searches_and_ranking_know_the_attached_files() {
     assert!(ranked[0].to_string().contains("paper.md"), "the ranking knows what the files are about");
     assert_eq!(repo.get_link_results("links").await.unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn comparing_can_be_turned_off_in_settings() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST")).and(body_string_contains("image search query generator")).respond_with(reply(r#"{"queries": ["red tractor"]}"#)).mount(&server).await;
+    Mock::given(method("POST")).and(body_string_contains("describe images")).respond_with(reply("A red tractor")).mount(&server).await;
+    Mock::given(method("POST")).and(body_string_contains("strict image relevance judge")).respond_with(reply("[0.8]")).mount(&server).await;
+    let (repo, _db) = setup_test_db().await;
+    let dir = tempfile::tempdir().unwrap();
+    let store = AttachmentStore::new(repo.pool().clone(), dir.path().to_path_buf());
+    let reference = store.add_bytes("tractor.png", png(210, 30, 30)).await.unwrap();
+    let mut config = config(&server, dir.path(), &[("llm_vision", "on"), ("image_compare_max", "0")]);
+    config.attachments = vec![reference.id.clone()];
+    let search = SearchManager::with_providers(Arc::new(MockSearchProvider::new()), None, config.search.clone()).with_image_provider(Arc::new(Images(vec![
+        ImageSearchResult { image_url: "https://x.example/a.png".into(), thumbnail_url: "https://x.example/t.png".into(), title: "Tractor".into(), source_url: String::new(), width: None, height: None },
+    ])));
+    let (mut pipeline, _tx) = ImagePipeline::new("img3".into(), "Red tractors".into(), config, repo.clone(), None);
+    pipeline.set_search(Arc::new(search));
+    assert_eq!(pipeline.run().await.unwrap(), PipelineState::Completed);
+    assert!(completions(&server, "reference picture").await.is_empty());
+    let logs = repo.get_run_logs("img3", 200).await.unwrap();
+    assert!(logs.iter().any(|l| l.message.contains("comparing is turned off in Settings")));
+    assert_eq!(repo.get_image_results("img3").await.unwrap().len(), 1);
+}

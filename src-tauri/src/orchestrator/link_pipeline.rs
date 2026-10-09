@@ -19,8 +19,6 @@ use super::events::{EventPublisher, ProgressStats};
 use super::fetch_pool::{self, FetchJob, FetchResult};
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
 
-/// Characters of file fragments given to the query planner.
-const FILES_CONTEXT_CHARS: usize = 3000;
 /// Characters of the files' overview given with each page to rank.
 const FILES_NOTE_CHARS: usize = 1200;
 
@@ -132,7 +130,7 @@ impl LinkPipeline {
             None => None,
         };
         let files_context = match &files {
-            Some(files) => Some(files.context(&self.query, FILES_CONTEXT_CHARS).await),
+            Some(files) => Some(files.context(&self.query, self.config.context.file_chars / 2).await),
             None => None,
         };
         // The ranker judges pages against the request together with what the files are about.
