@@ -5,7 +5,8 @@
 		status,
 		runType = 'table',
 		activity = [],
-	}: { status: string; runType?: string; activity?: LogEntryEvent[] } = $props();
+		stage = null,
+	}: { status: string; runType?: string; activity?: LogEntryEvent[]; stage?: string | null } = $props();
 	const common = ['search_executor', 'fetcher', 'stopping_controller'];
 	/** Log roles that name the current operation in each mode. */
 	const operations: Record<string, string[]> = {
@@ -22,7 +23,9 @@
 				? t('operation.paused')
 				: status === 'pending'
 					? t('operation.preparing')
-					: latest
+					: stage
+						? t(`stages.${stage}` as MessageKey)
+						: latest
 						? t(`operation.${latest.role === 'schema_planner' ? 'planner' : latest.role}` as MessageKey)
 						: t('operation.waiting')
 	);

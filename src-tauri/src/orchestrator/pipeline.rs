@@ -27,6 +27,7 @@ use super::events::{EventPublisher, ProgressStats};
 use super::fetch_pool::{self, FetchJob, FetchResult};
 use super::extract_pool::{self, ExtractionJob, ExtractResult};
 use super::files::RunFiles;
+use super::search_log::SearchLog;
 use crate::roles::document_parser::ParsedDocument;
 use crate::roles::search_executor::CollectedResults;
 
@@ -345,6 +346,7 @@ impl Pipeline {
 
         // --- Phase 1: Interpret query ---
         self.set_state(PipelineState::Interpreting).await;
+        self.stage("interpret");
         self.log("INFO", "interpreter", "Analyzing query with LLM...").await;
 
         let files_context = match &files {
@@ -376,6 +378,7 @@ impl Pipeline {
 
         // --- Phase 2: Plan schema ---
         self.set_state(PipelineState::Planning).await;
+        self.stage("schema");
         let proposed_schema = match self.config.suggested_schema.clone().filter(|c| !c.is_empty()) {
             Some(columns) => {
                 self.log("INFO", "planner", "Using the schema of the earlier run").await;
@@ -438,6 +441,7 @@ impl Pipeline {
         }
         let file_count = file_fragments.len();
         let total_pages = pending_results.len() + file_count;
+        self.stage("read");
         self.log("INFO", "fetcher", &format!("Fetching {} pages (max {} parallel)...", pending_results.len(), self.config.max_parallel_fetches)).await;
         let fetcher = if let Some(f) = self.fetcher_override.take() {
             f
@@ -466,6 +470,7 @@ impl Pipeline {
         let confirmed_columns = confirmed_columns.to_vec();
         let llm = llm.clone();
         // --- Phase 4: Search planning ---
+        self.stage("plan");
         self.log("INFO", "search_planner", "Generating search queries with LLM...").await;
 
         let search_plan = SearchPlanner::plan(
@@ -504,24 +509,25 @@ impl Pipeline {
             self.log("DEBUG", "search_planner", &format!("  Query {}: [{}] {}", i + 1, q.language, q.query_text)).await;
         }
 
-        // Save search queries to DB
-        for (i, q) in all_queries.iter().enumerate() {
-            self.repo.create_search_query(
-                &self.run_id,
-                &q.query_text,
-                &q.language,
-                q.geo_target.as_deref(),
-                search.primary_name(),
-                i as i64 / 5, // batch grouping
-            ).await.map_err(|e| PipelineError::Storage(e.to_string()))?;
-        }
+        // Save the planned queries; the interface lists them and follows each one.
+        let planned: Vec<(String, String)> = all_queries.iter().map(|q| (q.query_text.clone(), q.language.clone())).collect();
+        let mut search_log = SearchLog::plan(self.repo.clone(), self.events.clone(), &self.run_id, &planned, search.primary_name())
+            .await
+            .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
         // --- Phase 5: Execute searches ---
+        self.stage("search");
         self.log("INFO", "search_executor", &format!("Executing {} search queries via {}...", all_queries.len(), search.primary_name())).await;
 
-        let collected = SearchExecutor::execute_limited(&all_queries, &search, Some(self.config.max_pages_per_query))
-            .await
-            .map_err(|e| PipelineError::Search(format!("SearchExecutor: {e}")))?;
+        let (progress, reports) = tokio::sync::mpsc::unbounded_channel();
+        let max_per_query = self.config.max_pages_per_query;
+        let searching = async {
+            let result = SearchExecutor::execute_reporting(&all_queries, search, Some(max_per_query), Some(&progress)).await;
+            drop(progress);
+            result
+        };
+        let (collected, ()) = tokio::join!(searching, search_log.follow(reports));
+        let collected = collected.map_err(|e| PipelineError::Search(format!("SearchExecutor: {e}")))?;
 
         self.log(
             "INFO",
@@ -798,6 +804,7 @@ impl Pipeline {
         }
 
         // --- Phase 7: Deduplication ---
+        self.stage("dedup");
         self.log("INFO", "pipeline", &format!("Fetch complete: {} pages fetched, {} failed", pages_fetched, pages_failed)).await;
         self.log("INFO", "deduplicator", &format!("Deduplicating {} rows (similarity threshold: {:.0}%)...", all_valid_rows.len(), self.config.dedup_similarity * 100.0)).await;
 
@@ -878,6 +885,13 @@ impl Pipeline {
         )).await;
 
         Ok(PipelineState::Completed)
+    }
+
+    /// Tells the interface which stage the run is in.
+    fn stage(&self, stage: &str) {
+        if let Some(events) = &self.events {
+            events.emit_stage(stage);
+        }
     }
 
     /// The run's files with scans read and pictures described; None when nothing is attached.

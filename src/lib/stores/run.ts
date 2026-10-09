@@ -1,6 +1,7 @@
 import { t, type MessageKey } from '$lib/i18n';
 import { writable, get } from 'svelte/store';
 import type {
+	SearchQueryInfo,
 	AttachmentInfo,
 	RunAttachment,
 	SchemaColumn,
@@ -38,6 +39,9 @@ import {
 	onResearchAnswer,
 	onLlmIssue,
 	askFollowUp as apiAskFollowUp,
+	onRunStage,
+	onSearchQueries,
+	onSearchQuery,
 	getRunAttachments,
 	type SourceMode,
 	getRun,
@@ -101,6 +105,10 @@ export interface RunState {
 	researchTurns: ResearchTurnState[];
 	/** Files of the run, with the conversation turn each came with. */
 	attachments: RunAttachment[];
+	/** The stage the run is in (`interpret`, `search`, `read`, …), once it says. */
+	stage: string | null;
+	/** Planned search queries and what happened to each. */
+	queries: SearchQueryInfo[];
 	/** Where the run looks for answers. */
 	sourceMode: SourceMode;
 	/** All steps of the conversation. */
@@ -133,6 +141,8 @@ const initialState: RunState = {
 	researchTurns: [],
 	attachments: [],
 	sourceMode: 'web',
+	stage: null,
+	queries: [],
 	researchSteps: [],
 	researchAnswer: null,
 	progress: null,
@@ -230,6 +240,19 @@ async function subscribeEvents(currentGeneration: number, earlyEvents: (() => vo
 				};
 				return { ...s, rows: [...s.rows, row] };
 			});
+		}),
+		subscribe(onRunStage, (e) => {
+			runState.update((s) => (s.runId === e.run_id ? { ...s, stage: e.stage } : s));
+		}),
+		subscribe(onSearchQueries, (e) => {
+			runState.update((s) => (s.runId === e.run_id ? { ...s, queries: e.queries } : s));
+		}),
+		subscribe(onSearchQuery, (e) => {
+			runState.update((s) =>
+				s.runId === e.run_id
+					? { ...s, queries: s.queries.map((q) => (q.id === e.query.id ? e.query : q)) }
+					: s
+			);
 		}),
 		subscribe(onProgressUpdate, (e) => {
 			runState.update((s) => {

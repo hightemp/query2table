@@ -105,6 +105,11 @@ async fn files_and_the_web_are_both_sources() {
     }
     assert!(urls.iter().any(|u| u.starts_with("attachment://")), "{urls:?}");
     assert!(urls.iter().any(|u| u.starts_with("http")), "{urls:?}");
+    // Every planned query is saved with what it found.
+    let queries = repo.get_run_queries("t2").await.unwrap();
+    assert!(!queries.is_empty());
+    assert!(queries.iter().all(|q| q.status == "completed"), "{queries:?}");
+    assert!(queries.iter().any(|q| q.result_count > 0));
 }
 
 #[tokio::test]

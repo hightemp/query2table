@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use tracing::{debug, warn};
 
 use crate::providers::search::{ImageSearchResult, SearchError, SearchManager};
+use crate::roles::search_executor::{report, QueryProgress};
 
 /// Collected image search results.
 #[derive(Debug)]
@@ -21,6 +22,16 @@ impl ImageSearcher {
         search: &SearchManager,
         num_results: u32,
     ) -> Result<CollectedImageResults, SearchError> {
+        Self::execute_reporting(queries, search, num_results, None).await
+    }
+
+    /// Like `execute`, reporting each query as it starts and ends.
+    pub async fn execute_reporting(
+        queries: &[String],
+        search: &SearchManager,
+        num_results: u32,
+        progress: Option<&tokio::sync::mpsc::UnboundedSender<QueryProgress>>,
+    ) -> Result<CollectedImageResults, SearchError> {
         debug!(query_count = queries.len(), "Executing image search queries");
 
         let mut all_results = Vec::new();
@@ -28,9 +39,17 @@ impl ImageSearcher {
         let mut failed_count = 0;
         let mut executed_count = 0;
 
-        for query in queries {
+        let mut stopped = false;
+        for (index, query) in queries.iter().enumerate() {
+            if stopped {
+                report(progress, QueryProgress::Skipped { index });
+                continue;
+            }
+            report(progress, QueryProgress::Started { index });
             match search.search_images_with_count(query, num_results).await {
                 Ok(results) => {
+                    let count = results.len();
+                    let before = all_results.len();
                     debug!(
                         query = %query,
                         results = results.len(),
@@ -41,13 +60,17 @@ impl ImageSearcher {
                             all_results.push(result);
                         }
                     }
+                    report(progress, QueryProgress::Finished { index, results: count, kept: all_results.len() - before });
                 }
                 Err(SearchError::BudgetExceeded) => {
                     warn!("[FIX:cost] Stopping searches at spending limit");
-                    break;
+                    report(progress, QueryProgress::Skipped { index });
+                    stopped = true;
+                    continue;
                 }
                 Err(e) => {
                     warn!(query = %query, error = %e, "Image search query failed");
+                    report(progress, QueryProgress::Failed { index, error: e.to_string() });
                     failed_count += 1;
                 }
             }

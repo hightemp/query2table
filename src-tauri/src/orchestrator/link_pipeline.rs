@@ -18,6 +18,7 @@ use super::budget_tracker::BudgetTracker;
 use super::events::{EventPublisher, ProgressStats};
 use super::fetch_pool::{self, FetchJob, FetchResult};
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
+use super::search_log::SearchLog;
 
 /// Characters of the files' overview given with each page to rank.
 const FILES_NOTE_CHARS: usize = 1200;
@@ -140,6 +141,7 @@ impl LinkPipeline {
         };
 
         // Generate search query variations (LLM-based or static fallback)
+        self.stage("plan");
         let queries = match &llm {
             Some(llm_mgr) => {
                 self.log("INFO", "link_pipeline", "Generating search queries with LLM...").await;
@@ -171,9 +173,20 @@ impl LinkPipeline {
             })
             .collect();
 
-        let collected = SearchExecutor::execute_limited(&planned, &search, Some(self.config.max_pages_per_query))
+        let listed: Vec<(String, String)> = queries.iter().map(|q| (q.clone(), String::new())).collect();
+        let mut search_log = SearchLog::plan(self.repo.clone(), self.events.clone(), &self.run_id, &listed, search.primary_name())
             .await
-            .map_err(|e| format!("Search: {e}"))?;
+            .map_err(|e| format!("Storage: {e}"))?;
+        self.stage("search");
+        let (progress, reports) = tokio::sync::mpsc::unbounded_channel();
+        let max_per_query = self.config.max_pages_per_query;
+        let searching = async {
+            let result = SearchExecutor::execute_reporting(&planned, &search, Some(max_per_query), Some(&progress)).await;
+            drop(progress);
+            result
+        };
+        let (collected, ()) = tokio::join!(searching, search_log.follow(reports));
+        let collected = collected.map_err(|e| format!("Search: {e}"))?;
 
         self.log(
             "INFO",
@@ -194,6 +207,7 @@ impl LinkPipeline {
         }
 
         // Fetch & parse each page
+        self.stage("read");
         let total_pages = collected.results.len();
         self.log("INFO", "fetcher", &format!("Fetching {} pages (max {} parallel)...", total_pages, self.config.max_parallel_fetches)).await;
 
@@ -452,6 +466,13 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
         queries.push(format!("best {} resources", query));
         queries.push(format!("{} list", query));
         queries
+    }
+
+    /// Tells the interface which stage the run is in.
+    fn stage(&self, stage: &str) {
+        if let Some(events) = &self.events {
+            events.emit_stage(stage);
+        }
     }
 
     async fn set_status(&self, status: &str) {

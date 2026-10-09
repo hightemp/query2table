@@ -1,5 +1,6 @@
 <script lang="ts">
 	import FileChips from '$lib/components/common/FileChips.svelte';
+	import RunStages from '$lib/components/run/RunStages.svelte';
 	import { formatDateTime, t, type MessageKey } from '$lib/i18n';
 	import { onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
@@ -18,6 +19,7 @@
 		pinRun,
 		renameRun,
 		getRunAttachments,
+		getRunQueries,
 	} from '$lib/api/tauri';
 	import type {
 		RunInfo,
@@ -27,6 +29,7 @@
 		ResearchStep,
 		LlmIssueEvent,
 		RunAttachment,
+		SearchQueryInfo,
 	} from '$lib/types';
 	import type { FollowUpFiles } from '$lib/components/run/FollowUpBox.svelte';
 	import type { RunRow, ResearchTurnState } from '$lib/stores/run';
@@ -73,6 +76,7 @@
 	let researchTurns = $state<ResearchTurnState[]>([]);
 	let researchLimits = $state<StopConditions | null>(null);
 	let researchFiles = $state<RunAttachment[]>([]);
+	let runQueries = $state<SearchQueryInfo[]>([]);
 	let loading = $state(true);
 	let error = $state('');
 	let issues = $state<LlmIssueEvent[]>([]);
@@ -119,6 +123,7 @@
 		researchTurns = [];
 		researchLimits = null;
 		researchFiles = [];
+		runQueries = [];
 		issues = [];
 		issueError = '';
 		issuesLoading = true;
@@ -149,6 +154,13 @@
 				.finally(() => {
 					if (current === request) issuesLoading = false;
 				});
+			// What each search query found, folded under the header.
+			if (found.run_type !== 'research')
+				void getRunQueries(id)
+					.then((queries) => {
+						if (current === request) runQueries = queries ?? [];
+					})
+					.catch(() => {});
 			// Files of every kind of run: research shows them by question, others under the header.
 			void getRunAttachments(id)
 				.then((files) => {
@@ -318,6 +330,7 @@
 			{/snippet}
 		</RunHeader>
 		{#if current.run_type !== 'research'}<FileChips files={researchFiles.map((f) => f.attachment)} />{/if}
+		{#if runQueries.length}<RunStages compact runType={current.run_type} status={current.status} queries={runQueries} />{/if}
 
 		{#if error || current.error || issueError}
 			<div class="notices">

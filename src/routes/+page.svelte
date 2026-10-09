@@ -21,6 +21,7 @@
 	import SchemaEditor from '$lib/components/run/SchemaEditor.svelte';
 	import AttachmentBar from '$lib/components/query/AttachmentBar.svelte';
 	import FileChips from '$lib/components/common/FileChips.svelte';
+	import RunStages from '$lib/components/run/RunStages.svelte';
 	import { visionStatus } from '$lib/stores/vision';
 	import { attachFiles, draftAttachments, MAX_ATTACHMENTS, queryFiles, takeDraftAttachments } from '$lib/stores/attachments';
 	import Checkbox from '$lib/components/common/Checkbox.svelte';
@@ -134,6 +135,14 @@
 	);
 	let showResults = $derived(isActive || isFinished || isSchemaReview);
 	let isImageRun = $derived($runState.runType === 'images');
+	/** Modes with search stages worth following before results appear. */
+	let staged = $derived(['table', 'links', 'images'].includes($runState.runType));
+	let hasResults = $derived(
+		$runState.rows.length > 0 || $runState.imageResults.length > 0 || $runState.linkResults.length > 0
+	);
+	// The full panel stands in for results that are not there yet; then it folds into one line.
+	let showStagesPanel = $derived(staged && !hasResults && isActive);
+	let showStagesLine = $derived(staged && !showStagesPanel && ($runState.stage !== null || $runState.queries.length > 0));
 	let isLinkRun = $derived($runState.runType === 'links');
 	let isResearchRun = $derived($runState.runType === 'research');
 	let columnNames = $derived($runState.schema.map((c) => c.name));
@@ -519,6 +528,7 @@
 						status={$runState.status}
 						runType={$runState.runType}
 						activity={$runState.activity}
+						stage={$runState.stage}
 					/>{/if}
 				<ProgressBar
 					stats={$runState.progress}
@@ -566,8 +576,23 @@
 					>{t('query.schemaPaused')}</EmptyState
 				>{/if}
 		{:else}
+			{#if showStagesLine}<RunStages
+					compact
+					runType={$runState.runType}
+					stage={$runState.stage}
+					status={$runState.status}
+					progress={$runState.progress}
+					queries={$runState.queries}
+				/>{/if}
 			<div class="result-workspace">
-				{#if isImageRun}<ImageGallery images={$runState.imageResults} />
+				{#if showStagesPanel}<RunStages
+						runType={$runState.runType}
+						stage={$runState.stage}
+						status={$runState.status}
+						progress={$runState.progress}
+						queries={$runState.queries}
+					/>
+				{:else if isImageRun}<ImageGallery images={$runState.imageResults} />
 				{:else if isLinkRun}<LinkList links={$runState.linkResults} />
 				{:else if isResearchRun}<ResearchView
 						turns={$runState.researchTurns}

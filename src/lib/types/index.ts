@@ -420,3 +420,17 @@ export interface AttachmentFragment {
 	locator: { page?: number; sheet?: string; rows?: [number, number]; section?: string };
 	text: string;
 }
+
+// --- Search queries and stages of a run ---
+
+export interface SearchQueryInfo {
+	id: string;
+	query_text: string;
+	/** ISO code, or empty when the mode does not plan languages. */
+	language: string;
+	/** pending, running, completed, failed or skipped */
+	status: string;
+	/** New results the query added. */
+	result_count: number;
+	error: string | null;
+}

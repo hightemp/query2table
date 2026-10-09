@@ -11,3 +11,5 @@ vite.config.ts.timestamp-*
 
 /playwright-report/
 /test-results/
+
+UI-IMPROVEMENTS.md

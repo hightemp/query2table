@@ -19,6 +19,24 @@ pub struct SearchResultWithQuery {
     pub language: String,
 }
 
+/// What happened to one planned query, by its position in the plan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueryProgress {
+    Started { index: usize },
+    /// `results` came back; `kept` of them were new pages within the per-query limit.
+    Finished { index: usize, results: usize, kept: usize },
+    Failed { index: usize, error: String },
+    /// Not run: the run reached its spending limit first.
+    Skipped { index: usize },
+}
+
+/// Sends a progress report if anyone listens.
+pub(crate) fn report(progress: Option<&tokio::sync::mpsc::UnboundedSender<QueryProgress>>, event: QueryProgress) {
+    if let Some(progress) = progress {
+        let _ = progress.send(event);
+    }
+}
+
 /// Executes search queries against search providers, collecting and deduplicating URLs.
 pub struct SearchExecutor;
 
@@ -38,6 +56,16 @@ impl SearchExecutor {
         search: &SearchManager,
         max_per_query: Option<usize>,
     ) -> Result<CollectedResults, SearchError> {
+        Self::execute_reporting(queries, search, max_per_query, None).await
+    }
+
+    /// Like `execute_limited`, reporting each query as it starts and ends.
+    pub async fn execute_reporting(
+        queries: &[PlannedSearch],
+        search: &SearchManager,
+        max_per_query: Option<usize>,
+        progress: Option<&tokio::sync::mpsc::UnboundedSender<QueryProgress>>,
+    ) -> Result<CollectedResults, SearchError> {
         debug!(query_count = queries.len(), "Executing search queries");
 
         let mut all_results = Vec::new();
@@ -46,12 +74,19 @@ impl SearchExecutor {
         let mut executed_count = 0;
 
         // Execute queries sorted by priority (1 = highest)
-        let mut sorted_queries: Vec<&PlannedSearch> = queries.iter().collect();
-        sorted_queries.sort_by_key(|q| q.priority);
+        let mut sorted_queries: Vec<(usize, &PlannedSearch)> = queries.iter().enumerate().collect();
+        sorted_queries.sort_by_key(|(_, q)| q.priority);
 
-        for query in &sorted_queries {
+        let mut stopped = false;
+        for (index, query) in sorted_queries {
+            if stopped {
+                report(progress, QueryProgress::Skipped { index });
+                continue;
+            }
+            report(progress, QueryProgress::Started { index });
             match search.search(&query.query_text).await {
                 Ok(results) => {
+                    let count = results.len();
                     debug!(
                         query = %query.query_text,
                         results = results.len(),
@@ -72,10 +107,13 @@ impl SearchExecutor {
                             });
                         }
                     }
+                    report(progress, QueryProgress::Finished { index, results: count, kept: taken });
                 }
                 Err(SearchError::BudgetExceeded) => {
                     warn!("[FIX:cost] Stopping searches at spending limit");
-                    break;
+                    report(progress, QueryProgress::Skipped { index });
+                    stopped = true;
+                    continue;
                 }
                 Err(e) => {
                     warn!(
@@ -83,6 +121,7 @@ impl SearchExecutor {
                         error = %e,
                         "Search query failed"
                     );
+                    report(progress, QueryProgress::Failed { index, error: e.to_string() });
                     failed_count += 1;
                 }
             }
@@ -117,6 +156,9 @@ mod tests {
             &self,
             query: crate::providers::search::types::SearchQuery,
         ) -> Result<Vec<SearchResult>, SearchError> {
+            if query.query.contains("broken") {
+                return Err(SearchError::RequestFailed("HTTP 500".into()));
+            }
             Ok((0..5)
                 .map(|i| SearchResult {
                     title: format!("{} {i}", query.query),
@@ -147,6 +189,38 @@ mod tests {
         assert_eq!(limited.results.len(), 4);
         let all = SearchExecutor::execute(&queries, &search).await.unwrap();
         assert_eq!(all.results.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn each_query_reports_when_it_starts_and_how_it_ended() {
+        let search = SearchManager::with_providers(std::sync::Arc::new(FixedSearch), None, Default::default());
+        let planned = |text: &str, priority: u8| PlannedSearch {
+            query_text: text.into(),
+            language: "en".into(),
+            geo_target: None,
+            priority,
+        };
+        // Run in priority order, reported by position in the plan.
+        let queries = [planned("later", 2), planned("broken one", 1), planned("first", 1)];
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let collected = SearchExecutor::execute_reporting(&queries, &search, Some(3), Some(&tx)).await.unwrap();
+        drop(tx);
+        let mut events = Vec::new();
+        while let Some(event) = rx.recv().await {
+            events.push(event);
+        }
+        assert_eq!(
+            events,
+            vec![
+                QueryProgress::Started { index: 1 },
+                QueryProgress::Failed { index: 1, error: "Search request failed: HTTP 500".into() },
+                QueryProgress::Started { index: 2 },
+                QueryProgress::Finished { index: 2, results: 5, kept: 3 },
+                QueryProgress::Started { index: 0 },
+                QueryProgress::Finished { index: 0, results: 5, kept: 3 },
+            ]
+        );
+        assert_eq!((collected.total_queries_executed, collected.failed_queries, collected.results.len()), (3, 1, 6));
     }
 
     #[test]

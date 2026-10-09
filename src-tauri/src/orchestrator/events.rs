@@ -145,6 +145,31 @@ impl EventPublisher {
         }
     }
 
+    /// The planned search queries of the run, all waiting.
+    pub fn emit_search_queries(&self, queries: &[super::search_log::SearchQueryInfo]) {
+        let payload = serde_json::json!({ "run_id": self.run_id, "queries": queries });
+        if let Err(e) = self.app.emit("run:search_queries", &payload) {
+            tracing::error!(error = %e, "Failed to emit search_queries event");
+        }
+    }
+
+    /// A change of one search query (running, completed, failed, skipped).
+    pub fn emit_search_query(&self, query: &super::search_log::SearchQueryInfo) {
+        let payload = serde_json::json!({ "run_id": self.run_id, "query": query });
+        if let Err(e) = self.app.emit("run:search_query", &payload) {
+            tracing::error!(error = %e, "Failed to emit search_query event");
+        }
+    }
+
+    /// The stage the run is in: `interpret`, `schema`, `plan`, `search`, `read`, `rank`,
+    /// `compare` or `dedup`.
+    pub fn emit_stage(&self, stage: &str) {
+        let payload = serde_json::json!({ "run_id": self.run_id, "stage": stage });
+        if let Err(e) = self.app.emit("run:stage", &payload) {
+            tracing::error!(error = %e, "Failed to emit stage event");
+        }
+    }
+
     pub fn emit_schema_proposed(&self, columns: &serde_json::Value) {
         let payload = SchemaProposedEvent {
             run_id: self.run_id.clone(),

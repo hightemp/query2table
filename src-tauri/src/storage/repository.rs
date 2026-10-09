@@ -324,6 +324,39 @@ impl Repository {
         Ok(())
     }
 
+    /// Records what happened to a search query.
+    pub async fn update_search_query(&self, id: &str, status: &str, result_count: i64, error: Option<&str>) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE search_queries SET status = ?, result_count = ?, error = ?, executed_at = unixepoch() WHERE id = ?")
+            .bind(status)
+            .bind(result_count)
+            .bind(error)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// The search queries of a run in plan order, as the interface shows them.
+    pub async fn get_run_queries(&self, run_id: &str) -> Result<Vec<crate::orchestrator::search_log::SearchQueryInfo>, sqlx::Error> {
+        let rows = sqlx::query_as::<_, (String, String, Option<String>, String, Option<i64>, Option<String>)>(
+            "SELECT id, query_text, language, status, result_count, error FROM search_queries WHERE run_id = ? ORDER BY created_at, rowid",
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(id, query_text, language, status, result_count, error)| crate::orchestrator::search_log::SearchQueryInfo {
+                id,
+                query_text,
+                language: language.unwrap_or_else(|| "en".into()),
+                status,
+                result_count: result_count.unwrap_or(0),
+                error,
+            })
+            .collect())
+    }
+
     pub async fn get_search_queries_by_run(
         &self,
         run_id: &str,

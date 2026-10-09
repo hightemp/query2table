@@ -205,6 +205,15 @@ fn web_search(source_mode: Option<&str>, attachments: &[String]) -> bool {
     source_mode != Some("files") || attachments.is_empty()
 }
 
+/// The search queries of a run and what happened to each.
+#[tauri::command]
+pub async fn get_run_queries(
+    state: State<'_, AppState>,
+    run_id: String,
+) -> Result<Vec<crate::orchestrator::search_log::SearchQueryInfo>, String> {
+    Repository::new(state.db.pool().clone()).get_run_queries(&run_id).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn cancel_run(
     controller: State<'_, RunController>,

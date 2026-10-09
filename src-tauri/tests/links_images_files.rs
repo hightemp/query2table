@@ -111,6 +111,8 @@ async fn found_images_are_compared_with_the_attached_reference() {
     assert_eq!(stored.len(), 1, "the candidate unlike the reference is dropped");
     assert!(stored[0].image_url.ends_with("/full/near.png"));
     assert_eq!(stored[0].relevance_score, Some(0.95));
+    let queries = repo.get_run_queries("img").await.unwrap();
+    assert_eq!(queries.iter().map(|q| (q.status.as_str(), q.result_count)).collect::<Vec<_>>(), vec![("completed", 2), ("completed", 0)]);
 }
 
 #[tokio::test]
@@ -161,6 +163,12 @@ async fn link_searches_and_ranking_know_the_attached_files() {
     let ranked = completions(&server, "Page URL").await;
     assert!(ranked[0].to_string().contains("paper.md"), "the ranking knows what the files are about");
     assert_eq!(repo.get_link_results("links").await.unwrap().len(), 1);
+    let queries = repo.get_run_queries("links").await.unwrap();
+    // The request itself is searched first, then the planned queries; each counts only new pages.
+    assert_eq!(
+        queries.iter().map(|q| (q.query_text.as_str(), q.status.as_str(), q.result_count)).collect::<Vec<_>>(),
+        vec![("Find articles like this paper", "completed", 1), ("rust async runtime comparison", "completed", 0)]
+    );
 }
 
 #[tokio::test]

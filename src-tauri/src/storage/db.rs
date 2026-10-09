@@ -331,6 +331,11 @@ impl Database {
                 .await
                 .ok(); // ok() — ignore error if column already exists
         }
+        // Why a search query failed, shown with the run's queries.
+        sqlx::query("ALTER TABLE search_queries ADD COLUMN error TEXT")
+            .execute(&self.pool)
+            .await
+            .ok(); // ok() — ignore error if column already exists
         // Attached files: one row per distinct file (by content), its text fragments with a
         // full-text index, and which runs (and conversation turns) use it.
         for statement in [

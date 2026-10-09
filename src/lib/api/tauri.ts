@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
+	SearchQueryInfo,
 	AttachmentFragment,
 	AttachmentInfo,
 	AttachResult,
@@ -273,6 +274,23 @@ export function onAccounting(cb: (event: AccountingEvent) => void): Promise<Unli
 
 export function onProgressUpdate(cb: (e: ProgressEvent) => void): Promise<UnlistenFn> {
 	return listen<ProgressEvent>('run:progress_update', (event) => cb(event.payload));
+}
+
+export function onRunStage(cb: (e: { run_id: string; stage: string }) => void): Promise<UnlistenFn> {
+	return listen<{ run_id: string; stage: string }>('run:stage', (event) => cb(event.payload));
+}
+
+export function onSearchQueries(cb: (e: { run_id: string; queries: SearchQueryInfo[] }) => void): Promise<UnlistenFn> {
+	return listen<{ run_id: string; queries: SearchQueryInfo[] }>('run:search_queries', (event) => cb(event.payload));
+}
+
+export function onSearchQuery(cb: (e: { run_id: string; query: SearchQueryInfo }) => void): Promise<UnlistenFn> {
+	return listen<{ run_id: string; query: SearchQueryInfo }>('run:search_query', (event) => cb(event.payload));
+}
+
+/** The search queries of a run and what happened to each. */
+export function getRunQueries(runId: string): Promise<SearchQueryInfo[]> {
+	return invoke('get_run_queries', { runId });
 }
 
 export function onRunLogEntry(cb: (e: LogEntryEvent) => void): Promise<UnlistenFn> {

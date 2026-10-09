@@ -95,6 +95,7 @@ export const test = base.extend({
 				failSave: false,
 				clipboard: '',
 				runAttachments: [] as unknown[],
+				runQueries: [] as unknown[],
 				rowSources: null as unknown[] | null,
 				visionDetected: false as boolean | null,
 				dialogFiles: ['/docs/report.pdf', '/docs/prices.xlsx'] as string[] | null,
@@ -343,6 +344,8 @@ export const test = base.extend({
 						}
 						case 'get_run_attachments':
 							return fixture.runAttachments;
+						case 'get_run_queries':
+							return fixture.runQueries;
 						case 'export_run':
 							return fixture.delayExport
 								? new Promise<void>((resolve) => (fixture.finishExport = resolve))

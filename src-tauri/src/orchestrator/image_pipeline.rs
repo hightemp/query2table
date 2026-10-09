@@ -17,6 +17,7 @@ use super::events::{EventPublisher, ProgressStats};
 use crate::roles::stopping_controller::{StoppingController, PipelineStats, StopReason};
 
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
+use super::search_log::SearchLog;
 
 /// Characters of the attached files' overview given to the query planner.
 const FILES_NOTE_CHARS: usize = 1500;
@@ -141,6 +142,7 @@ impl ImagePipeline {
             .filter(|_| !references.is_empty() && compare_max > 0);
 
         // Generate search query variations (LLM-based or static fallback)
+        self.stage("plan");
         let queries = match &llm {
             Some(llm_mgr) => {
                 self.log("INFO", "image_pipeline", "Generating image search queries with LLM...").await;
@@ -162,9 +164,19 @@ impl ImagePipeline {
 
         // Execute image searches
         let num_results = self.config.search.num_results;
-        let collected = ImageSearcher::execute(&queries, &search, num_results)
+        let listed: Vec<(String, String)> = queries.iter().map(|q| (q.clone(), String::new())).collect();
+        let mut search_log = SearchLog::plan(self.repo.clone(), self.events.clone(), &self.run_id, &listed, search.primary_name())
             .await
-            .map_err(|e| format!("Image search: {e}"))?;
+            .map_err(|e| format!("Storage: {e}"))?;
+        self.stage("search");
+        let (progress, reports) = tokio::sync::mpsc::unbounded_channel();
+        let searching = async {
+            let result = ImageSearcher::execute_reporting(&queries, &search, num_results, Some(&progress)).await;
+            drop(progress);
+            result
+        };
+        let (collected, ()) = tokio::join!(searching, search_log.follow(reports));
+        let collected = collected.map_err(|e| format!("Image search: {e}"))?;
 
         self.log(
             "INFO",
@@ -211,6 +223,7 @@ impl ImagePipeline {
         };
         let mut ranking_skipped = llm.is_none() || self.budget.is_exceeded();
         let ranked_results = if let Some(ref llm_mgr) = llm.filter(|_| !self.budget.is_exceeded()) {
+            self.stage("rank");
             self.log("INFO", "image_ranker", "Ranking images with LLM...")
                 .await;
             // Keep the search results so a ranking failure does not discard them.
@@ -226,6 +239,7 @@ impl ImagePipeline {
                     .await;
                     match &comparer {
                         Some(model) => {
+                            self.stage("compare");
                             self.log(
                                 "INFO",
                                 "image_ranker",
@@ -440,6 +454,13 @@ Respond with valid JSON: {"queries": ["query1", "query2", ...]}. No markdown, no
             last_batch_total_rows: 0,
         };
         StoppingController::should_stop(&self.config.stop, &stats)
+    }
+
+    /// Tells the interface which stage the run is in.
+    fn stage(&self, stage: &str) {
+        if let Some(events) = &self.events {
+            events.emit_stage(stage);
+        }
     }
 
     async fn set_status(&self, status: &str) {
