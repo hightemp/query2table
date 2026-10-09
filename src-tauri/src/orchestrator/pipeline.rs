@@ -449,7 +449,8 @@ impl Pipeline {
                     .with_timeout(std::time::Duration::from_secs(self.config.fetch_timeout_secs)),
             )
         };
-        self.fetch_and_extract(llm, confirmed_columns, all_queries, collected, pending_results, file_fragments, total_pages, fetcher)
+        let language = intent.language();
+        self.fetch_and_extract(llm, confirmed_columns, all_queries, collected, pending_results, file_fragments, total_pages, fetcher, language)
             .await
     }
 
@@ -568,6 +569,7 @@ impl Pipeline {
         file_fragments: Vec<crate::attachments::retrieve::FragmentHit>,
         total_pages: usize,
         fetcher: Arc<HttpFetcher>,
+        language: String,
     ) -> Result<PipelineState, PipelineError> {
         let file_count = file_fragments.len();
         // Compute truncation limits (None means no truncation)
@@ -595,6 +597,7 @@ impl Pipeline {
             self.config.max_parallel_extractions,
             max_extraction_chars,
             self.control.pause_signal(),
+            language,
         );
 
         // File fragments go first: they are what the user brought. A separate sender keeps the

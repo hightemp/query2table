@@ -52,3 +52,12 @@ describe('cell values', () => {
 		expect(sortValue(true, 'boolean')).toBe(1);
 	});
 });
+
+describe('column headers in other languages', () => {
+	it('are shown as written', async () => {
+		const { columnLabel } = await import('$lib/utils/values');
+		expect(columnLabel('Число сотрудников')).toBe('Число сотрудников');
+		expect(columnLabel('Сайт')).toBe('Сайт');
+		expect(columnLabel('название_компании')).toBe('Название компании');
+	});
+});

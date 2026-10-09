@@ -11,22 +11,29 @@ pub struct ProposedSchema {
     pub columns: Vec<SchemaColumn>,
 }
 
-const SYSTEM_PROMPT: &str = r#"You are a schema designer for a research data collection tool. Given information about the entity type and desired attributes, design an optimal table schema.
+/// The schema designer's instructions; column names and descriptions are written in `language`.
+pub(crate) fn system_prompt(language: &str) -> String {
+    format!(
+        r#"You are a schema designer for a research data collection tool. Given information about the entity type and desired attributes, design an optimal table schema.
+
+The table is read by someone who writes in {language}: write every column name and description in {language}.
 
 Each column must have:
-- name: short snake_case column name (e.g., "company_name", "website_url")
+- name: a short column header in {language}, as a person would title it (e.g. "Company", "Website", "Employees"); unique within the table
 - type: one of "text", "number", "url", "date", "boolean", "email"
 - description: brief explanation of what this column contains
 - required: whether this column must have a value (true/false)
 
 Rules:
-1. Always include a "name" column as the first required column.
+1. The first column is the entity's name (type "text", required true).
 2. Include all attributes the user asked for.
-3. Add a "source_url" column at the end (type "url", required true).
+3. Add a column for the source page at the end (type "url", required true).
 4. Keep columns concise and practical — aim for 5-12 columns total.
 5. Use appropriate types (urls should be "url" type, counts should be "number", etc.)
 
-Respond with valid JSON: {"columns": [...]}. No markdown, no explanation."#;
+Respond with valid JSON: {{"columns": [...]}}. No markdown, no explanation."#
+    )
+}
 
 /// Plans a table schema based on query intent.
 pub struct SchemaPlanner;
@@ -40,7 +47,7 @@ impl SchemaPlanner {
         debug!(entity_type = %intent.entity_type, "Planning schema");
 
         let messages = vec![
-            Message::system(SYSTEM_PROMPT),
+            Message::system(system_prompt(&intent.language())),
             Message::user(format!(
                 "Design a table schema for collecting data about: {}\n\nDesired attributes: {}\nConstraints: {}\nGeo focus: {}{}",
                 intent.entity_type,
@@ -117,5 +124,13 @@ mod tests {
         let json = serde_json::to_string(&schema).unwrap();
         let parsed: ProposedSchema = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.columns.len(), 2);
+    }
+
+    #[test]
+    fn columns_are_named_in_the_language_of_the_query() {
+        let prompt = system_prompt("Russian");
+        assert!(prompt.contains("in Russian"));
+        assert!(!prompt.contains("snake_case"));
+        assert!(prompt.contains("first column"));
     }
 }

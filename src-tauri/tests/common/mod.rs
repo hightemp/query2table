@@ -80,6 +80,8 @@ pub struct MockLlmProvider {
     roles: std::sync::Mutex<Vec<String>>,
     /// User messages of each call with its role.
     texts: std::sync::Mutex<Vec<(String, String)>>,
+    /// System prompt of each call with its role.
+    systems: std::sync::Mutex<Vec<(String, String)>>,
 }
 
 impl MockLlmProvider {
@@ -95,7 +97,13 @@ impl MockLlmProvider {
             extract_returns_invalid: false,
             roles: Default::default(),
             texts: Default::default(),
+            systems: Default::default(),
         }
+    }
+
+    /// The system prompts sent for one role, one string per call.
+    pub fn systems_for(&self, role: &str) -> Vec<String> {
+        self.systems.lock().unwrap().iter().filter(|(r, _)| r == role).map(|(_, t)| t.clone()).collect()
     }
 
     /// The user messages sent for one role, one string per call.
@@ -168,6 +176,8 @@ impl LlmProvider for MockLlmProvider {
             .collect::<Vec<_>>()
             .join("\n");
         self.texts.lock().unwrap().push((role.to_string(), text));
+        let system = request.messages.iter().filter(|m| matches!(m.role, MessageRole::System)).map(|m| m.content.clone()).collect::<Vec<_>>().join("\n");
+        self.systems.lock().unwrap().push((role.to_string(), system));
         let content = match role {
             "interpret" => self.interpret_response.clone(),
             "schema" => self.schema_response.clone(),

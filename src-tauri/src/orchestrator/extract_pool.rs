@@ -47,7 +47,10 @@ pub fn spawn_extract_pool(
     num_workers: usize,
     max_text_chars: Option<usize>,
     paused: watch::Receiver<bool>,
+    // Language descriptive values are written in (the query's).
+    language: String,
 ) -> (mpsc::Sender<ExtractionJob>, WorkerResults<ExtractResult>) {
+    let language = Arc::new(language);
     let (job_tx, job_rx) = mpsc::channel::<ExtractionJob>(num_workers * 4);
     let (result_tx, result_rx) = mpsc::unbounded_channel::<ExtractResult>();
 
@@ -60,6 +63,7 @@ pub fn spawn_extract_pool(
         let job_rx = job_rx.clone();
         let result_tx = result_tx.clone();
         let columns = columns.clone();
+        let language = language.clone();
 
         results.spawn(paused.clone(), async move {
             debug!(worker_id, "Extract worker started");
@@ -77,7 +81,7 @@ pub fn spawn_extract_pool(
                 };
 
                 let page_url = job.document.url.clone();
-                let result = Extractor::extract(&job.document, &columns, &llm, max_text_chars).await;
+                let result = Extractor::extract(&job.document, &columns, &llm, max_text_chars, &language).await;
 
                 let extract_result = match result {
                     Ok(extraction) => {

@@ -106,3 +106,23 @@ async fn files_and_the_web_are_both_sources() {
     assert!(urls.iter().any(|u| u.starts_with("attachment://")), "{urls:?}");
     assert!(urls.iter().any(|u| u.starts_with("http")), "{urls:?}");
 }
+
+#[tokio::test]
+async fn a_russian_query_gets_a_russian_table() {
+    let (repo, _db) = setup_test_db().await;
+    let dir = tempfile::tempdir().unwrap();
+    let file = attach(&repo, dir.path()).await;
+    let mut config = test_pipeline_config();
+    config.attachments = vec![file];
+    config.attachments_dir = dir.path().to_path_buf();
+    config.web_search = false;
+    let mock_llm = Arc::new(MockLlmProvider::new());
+    let llm = Arc::new(LlmManager::with_provider(mock_llm.clone(), config.llm.clone()));
+    let search = Arc::new(SearchManager::with_providers(Arc::new(MockSearchProvider::new()), None, config.search.clone()));
+    let (mut pipeline, _tx) = Pipeline::new("ru".into(), "Сделай таблицу компаний из файла".into(), config, repo.clone(), None);
+    pipeline.set_providers(llm, search);
+    assert_eq!(pipeline.run().await.unwrap(), PipelineState::Completed);
+    // The fixture interpreter reply names no language: the Cyrillic query decides.
+    assert!(mock_llm.systems_for("schema")[0].contains("write every column name and description in Russian"));
+    assert!(mock_llm.systems_for("extract").iter().all(|s| s.contains("notes) in Russian")));
+}

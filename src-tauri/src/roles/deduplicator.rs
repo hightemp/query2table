@@ -31,6 +31,7 @@ impl Deduplicator {
         columns
             .iter()
             .find(|column| column.name.eq_ignore_ascii_case("name"))
+            // Columns named in other languages: the first text column names the entity.
             .or_else(|| columns.iter().find(|column| column.col_type == "text"))
             .map(|column| column.name.as_str())
             .unwrap_or("")
@@ -343,5 +344,13 @@ mod tests {
         let result = Deduplicator::deduplicate(&rows, "name", 0.85);
         assert_eq!(result.groups[0].sources.len(), 2);
         assert_eq!(result.groups[0].member_count, 2);
+    }
+
+    #[test]
+    fn the_first_text_column_names_entities_in_any_language() {
+        use crate::storage::models::SchemaColumn;
+        let column = |name: &str, kind: &str| SchemaColumn { name: name.into(), col_type: kind.into(), description: String::new(), required: false };
+        assert_eq!(Deduplicator::name_column(&[column("Сайт", "url"), column("Название", "text"), column("Описание", "text")]), "Название");
+        assert_eq!(Deduplicator::name_column(&[column("Описание", "text"), column("name", "text")]), "name");
     }
 }

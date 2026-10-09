@@ -21,7 +21,7 @@ pub struct ExtractionResult {
     pub page_url: String,
 }
 
-fn build_system_prompt(columns: &[SchemaColumn]) -> String {
+fn build_system_prompt(columns: &[SchemaColumn], language: &str) -> String {
     let col_desc: Vec<String> = columns.iter().map(|c| {
         format!("- {} ({}{}): {}", c.name, c.col_type,
             if c.required { ", required" } else { "" },
@@ -41,9 +41,11 @@ Rules:
 4. For required columns, if the value is not available, skip the entity.
 5. Assign a confidence score (0.0-1.0) to each entity based on how much data was found.
 6. Return empty rows array if no matching entities are found.
+7. Write descriptive values (descriptions, categories, summaries, notes) in {language}. Keep proper names (companies, products, people, places), titles, quotes, addresses, emails and URLs exactly as they appear in the source.
 
 Respond with valid JSON: {{"rows": [{{"data": {{...}}, "confidence": 0.9}}, ...]}}. No markdown, no explanation."#,
-        col_desc.join("\n")
+        col_desc.join("\n"),
+        language = language,
     )
 }
 
@@ -58,6 +60,7 @@ impl Extractor {
         columns: &[SchemaColumn],
         llm: &LlmManager,
         max_text_chars: Option<usize>,
+        language: &str,
     ) -> Result<ExtractionResult, LlmError> {
         debug!(url = %document.url, text_len = document.text.len(), "Extracting entities");
 
@@ -68,7 +71,7 @@ impl Extractor {
             &document.text
         };
 
-        let system_prompt = build_system_prompt(columns);
+        let system_prompt = build_system_prompt(columns, language);
 
         let messages = vec![
             Message::system(system_prompt),
@@ -162,7 +165,7 @@ mod tests {
                 required: true,
             },
         ];
-        let prompt = build_system_prompt(&columns);
+        let prompt = build_system_prompt(&columns, "English");
         assert!(prompt.contains("name (text, required)"));
     }
 
@@ -188,5 +191,14 @@ mod tests {
             &long_text
         };
         assert_eq!(truncated.len(), 15000);
+    }
+
+    #[test]
+    fn descriptions_follow_the_query_language_and_names_stay_as_written() {
+        let columns = vec![SchemaColumn { name: "Название".into(), col_type: "text".into(), description: "Имя".into(), required: true }];
+        let prompt = build_system_prompt(&columns, "Russian");
+        assert!(prompt.contains("- Название (text, required)"));
+        assert!(prompt.contains("in Russian"));
+        assert!(prompt.contains("exactly as they appear in the source"));
     }
 }
