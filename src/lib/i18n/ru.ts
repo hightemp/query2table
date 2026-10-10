@@ -490,6 +490,7 @@ export const ru: Record<MessageKey, Message> = {
 	"models.server": "Сервер",
 	"models.serverEmpty": "Сервер не вернул ни одной модели.",
 	"nav.history": "История",
+	"nav.main": "Основное",
 	"nav.query": "Запрос",
 	"nav.settings": "Настройки",
 	"notice.continued": "Агент переспросил модель и продолжил. Ответ не пострадал.",

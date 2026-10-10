@@ -1898,3 +1898,22 @@ Goal: attach PDF, Word, Excel and other files and images to a query. Files serve
 - [x] **A4** Table: context, files as sources, *files only* mode, file sources in rows.
 - [x] **A5** Links and Images (reference image ranking with a cost warning).
 - [x] **A6** History, Run again, export of sources, cleanup, polish.
+
+## Android app
+
+The same code base builds an Android app (Tauri v2 mobile). The Android Studio project in `src-tauri/gen/android` is committed.
+
+### Decisions (agreed with the user)
+
+- Name stays **Query2Table**, same identifier `com.hightemp.query2table`.
+- Navigation on phones: a bottom tab bar (Query / History / Settings); the theme is chosen in Settings.
+- The phone layout follows the screen width (≤ 640px), so narrow windows and browser tests get it too.
+- Releases add one universal APK (arm64, armv7, x86_64), signed with the user's own key from GitHub secrets.
+
+### Tasks
+
+- [x] **M1** Backend runs on Android: tray only on desktop, startup moved into `setup`, app data and logs in the app's private storage (`utils/paths.rs`), reqwest on rustls (no OpenSSL to cross-compile).
+- [x] **M2** Android project: `tauri android init`, app icon, content kept clear of system bars and keyboard, cleartext http allowed for local model servers, release signing from `keystore.properties` (debug key when absent).
+- [x] **M3** Phone layout: bottom tab bar, tighter query form, no shortcut hint on touch screens. Tests: `tests/ui/mobile.spec.ts`.
+- [x] **M4** `make android-*` targets for testing on a phone or emulator; verified on the API 35 emulator.
+- [x] **M5** Release workflow: `android` job builds the signed APK and adds it to the GitHub release (skipped with a warning when the key secret is missing).

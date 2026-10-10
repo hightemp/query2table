@@ -9,23 +9,23 @@ pub mod utils;
 
 use storage::db::Database;
 use std::sync::Arc;
-use tauri::{
-    image::Image,
-    menu::{MenuBuilder, MenuItemBuilder},
-    tray::TrayIconBuilder,
-    Manager,
-};
+use tauri::Manager;
 
 pub struct AppState {
     pub db: Arc<Database>,
 }
 
+/// Keeps the log writer alive on mobile, where logging starts once the app knows its folders.
+#[cfg(mobile)]
+struct LogGuard(#[allow(dead_code)] tracing_appender::non_blocking::WorkerGuard);
+
 /// Tray menu items, relabelled when the interface language changes.
+#[cfg(desktop)]
 pub struct TrayMenu(pub std::sync::Mutex<Option<(tauri::menu::MenuItem<tauri::Wry>, tauri::menu::MenuItem<tauri::Wry>)>>);
 
 /// Relabels the tray menu for the `ui_language` setting.
+#[cfg(desktop)]
 pub fn apply_tray_language(app: &tauri::AppHandle, setting: &str) {
-    use tauri::Manager;
     let locale = ["LC_ALL", "LC_MESSAGES", "LANG"]
         .iter()
         .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()));
@@ -38,6 +38,62 @@ pub fn apply_tray_language(app: &tauri::AppHandle, setting: &str) {
     }
 }
 
+/// There is no tray on mobile; the interface language needs no relabelling there.
+#[cfg(mobile)]
+pub fn apply_tray_language(_app: &tauri::AppHandle, _setting: &str) {}
+
+/// Opens the database, upgrades it and tidies what earlier sessions left behind.
+async fn open_database() -> Result<Database, String> {
+    let db = Database::new().await.map_err(|e| format!("Failed to initialize database: {e}"))?;
+    db.migrate().await.map_err(|e| format!("Failed to run migrations: {e}"))?;
+    // Runs deleted in History can be restored only until the app closes.
+    if let Err(e) = storage::repository::Repository::new(db.pool().clone()).purge_deleted_runs(None).await {
+        tracing::warn!(error = %e, "Could not purge deleted runs");
+    }
+    // Drop attached files no run uses: unsent drafts older than a day and files of purged runs.
+    let attachments = attachments::store::AttachmentStore::new(db.pool().clone(), attachments::store::AttachmentStore::default_dir());
+    if let Err(e) = attachments.cleanup(24 * 3600).await {
+        tracing::warn!(error = %e, "Could not clean up attached files");
+    }
+    Ok(db)
+}
+
+/// The tray icon with Show and Quit, in the saved interface language.
+#[cfg(desktop)]
+fn build_tray(app: &tauri::App, lang: utils::i18n::Lang) -> tauri::Result<()> {
+    use tauri::{
+        image::Image,
+        menu::{MenuBuilder, MenuItemBuilder},
+        tray::TrayIconBuilder,
+    };
+    let (show_label, quit_label) = utils::i18n::tray_labels(lang);
+    let show_item = MenuItemBuilder::with_id("show", show_label).build(app)?;
+    let quit_item = MenuItemBuilder::with_id("quit", quit_label).build(app)?;
+    app.manage(TrayMenu(std::sync::Mutex::new(Some((show_item.clone(), quit_item.clone())))));
+    let tray_menu = MenuBuilder::new(app).item(&show_item).separator().item(&quit_item).build()?;
+
+    let tray_icon = Image::from_path("icons/32x32.png").unwrap_or_else(|_| {
+        Image::from_bytes(include_bytes!("../icons/32x32.png")).expect("Failed to load tray icon")
+    });
+
+    TrayIconBuilder::new()
+        .icon(tray_icon)
+        .menu(&tray_menu)
+        .tooltip("Query2Table")
+        .on_menu_event(move |app, event| match event.id().as_ref() {
+            "show" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Capture HTTP_PROXY/HTTPS_PROXY for our reqwest clients and strip them
@@ -45,91 +101,40 @@ pub fn run() {
     // route the dev-server / devtools traffic through the proxy.
     providers::http::proxy::init_and_strip_env();
 
-    // Initialize logging early (before Tauri setup) so all startup messages are captured.
+    // Desktop logs start before anything else so all startup messages are captured; mobile
+    // logging starts in `setup`, once the app knows its private storage.
+    #[cfg(desktop)]
     let _log_guard = utils::logging::init_logging(utils::logging::log_dir());
 
-    let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-
-    let db = runtime.block_on(async {
-        let db = Database::new().await.expect("Failed to initialize database");
-        db.migrate().await.expect("Failed to run migrations");
-        // Runs deleted in History can be restored only until the app closes.
-        if let Err(e) = storage::repository::Repository::new(db.pool().clone()).purge_deleted_runs(None).await {
-            tracing::warn!(error = %e, "Could not purge deleted runs");
-        }
-        // Drop attached files no run uses: unsent drafts older than a day and files of purged runs.
-        let attachments = attachments::store::AttachmentStore::new(db.pool().clone(), attachments::store::AttachmentStore::default_dir());
-        if let Err(e) = attachments.cleanup(24 * 3600).await {
-            tracing::warn!(error = %e, "Could not clean up attached files");
-        }
-        db
-    });
-
-    // Apply the user-selected proxy (if any) before any HTTP client is built.
-    if let Some(url) = runtime.block_on(async { db.get_setting("active_proxy_url").await.ok().flatten() }) {
-        if !url.trim().is_empty() {
-            providers::http::set_runtime_proxy(Some(url));
-        }
-    }
-
-    // The tray menu is built before the frontend loads, in the saved interface language.
-    let tray_lang = runtime.block_on(async {
-        let settings: std::collections::HashMap<String, String> =
-            db.get_all_settings().await.map(|rows| rows.into_iter().collect()).unwrap_or_default();
-        utils::i18n::current_language(&settings)
-    });
-
-    let app_state = AppState {
-        db: Arc::new(db),
-    };
-
     let run_controller = commands::run::RunController::new();
-
-    tracing::info!("Query2Table starting");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .manage(app_state)
         .manage(run_controller)
-        .setup(move |app| {
-            let (show_label, quit_label) = utils::i18n::tray_labels(tray_lang);
-            let show_item = MenuItemBuilder::with_id("show", show_label).build(app)?;
-            let quit_item = MenuItemBuilder::with_id("quit", quit_label).build(app)?;
-            app.manage(TrayMenu(std::sync::Mutex::new(Some((show_item.clone(), quit_item.clone())))));
-            let tray_menu = MenuBuilder::new(app)
-                .item(&show_item)
-                .separator()
-                .item(&quit_item)
-                .build()?;
+        .setup(|app| {
+            #[cfg(mobile)]
+            {
+                utils::paths::set_app_data_dir(app.path().app_data_dir()?);
+                app.manage(LogGuard(utils::logging::init_logging(utils::logging::log_dir())));
+            }
+            tracing::info!("Query2Table starting");
 
-            let tray_icon = Image::from_path("icons/32x32.png").unwrap_or_else(|_| {
-                Image::from_bytes(include_bytes!("../icons/32x32.png"))
-                    .expect("Failed to load tray icon")
-            });
+            let db = tauri::async_runtime::block_on(open_database())?;
+            let settings: std::collections::HashMap<String, String> = tauri::async_runtime::block_on(db.get_all_settings())
+                .map(|rows| rows.into_iter().collect())
+                .unwrap_or_default();
+            // Apply the user-selected proxy (if any) before any HTTP client is built.
+            if let Some(url) = settings.get("active_proxy_url").filter(|url| !url.trim().is_empty()) {
+                providers::http::set_runtime_proxy(Some(url.clone()));
+            }
+            app.manage(AppState { db: Arc::new(db) });
 
-            TrayIconBuilder::new()
-                .icon(tray_icon)
-                .menu(&tray_menu)
-                .tooltip("Query2Table")
-                .on_menu_event(move |app, event| {
-                    match event.id().as_ref() {
-                        "show" => {
-                            if let Some(w) = app.get_webview_window("main") {
-                                let _ = w.show();
-                                let _ = w.set_focus();
-                            }
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
-                    }
-                })
-                .build(app)?;
-
+            // The tray menu is built before the frontend loads, in the saved interface language.
+            #[cfg(desktop)]
+            build_tray(app, utils::i18n::current_language(&settings))?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

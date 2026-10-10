@@ -84,3 +84,92 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  android:
+    # Runs after the desktop builds, which create the GitHub release this APK is added to.
+    needs: release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check the signing key
+        id: key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: the Android APK is not built. See make android-keystore."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Java
+        if: steps.key.outputs.present == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Android SDK
+        if: steps.key.outputs.present == 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        if: steps.key.outputs.present == 'true'
+        run: |
+          sdkmanager --install "ndk;28.0.12433566"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.0.12433566" >> "$GITHUB_ENV"
+
+      - name: Install Rust stable
+        if: steps.key.outputs.present == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: Rust cache
+        if: steps.key.outputs.present == 'true'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: android
+
+      - name: Setup Node.js
+        if: steps.key.outputs.present == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        if: steps.key.outputs.present == 'true'
+        run: npm ci
+
+      - name: Write the signing key
+        if: steps.key.outputs.present == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+            echo "storePassword=$ANDROID_KEY_PASSWORD"
+            echo "keyAlias=${ANDROID_KEY_ALIAS:-query2table}"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+          } > src-tauri/gen/android/keystore.properties
+
+      - name: Build the APK
+        if: steps.key.outputs.present == 'true'
+        run: npm run tauri android build -- --apk --target aarch64 --target armv7 --target x86_64
+
+      - name: Add the APK to the release
+        if: steps.key.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk "Query2Table_${version}_android.apk"
+          gh release upload "$GITHUB_REF_NAME" "Query2Table_${version}_android.apk" --clobber

@@ -73,7 +73,7 @@
 		</button>
 	</div>
 
-	<nav class="sidebar-nav">
+	<nav class="sidebar-nav" aria-label={t('nav.main')}>
 		{#each nav as item (item.href)}
 			{@const active = $page.url.pathname === item.href}
 			<a
@@ -85,7 +85,7 @@
 				class:active
 			>
 				<item.icon size={20} />
-				{#if !$sidebarCollapsed}<span>{t(item.label)}</span>{/if}
+				<span class="nav-label" class:hidden={$sidebarCollapsed}>{t(item.label)}</span>
 			</a>
 		{/each}
 	</nav>
@@ -247,5 +247,44 @@
 	.theme-switch button:disabled {
 		opacity: 1;
 		cursor: wait;
+	}
+
+	.nav-label.hidden {
+		display: none;
+	}
+
+	/* Phones and narrow windows: a tab bar along the bottom. The theme is chosen in Settings. */
+	@media (max-width: 640px) {
+		.sidebar,
+		.sidebar.collapsed {
+			width: 100%;
+			height: auto;
+			border-right: 0;
+			border-top: 1px solid var(--app-border);
+			transition: none;
+		}
+		.sidebar-header,
+		.sidebar-footer {
+			display: none;
+		}
+		.sidebar-nav {
+			flex-direction: row;
+			padding: 4px 6px;
+		}
+		.nav-item,
+		.collapsed .nav-item {
+			flex: 1;
+			flex-direction: column;
+			justify-content: center;
+			gap: 2px;
+			padding: 6px 4px;
+			font-size: var(--app-text-xs);
+		}
+		.nav-item.active {
+			background: none;
+		}
+		.nav-label.hidden {
+			display: inline;
+		}
 	}
 </style>

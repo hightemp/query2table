@@ -9,7 +9,7 @@
 Query2Table is a local-first desktop application (Tauri v2 + Rust + Svelte) that converts natural-language research queries into structured tables with row-level sources. Uses an orchestrator with fixed roles to search the internet, fetch/parse pages, extract entities via LLMs, and deduplicate results.
 
 ## Tech Stack
-- **Desktop Shell:** Tauri v2
+- **Desktop Shell:** Tauri v2 (Linux, Windows, macOS) plus an Android app from the same code
 - **Backend:** Rust (Tokio async runtime)
 - **Frontend:** Svelte 5 (SvelteKit SPA)
 - **Database:** SQLite (sqlx, WAL mode)
@@ -24,6 +24,7 @@ query2table/
 │   ├── Cargo.toml              # Rust dependencies
 │   ├── tauri.conf.json         # Tauri configuration
 │   ├── migrations/             # SQLite schema migrations
+│   ├── gen/android/            # Android Studio project (committed; signing via git-ignored keystore.properties)
 │   └── src/
 │       ├── main.rs             # Tauri entry point
 │       ├── lib.rs              # Module declarations
@@ -73,6 +74,9 @@ Table, Links and Images runs report their stage (`run:stage`: interpret, schema,
 
 ## UI controls
 Do not use the browser's own controls. Use `Select` (lists; search appears from 8 options), `Checkbox`, `Radio`, `NumberInput` and `Slider` from `src/lib/components/common/`, and `use:tooltip` from `src/lib/actions/tooltip.ts` instead of `title` (`{ text, whenTruncated: true }` for clipped text). `<details>`, scrollbars and number spinners are styled globally in `src/app.css`. Right-click on text fields and selected text opens the app's menu (`src/lib/utils/textMenu.ts`). In Playwright tests pick list options with `choose()` from `tests/ui/fixtures.ts`.
+
+## Android
+`make android-apk` builds `dist/Query2Table_<version>_android.apk`; `make android-run` installs and opens it on the connected phone or emulator, `make android-logs` follows its log, `make android-dev` runs with live reload. Desktop-only code (tray) is behind `#[cfg(desktop)]`; mobile keeps its data in the app's private storage (`utils/paths.rs`). The phone layout is CSS at `max-width: 640px` (bottom tab bar in `Sidebar.svelte`), tested in `tests/ui/mobile.spec.ts`. Releases add the APK in the `android` job of `.github/workflows/release.yml`, signed with the `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS` secrets (`make android-keystore` creates the key).
 
 ## Key Entry Points
 | File | Purpose |

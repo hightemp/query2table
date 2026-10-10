@@ -4,6 +4,9 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 /// Existing log location, shared by startup and Settings so the displayed path is accurate.
 pub fn log_dir() -> PathBuf {
+    if let Some(dir) = crate::utils::paths::app_data_override() {
+        return dir.join("logs");
+    }
     let data_dir = std::env::var("XDG_DATA_HOME")
         .ok()
         .map(PathBuf::from)

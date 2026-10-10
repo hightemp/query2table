@@ -960,4 +960,19 @@
 	.schema-workspace[hidden] {
 		display: none;
 	}
+	@media (max-width: 640px) {
+		.query-scroll {
+			padding-right: 0;
+			scrollbar-gutter: auto;
+		}
+		.query-form {
+			padding: 14px;
+		}
+	}
+	/* Touch screens have no keyboard shortcut to hint at. */
+	@media (pointer: coarse) {
+		.shortcut-hint {
+			display: none;
+		}
+	}
 </style>

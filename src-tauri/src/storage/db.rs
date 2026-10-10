@@ -37,6 +37,9 @@ impl Database {
     }
 
     pub fn data_dir() -> PathBuf {
+        if let Some(dir) = crate::utils::paths::app_data_override() {
+            return dir.clone();
+        }
         let data_dir = dirs_next().unwrap_or_else(|| PathBuf::from("."));
         data_dir.join("query2table")
     }

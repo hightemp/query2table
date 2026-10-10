@@ -13,3 +13,4 @@ vite.config.ts.timestamp-*
 /test-results/
 
 UI-IMPROVEMENTS.md
+/dist/

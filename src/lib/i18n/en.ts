@@ -488,6 +488,7 @@ export const en = {
 	"models.server": "Server",
 	"models.serverEmpty": "The server returned no models.",
 	"nav.history": "History",
+	"nav.main": "Main",
 	"nav.query": "Query",
 	"nav.settings": "Settings",
 	"notice.continued": "The agent asked the model again and continued. The answer is not affected.",

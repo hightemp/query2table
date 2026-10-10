@@ -169,4 +169,18 @@
 		flex-direction: column;
 		min-height: 0;
 	}
+
+	@media (max-width: 640px) {
+		/* The tab bar sits under the page and the log panel. */
+		.app-shell {
+			flex-direction: column-reverse;
+		}
+		.app-main {
+			flex: 1;
+			min-height: 0;
+		}
+		.app-content {
+			padding: 12px;
+		}
+	}
 </style>
