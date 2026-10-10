@@ -15,9 +15,11 @@
   <img src="https://asdertasd.site/counter/query2table" alt="Query2Table views">
 </p>
 
-**Query2Table** — local-first desktop research tool. You describe what data you need; the app autonomously searches the internet across multiple sources and languages, fetches pages, extracts structured entities with LLMs, deduplicates them, and presents the result as a live-updating table with row-level source links — all running on your machine without a cloud backend.
+**Query2Table** — local-first research tool for desktop (Linux, Windows, macOS) and Android. You describe what data you need; the app autonomously searches the internet across multiple sources and languages, fetches pages, extracts structured entities with LLMs, deduplicates them, and presents the result as a live-updating table with row-level source links — all running on your machine without a cloud backend.
 
 Beyond tables, it offers three more dedicated modes: **image search**, which finds and LLM-ranks relevant images by visual relevance; **link search**, which reads the full content of candidate pages and returns only the most relevant links with LLM-generated descriptions and relevance scores; and **research**, an agentic mode where the model autonomously searches, reads pages, reasons, and writes a sourced Markdown answer.
+
+The app is also available for **Android** phones: the same app with the same modes, settings and history, built from the same code and adapted to a phone screen with a bottom tab bar.
 
 Ask something like *"Build a comparison table of open-source vector search databases and libraries with their language, license, deployment type, use case and website"* and watch the table fill up in real time.
 
@@ -84,6 +86,19 @@ Search, filter and reopen past runs, run them again or export several at once. S
   </tr>
 </table>
 
+## Download
+
+Get the latest build from [Releases](https://github.com/hightemp/query2table/releases/latest):
+
+| Platform | File |
+|----------|------|
+| Linux | `.AppImage`, `.deb`, `.rpm` |
+| Windows | `.msi`, `.exe` |
+| macOS (Apple Silicon) | `.dmg` |
+| Android 7.0+ | `Query2Table_<version>_android.apk` |
+
+On Android, open the downloaded APK and allow installing apps from your browser or file manager when asked. The Android app keeps its data on the phone; it has no tray, notifications appear as regular Android notifications. Local model servers (Ollama, llama.cpp) can be used over your network by their address, e.g. `http://192.168.1.10:11434`.
+
 ## Features
 
 - **Natural language queries** — describe what you want in plain English
@@ -102,14 +117,15 @@ Search, filter and reopen past runs, run them again or export several at once. S
 - **Run history** — browse, view, and re-export past research runs
 - **Export** — CSV, JSON, XLSX with full source metadata
 - **Dark / Light theme** — toggle in the sidebar
-- **System tray** — completion notifications
+- **System tray** — completion notifications (desktop)
+- **Android app** — the same app on phones, with a layout for small screens
 - **Local-first** — all data in SQLite, no cloud backend required
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Desktop shell | Tauri v2 |
+| App shell | Tauri v2 (desktop and Android) |
 | Backend | Rust (Tokio async runtime) |
 | Frontend | Svelte 5 (SvelteKit SPA) |
 | UI styling | Plain CSS with design tokens |
@@ -307,6 +323,21 @@ cd src-tauri && cargo test
 # Lint
 npm run lint
 ```
+
+### Android
+
+Needs the [Tauri Android prerequisites](https://v2.tauri.app/start/prerequisites/#android): Android SDK and NDK (`ANDROID_HOME`, `NDK_HOME`), Java 17 (`JAVA_HOME`), and the Rust targets (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`). Connect a phone with USB debugging on, or start an emulator.
+
+```bash
+make android-devices    # check the phone or emulator is connected
+make android-emulator   # start an emulator (AVD=<name> to pick one)
+make android-apk        # build dist/Query2Table_<version>_android.apk
+make android-run        # install it on the device and open the app
+make android-logs       # follow the app's log
+make android-dev        # live reload on the device
+```
+
+Builds are signed with the debug key unless `src-tauri/gen/android/keystore.properties` exists. `make android-keystore` creates a release key and that file, and prints the GitHub secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS`) the release workflow uses to sign the APK it adds to each release. Keep the key: updates install over an existing app only when signed with the same key.
 
 ## Export Formats
 
