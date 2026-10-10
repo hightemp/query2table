@@ -88,6 +88,8 @@ jobs:
   android:
     # Runs after the desktop builds, which create the GitHub release this APK is added to.
     needs: release
+    # One failed desktop build should not hold back the APK.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout

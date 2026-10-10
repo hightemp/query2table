@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.9.0 — 2026-10-10
+
+Query2Table comes to Android, reads the files you attach, and shows what a run is doing at every stage.
+
+### Android app
+
+- Query2Table now runs on Android phones (Android 7.0+): the same modes, settings and history, with a bottom tab bar and a layout for small screens. Install `Query2Table_0.9.0_android.apk` from the release assets.
+- Data stays on the phone. Local model servers (Ollama, llama.cpp) can be used over your network by their address.
+- Narrow desktop windows get the same compact layout.
+
+### Attach files and images
+
+- Attach PDF, Word, Excel, CSV, text and images to a query with the button, by dropping them on the form, or by pasting.
+- Tables use attached files as sources next to web pages; rows link to the exact page, sheet or section. Research reads files on demand and cites them; Links and Images use them as context.
+- **Files only** mode in Table and Research answers from your files without searching the web.
+- Models that see images get pictures directly; scanned PDF pages and images can be read by a separate vision model. Choose it in Settings → LLM.
+- In Images, an attached picture is a reference: the best candidates are compared with it.
+- Attachments are kept with the run: History shows them, Run again reuses them, and exports turn file places into readable citations.
+
+### Run progress
+
+- Table, Links and Images runs show their stages (understanding the query, columns, planning, searching, reading, ranking, merging) with counts such as pages read and images ranked.
+- Every search query is listed with its status, language, new results and errors. Saved runs show a folded summary.
+- The separate “Activity” popover is gone; its information is in the stages.
+
+### Tables
+
+- Column names and descriptive values are written in the language of your query; names and titles stay as in the source.
+
+### Look and controls
+
+- More themes, including Solarized light and dark, and an interface size setting.
+- All lists, checkboxes, radio buttons, number fields, sliders and tooltips are the app's own controls instead of the browser's, with a Cut / Copy / Paste menu in text fields.
+
+### Settings
+
+- New limits you can tune: model context size, file fragments per request, images sent to the model, and how many images are compared with a reference (Settings → Search).
+
+Existing settings and history are kept; the database is upgraded automatically on first start.
+
+Download the installer for your platform from the release assets below: Linux (DEB, RPM, AppImage), Windows (EXE, MSI), macOS Apple Silicon (DMG, app archive), or Android (APK).
+
 ## 0.8.0 — 2026-10-05
 
 Query2Table now speaks Russian as well as English.
