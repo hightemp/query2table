@@ -4,12 +4,19 @@ on:
   push:
     tags:
       - 'v*'
+  # Rebuilds only the Android APK of an existing release (e.g. after fixing its build).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to add the Android APK to, e.g. v0.9.0
+        required: true
 
 permissions:
   contents: write
 
 jobs:
   release:
+    if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
@@ -91,9 +98,13 @@ jobs:
     # One failed desktop build should not hold back the APK.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - name: Check the signing key
         id: key
@@ -114,14 +125,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install Android SDK
-        if: steps.key.outputs.present == 'true'
-        uses: android-actions/setup-android@v3
-
+      # The runner has the Android SDK (ANDROID_HOME); add the NDK and the platform the app targets.
       - name: Install Android NDK
         if: steps.key.outputs.present == 'true'
         run: |
-          sdkmanager --install "ndk;28.0.12433566"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "ndk;28.0.12433566" "platforms;android-36" "build-tools;35.0.0" > /dev/null
           echo "NDK_HOME=$ANDROID_HOME/ndk/28.0.12433566" >> "$GITHUB_ENV"
 
       - name: Install Rust stable
@@ -172,6 +182,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk "Query2Table_${version}_android.apk"
-          gh release upload "$GITHUB_REF_NAME" "Query2Table_${version}_android.apk" --clobber
+          gh release upload "$TAG" "Query2Table_${version}_android.apk" --clobber
