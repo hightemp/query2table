@@ -35,6 +35,7 @@
 	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	import { toast } from '$lib/stores/toasts';
 	import { errorText } from '$lib/utils/errors';
+	import { folderOf, isAndroid, readablePath } from '$lib/utils/platform';
 	import { debugUi } from '$lib/utils/diagnostics';
 	import { persisted } from '$lib/utils/storage';
 	import {
@@ -165,6 +166,7 @@
 			toast(t('images.linksCopyFailed'), 'error');
 		}
 	}
+	const android = isAndroid();
 	async function saveOne(view: ImageView) {
 		if (saving) return;
 		const extension = urlExtension(view.original) ?? 'jpg';
@@ -180,7 +182,7 @@
 				view.image.thumbnail_url || null,
 				path
 			);
-			toast(t('images.savedOne', { path: written }), 'success');
+			toast(t('images.savedOne', { path: readablePath(written) ?? t('files.chosenFile') }), 'success');
 		} catch (error) {
 			toast(t('images.saveOneFailed', { error: errorText(error) }), 'error');
 		} finally {
@@ -190,11 +192,14 @@
 	async function saveSelected() {
 		if (saving || !selected.length) return;
 		try {
-			const directory = await open({
-				directory: true,
-				title: t('images.chooseFolder', { count: selected.length }),
-			});
-			if (!directory || Array.isArray(directory)) return;
+			// Android cannot write into a picked folder: the images go to Pictures/Query2Table.
+			const directory = android
+				? null
+				: await open({
+						directory: true,
+						title: t('images.chooseFolder', { count: selected.length }),
+					});
+			if (!android && (!directory || Array.isArray(directory))) return;
 			saving = true;
 			const result = await saveImages(
 				selected.map((view) => ({
@@ -202,7 +207,7 @@
 					fallback_url: view.image.thumbnail_url || null,
 					name: imageFileName(view),
 				})),
-				directory
+				directory as string | null
 			);
 			if (result.failed.length)
 				toast(
@@ -213,7 +218,11 @@
 					}),
 					'error'
 				);
-			else toast(t('images.savedAll', { count: result.saved.length, dir: directory }), 'success');
+			else
+				toast(
+					t('images.savedAll', { count: result.saved.length, dir: directory ?? folderOf(result.saved[0] ?? '') }),
+					'success'
+				);
 		} catch (error) {
 			toast(t('images.saveFailed', { error: errorText(error) }), 'error');
 		} finally {
@@ -367,7 +376,7 @@
 					><CopyIcon size={14} />{t('images.copyLinks')}</button
 				>
 				<button class="button sm primary" disabled={saving} onclick={saveSelected}
-					><DownloadIcon size={14} />{saving ? t('images.saving') : t('images.saveToFolder')}</button
+					><DownloadIcon size={14} />{saving ? t('images.saving') : t(android ? 'images.saveToPictures' : 'images.saveToFolder')}</button
 				>
 				<button class="icon-button ghost sm" aria-label={t('common.clearSelection')} onclick={() => (selectedIds = [])}
 					><XIcon size={14} /></button

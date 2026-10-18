@@ -1,3 +1,4 @@
+import { isAndroid } from '$lib/utils/platform';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
@@ -139,7 +140,19 @@ export function addAttachments(paths: string[]): Promise<AttachResult[]> {
 }
 
 /** Attaches pasted or dropped file content; the bytes travel as the raw request body. */
+/** The file's content in base64, read natively by the browser. */
+function base64Of(file: Blob): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+		reader.onerror = () => reject(reader.error);
+		reader.readAsDataURL(file);
+	});
+}
+
 export async function addAttachmentData(file: File): Promise<AttachResult> {
+	// Android's IPC cannot carry raw bytes (they would turn into a JSON array of numbers).
+	if (isAndroid()) return invoke('add_attachment_data', { name: file.name || 'pasted', data: await base64Of(file) });
 	const bytes = new Uint8Array(await file.arrayBuffer());
 	return invoke('add_attachment_data', bytes, { headers: { 'x-file-name': encodeURIComponent(file.name || 'pasted') } });
 }
@@ -218,7 +231,8 @@ export async function pinRun(runId: string, pinned: boolean): Promise<void> {
 }
 
 /** One file per run in `dir`; research runs are Markdown. Returns the written paths. */
-export async function exportRuns(runIds: string[], dir: string, format: string): Promise<string[]> {
+/** Without `dir` (Android) the files go to Download/Query2Table. */
+export async function exportRuns(runIds: string[], dir: string | null, format: string): Promise<string[]> {
 	return invoke('export_runs', { runIds, dir, format });
 }
 
@@ -355,8 +369,9 @@ export async function listOpenAiModels(baseUrl: string, apiKey: string): Promise
 }
 
 /** Writes settings without API keys or proxies to a JSON file. */
-export async function exportSettings(path: string): Promise<void> {
-	return invoke('export_settings', { path });
+/** Writes the settings to a file; API keys and proxies only with `includeSecrets`. */
+export async function exportSettings(path: string, includeSecrets = false): Promise<void> {
+	return invoke('export_settings', { path, includeSecrets });
 }
 
 /** Settings from a file, to apply as unsaved changes. */
@@ -416,7 +431,8 @@ export interface SaveImagesResult {
 
 export function saveImages(
 	items: { url: string; fallback_url: string | null; name: string }[],
-	directory: string
+	/** Without a folder (Android) the images go to Pictures/Query2Table. */
+	directory: string | null
 ): Promise<SaveImagesResult> {
 	return invoke('save_images', { items, directory });
 }

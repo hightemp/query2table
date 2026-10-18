@@ -82,7 +82,10 @@ async function openGallery(page: Page) {
 					return `${args.path}`;
 				case 'save_images':
 					fixture.calls.push({ command, args });
-					return { saved: args.items.slice(1).map((i: any) => `/tmp/q2t-images/${i.name}.png`), failed: [[args.items[0].name, 'HTTP 404']] };
+					return {
+						saved: args.items.slice(1).map((i: any) => `${args.directory ?? 'Pictures/Query2Table'}/${i.name}.png`),
+						failed: [[args.items[0].name, 'HTTP 404']],
+					};
 			}
 			return original(command, args);
 		};
@@ -91,6 +94,21 @@ async function openGallery(page: Page) {
 	await viewRun(page, 1);
 	await expect(page.locator('.tile')).toHaveCount(3);
 }
+
+test.describe('On Android', () => {
+	test.use({ userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36' });
+
+	test('selected images go to Pictures without choosing a folder', async ({ page }) => {
+		await openGallery(page);
+		await page.getByRole('checkbox', { name: 'Select Wide tower' }).check({ force: true });
+		await page.getByRole('button', { name: 'Select all shown' }).click();
+		await page.getByRole('button', { name: 'Save to Pictures' }).click();
+		const [batch] = await calls(page, 'save_images');
+		expect(batch.args.directory).toBeNull();
+		expect(await calls(page, 'plugin:dialog|open')).toHaveLength(0);
+		await expect(page.getByRole('alert')).toContainText('Saved 2 of 3 images. Not saved: Wide tower');
+	});
+});
 
 test('Preview opens reliably and explains thumbnails of old results', async ({ page }) => {
 	await openGallery(page);

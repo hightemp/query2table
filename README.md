@@ -97,6 +97,8 @@ Get the latest build from [Releases](https://github.com/hightemp/query2table/rel
 | macOS (Apple Silicon) | `.dmg` |
 | Android 7.0+ | `Query2Table_<version>_android.apk` |
 
+To move your setup from a computer to the phone, use **Settings → Export settings…**, tick **Include API keys and proxies**, and import the file on the phone. Such a file contains your keys: keep it private and delete it after importing.
+
 On Android, open the downloaded APK and allow installing apps from your browser or file manager when asked. The Android app keeps its data on the phone; it has no tray, notifications appear as regular Android notifications. Local model servers (Ollama, llama.cpp) can be used over your network by their address, e.g. `http://192.168.1.10:11434`.
 
 ## Features

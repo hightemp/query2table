@@ -108,10 +108,16 @@ pub fn run() {
 
     let run_controller = commands::run::RunController::new();
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Android: saving several files at once into the shared Pictures and Download folders.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(utils::shared_storage::init());
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .manage(run_controller)
         .setup(|app| {

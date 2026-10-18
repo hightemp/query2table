@@ -154,6 +154,31 @@ test('Selected runs can be deleted or exported together', async ({ page }) => {
 	await expect(bar).toBeHidden();
 });
 
+test.describe('On Android', () => {
+	test.use({ userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36' });
+
+	test('selected runs are exported to Downloads without choosing a folder', async ({ page }) => {
+		await page.addInitScript(() => {
+			const fixture = (window as any).__uiFixture;
+			const invoke = (window as any).__TAURI_INTERNALS__.invoke;
+			(window as any).__TAURI_INTERNALS__.invoke = (command: string, args: any, options: any) =>
+				command === 'export_runs'
+					? (fixture.calls.push({ command, args }),
+						Promise.resolve(args.runIds.map((id: string) => `Download/Query2Table/${id}.csv`)))
+					: invoke(command, args, options);
+		});
+		await page.goto('/history');
+		await page.getByRole('checkbox', { name: 'Select Saved table research' }).check();
+		await page.getByRole('toolbar', { name: 'Selected runs' }).getByRole('button', { name: 'Export…' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Export runs' });
+		await dialog.getByRole('button', { name: 'Export to Downloads' }).click();
+		await expect(dialog).toContainText('Exported 1 file to Download/Query2Table');
+		const [exported] = await calls(page, 'export_runs');
+		expect(exported.args).toEqual({ runIds: ['table'], dir: null, format: 'csv' });
+		expect(await calls(page, 'plugin:dialog|open')).toHaveLength(0);
+	});
+});
+
 test('Runs can be renamed and pinned', async ({ page }) => {
 	await page.goto('/history');
 	await page.getByRole('button', { name: 'Actions for Saved links research' }).click();

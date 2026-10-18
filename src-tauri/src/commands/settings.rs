@@ -196,23 +196,25 @@ fn validate_settings(values: &std::collections::HashMap<String, String>) -> Resu
     Ok(())
 }
 
-/// Settings that are never written to or read from a settings file.
+/// API keys and proxies: written to a settings file only when the user asks for them.
 fn private_setting(key: &str) -> bool {
     key.ends_with("_api_key") || key == "proxy_list" || key == "active_proxy_url"
 }
 
-fn settings_export_json(settings: &std::collections::HashMap<String, String>) -> String {
+fn settings_export_json(settings: &std::collections::HashMap<String, String>, include_secrets: bool) -> String {
     let shared: std::collections::BTreeMap<_, _> =
-        settings.iter().filter(|(key, _)| !private_setting(key)).collect();
+        settings.iter().filter(|(key, _)| include_secrets || !private_setting(key)).collect();
     serde_json::to_string_pretty(&serde_json::json!({
         "app": "query2table",
         "version": 1,
+        "includes_secrets": include_secrets,
         "settings": shared,
     }))
     .unwrap_or_default()
 }
 
-/// Settings from a file written by `export_settings`; API keys and proxies are ignored.
+/// Settings from a file written by `export_settings`. API keys and proxies are taken only from a
+/// file exported with them, and an empty key never clears one already set.
 fn parse_settings_import(text: &str) -> Result<std::collections::HashMap<String, String>, String> {
     let value: serde_json::Value =
         serde_json::from_str(text).map_err(|_| "This is not a settings file exported by Query2Table.".to_string())?;
@@ -220,9 +222,10 @@ fn parse_settings_import(text: &str) -> Result<std::collections::HashMap<String,
         .get("settings")
         .and_then(|s| s.as_object())
         .ok_or_else(|| "This is not a settings file exported by Query2Table.".to_string())?;
+    let with_secrets = value.get("includes_secrets").and_then(|v| v.as_bool()).unwrap_or(false);
     let mut imported = std::collections::HashMap::new();
     for (key, value) in settings {
-        if private_setting(key) {
+        if private_setting(key) && (!with_secrets || value.as_str().is_some_and(|s| s.trim().is_empty())) {
             continue;
         }
         let text = match value {
@@ -237,18 +240,27 @@ fn parse_settings_import(text: &str) -> Result<std::collections::HashMap<String,
     Ok(imported)
 }
 
-/// Writes the shareable settings (no API keys or proxies) to a JSON file.
+/// Writes the settings to a JSON file; API keys and proxies only when `include_secrets` is set.
 #[tauri::command]
-pub async fn export_settings(state: State<'_, AppState>, path: String) -> Result<(), String> {
+pub async fn export_settings(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    include_secrets: Option<bool>,
+) -> Result<(), String> {
     let settings: std::collections::HashMap<String, String> =
         state.db.get_all_settings().await.map_err(|e| e.to_string())?.into_iter().collect();
-    std::fs::write(&path, settings_export_json(&settings)).map_err(|e| format!("Failed to write file: {e}"))
+    let json = settings_export_json(&settings, include_secrets.unwrap_or(false));
+    crate::utils::files::write(&app, &path, json.as_bytes()).map_err(|e| format!("Failed to write file: {e}"))
 }
 
 /// Reads a settings file; the values are applied as unsaved changes in the form.
 #[tauri::command]
-pub async fn read_settings_file(path: String) -> Result<std::collections::HashMap<String, String>, String> {
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))?;
+pub async fn read_settings_file(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let text = crate::utils::files::read_text(&app, &path).map_err(|e| format!("Failed to read file: {e}"))?;
     parse_settings_import(&text)
 }
 
@@ -318,8 +330,8 @@ mod batch_tests {
             ("active_proxy_url".to_string(), "http://u:pw@h:1".to_string()),
             ("llm_temperature".to_string(), "0.2".to_string()),
         ]);
-        let json = settings_export_json(&settings);
-        assert!(!json.contains("secret") && !json.contains("pw"), "{json}");
+        let json = settings_export_json(&settings, false);
+        assert!(!json.contains("\"secret\"") && !json.contains("pw"), "{json}");
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["app"], "query2table");
         assert_eq!(value["settings"]["llm_temperature"], "0.2");
@@ -336,5 +348,31 @@ mod batch_tests {
         assert!(parse_settings_import("[1,2]").is_err());
         assert!(parse_settings_import(r#"{"settings":{"brave_price_per_1000":"-5"}}"#).is_err());
         assert!(parse_settings_import("not json").unwrap_err().contains("not a settings file"));
+    }
+
+    #[test]
+    fn keys_and_proxies_move_only_in_a_file_that_says_it_has_them() {
+        let settings = HashMap::from([
+            ("brave_api_key".to_string(), "brave-secret".to_string()),
+            ("serper_api_key".to_string(), String::new()),
+            ("proxy_list".to_string(), r#"[{"name":"p","url":"http://u:pw@h:1"}]"#.to_string()),
+            ("active_proxy_url".to_string(), "http://u:pw@h:1".to_string()),
+            ("llm_temperature".to_string(), "0.2".to_string()),
+        ]);
+        let json = settings_export_json(&settings, true);
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["includes_secrets"], true);
+        assert_eq!(value["settings"]["brave_api_key"], "brave-secret");
+
+        let imported = parse_settings_import(&json).unwrap();
+        assert_eq!(imported.get("brave_api_key").map(String::as_str), Some("brave-secret"));
+        assert_eq!(imported.get("active_proxy_url").map(String::as_str), Some("http://u:pw@h:1"));
+        assert!(imported.contains_key("proxy_list"));
+        // A key that was empty on the other computer does not clear the one set here.
+        assert!(!imported.contains_key("serper_api_key"));
+
+        // Without the marker, keys found in a file are still ignored.
+        let unmarked = json.replace("\"includes_secrets\": true", "\"includes_secrets\": false");
+        assert!(!parse_settings_import(&unmarked).unwrap().contains_key("brave_api_key"));
     }
 }

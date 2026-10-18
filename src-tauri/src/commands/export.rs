@@ -20,23 +20,46 @@ pub struct ExportRequest {
 
 #[tauri::command]
 pub async fn export_run(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: ExportRequest,
 ) -> Result<(), String> {
     let repo = Repository::new(state.db.pool().clone());
-    export_run_to(&repo, &request.run_id, &request.format, std::path::Path::new(&request.path), request.turn_index).await
+    // Research runs are written as Markdown whatever the format.
+    let ext = match repo.get_run(&request.run_id).await {
+        Ok(Some(run)) if run.run_type == "research" => "md".to_string(),
+        _ => request.format.clone(),
+    };
+    crate::utils::files::write_through(&app, &request.path, &ext, |path| async move {
+        export_run_to(&repo, &request.run_id, &request.format, &path, request.turn_index).await
+    })
+    .await
 }
 
-/// Selected runs from History, one file each in `dir`; returns the written paths.
+/// Selected runs from History, one file each in `dir`; returns the written paths. Without `dir`
+/// (Android, where a picked folder cannot be written) the files go to Download/Query2Table.
 #[tauri::command]
 pub async fn export_runs(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     run_ids: Vec<String>,
-    dir: String,
+    dir: Option<String>,
     format: String,
 ) -> Result<Vec<String>, String> {
     let repo = Repository::new(state.db.pool().clone());
-    export_runs_to(&repo, &run_ids, std::path::Path::new(&dir), &format).await
+    if let Some(dir) = dir {
+        return export_runs_to(&repo, &run_ids, std::path::Path::new(&dir), &format).await;
+    }
+    let scratch = crate::utils::files::Scratch::new(&app)?;
+    let made = export_runs_to(&repo, &run_ids, &scratch.0, &format).await?;
+    let mut saved = Vec::with_capacity(made.len());
+    for path in made {
+        let path = std::path::PathBuf::from(path);
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {e}"))?;
+        saved.push(crate::utils::shared_storage::save(&app, crate::utils::shared_storage::SharedFolder::Downloads, &name, &bytes)?);
+    }
+    Ok(saved)
 }
 
 /// File name for a bulk export: the query and the run's date, made unique among `taken`.

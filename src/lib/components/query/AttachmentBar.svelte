@@ -19,6 +19,7 @@
 	import { ATTACHMENT_EXTENSIONS, attachmentMeta, privacyNote } from '$lib/utils/attachments';
 	import { refreshVisionStatus, visionStatus } from '$lib/stores/vision';
 	import { errorText } from '$lib/utils/errors';
+	import { isAndroid } from '$lib/utils/platform';
 
 	let {
 		draft = queryFiles,
@@ -58,8 +59,24 @@
 		if (refused) toast(t('attachments.limit', { count: MAX_ATTACHMENTS }), 'error');
 	}
 
+	const all = [...ATTACHMENT_EXTENSIONS.documents, ...ATTACHMENT_EXTENSIONS.spreadsheets, ...ATTACHMENT_EXTENSIONS.images];
+	// On Android the file dialog gives content addresses without file names; the WebView's own
+	// picker gives the files themselves.
+	const android = isAndroid();
+	let fileInput = $state<HTMLInputElement>();
+
+	async function pickedOnPhone(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const files = [...(input.files ?? [])];
+		input.value = '';
+		if (files.length) tooMany(await draft.attachFiles(files));
+	}
+
 	async function choose() {
-		const all = [...ATTACHMENT_EXTENSIONS.documents, ...ATTACHMENT_EXTENSIONS.spreadsheets, ...ATTACHMENT_EXTENSIONS.images];
+		if (android) {
+			fileInput?.click();
+			return;
+		}
 		const picked = await open({
 			multiple: true,
 			directory: false,
@@ -116,6 +133,14 @@
 		<button type="button" class="button ghost sm attach" onclick={choose} {disabled}>
 			<PaperclipIcon size={15} />{t('attachments.attach')}
 		</button>
+		{#if android}<input
+				bind:this={fileInput}
+				type="file"
+				multiple
+				hidden
+				accept={all.map((ext) => `.${ext}`).join(',')}
+				onchange={pickedOnPhone}
+			/>{/if}
 		{#if !$draftAttachments.length && !compact}<span class="hint">{t('attachments.hint')}</span>{/if}
 	</div>
 	{#if $draftAttachments.length}

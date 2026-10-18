@@ -93,6 +93,7 @@ export const test = base.extend({
 				values,
 				calls: [] as { command: string; args: any; options?: any }[],
 				failSave: false,
+				importValues: null as Record<string, string> | null,
 				clipboard: '',
 				runAttachments: [] as unknown[],
 				runQueries: [] as unknown[],
@@ -184,7 +185,7 @@ export const test = base.extend({
 						case 'export_settings':
 							return;
 						case 'read_settings_file':
-							return { llm_temperature: '0.3', max_parallel_fetches: '4' };
+							return fixture.importValues ?? { llm_temperature: '0.3', max_parallel_fetches: '4' };
 						case 'get_app_paths':
 							return {
 								data_dir: '/home/demo/' + 'long-folder/'.repeat(15),
@@ -326,7 +327,7 @@ export const test = base.extend({
 						case 'add_attachments':
 							return args.paths.map(attach);
 						case 'add_attachment_data':
-							return attach(decodeURIComponent(options?.headers?.['x-file-name'] ?? 'pasted'));
+							return attach(args?.name ?? decodeURIComponent(options?.headers?.['x-file-name'] ?? 'pasted'));
 						case 'get_attachments':
 							return args.ids.map((id: string) => attachment(`/${id.replace(/^att-/, '')}`));
 						case 'remove_attachment':

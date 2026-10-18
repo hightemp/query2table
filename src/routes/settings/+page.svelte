@@ -36,6 +36,7 @@
 	import ThemePicker from '$lib/components/settings/ThemePicker.svelte';
 	import Select from '$lib/components/common/Select.svelte';
 	import Radio from '$lib/components/common/Radio.svelte';
+	import Checkbox from '$lib/components/common/Checkbox.svelte';
 
 
 	import { toast } from '$lib/stores/toasts';
@@ -90,6 +91,8 @@
 	let scroller = $state<HTMLDivElement>();
 	let searchInput = $state<HTMLInputElement>();
 	let importMessage = $state('');
+	let exportOpen = $state(false);
+	let exportSecrets = $state(false);
 	type Check = { running: boolean; report: ConnectionReport | null; error: string };
 	let checks = $state<Record<string, Check>>({});
 	let proxyFocus = $state<number | null>(null);
@@ -299,16 +302,25 @@
 		}
 	}
 
+	/** API keys and proxies, which a settings file carries only when exported with them. */
+	const isPrivateSetting = (key: string) => key.endsWith('_api_key') || key === 'proxy_list' || key === 'active_proxy_url';
+
 	// --- Import / export ---
+	function openExport() {
+		exportSecrets = false;
+		exportOpen = true;
+	}
 	async function exportToFile() {
+		const includeSecrets = exportSecrets;
+		exportOpen = false;
 		try {
 			const path = await saveFile({
 				defaultPath: 'query2table-settings.json',
 				filters: [{ name: t('settings.fileFilter'), extensions: ['json'] }],
 			});
 			if (!path) return;
-			await exportSettings(path);
-			toast(t('settings.exported'), 'success');
+			await exportSettings(path, includeSecrets);
+			toast(t(includeSecrets ? 'settings.exportedWithSecrets' : 'settings.exported'), 'success');
 		} catch (error) {
 			toast(errorText(error), 'error');
 		}
@@ -325,7 +337,8 @@
 			const values = await readSettingsFile(path);
 			const entries = Object.entries(values);
 			for (const [key, next] of entries) handleChange(key, next);
-			importMessage = t('settings.imported', { count: entries.length });
+			const withSecrets = entries.some(([key]) => isPrivateSetting(key));
+			importMessage = t(withSecrets ? 'settings.importedWithSecrets' : 'settings.imported', { count: entries.length });
 		} catch (error) {
 			toast(errorText(error), 'error');
 		}
@@ -579,7 +592,7 @@
 		</div>
 		<div class="file-actions">
 			<button class="button sm ghost" onclick={importFromFile}><UploadIcon size={14} />{t('settings.import')}</button>
-			<button class="button sm ghost" onclick={exportToFile}><DownloadIcon size={14} />{t('settings.export')}</button>
+			<button class="button sm ghost" onclick={openExport}><DownloadIcon size={14} />{t('settings.export')}</button>
 		</div>
 	</div>
 	{#if importMessage}<p class="import-message" role="status">{importMessage}</p>{/if}
@@ -801,6 +814,20 @@
 	</div>
 </div>
 
+{#if exportOpen}
+	<Dialog title={t('settings.exportTitle')} onclose={() => (exportOpen = false)}>
+		<p>{t('settings.exportDescription')}</p>
+		<div class="export-secrets"><Checkbox bind:checked={exportSecrets}>{t('settings.exportSecrets')}</Checkbox></div>
+		{#if exportSecrets}
+			<p class="secrets-warning" role="note"><TriangleAlertIcon size={15} />{t('settings.exportSecretsWarning')}</p>
+		{/if}
+		{#snippet footer()}
+			<button class="button" onclick={() => (exportOpen = false)}>{t('controls.cancel')}</button>
+			<button class="button primary" onclick={exportToFile}>{t('settings.exportConfirm')}</button>
+		{/snippet}
+	</Dialog>
+{/if}
+
 {#if leaveAction}
 	<Dialog title={t('settings.leaveTitle')} busy={saving} onclose={() => (leaveAction = null)}>
 		<p>{t('settings.leaveText')}</p>
@@ -986,6 +1013,25 @@
 		font-size: var(--app-text-md);
 	}
 
+	.export-secrets {
+		margin-top: 12px;
+	}
+	.secrets-warning {
+		display: flex;
+		gap: 8px;
+		align-items: flex-start;
+		margin-top: 10px;
+		padding: 8px 10px;
+		border-radius: var(--app-radius);
+		background: color-mix(in srgb, var(--app-warning) 14%, transparent);
+		color: var(--app-text);
+		font-size: var(--app-text-sm);
+	}
+	.secrets-warning :global(svg) {
+		flex-shrink: 0;
+		margin-top: 2px;
+		color: var(--app-warning);
+	}
 	.note {
 		margin-top: 6px;
 		color: var(--app-muted);

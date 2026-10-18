@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { readablePath } from '$lib/utils/platform';
 	import { t } from '$lib/i18n';
 	import { untrack } from 'svelte';
 	import { save } from '@tauri-apps/plugin-dialog';
@@ -69,7 +70,7 @@
 <Dialog title={savedPath ? t('export.complete') : t('export.title')} busy={exporting} {onclose}>
 	{#if savedPath}<div role="status">
 			<p>{t('export.saved')}</p>
-			<p class="saved-path">{savedPath}</p>
+			<p class="saved-path">{readablePath(savedPath) ?? t('files.chosenFile')}</p>
 		</div>
 	{:else}<fieldset disabled={exporting}>
 			<legend>{t('export.format')}</legend>{#each options as option}<Radio

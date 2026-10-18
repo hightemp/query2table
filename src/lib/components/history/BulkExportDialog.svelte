@@ -7,11 +7,13 @@
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { exportRuns } from '$lib/api/tauri';
 	import { errorText } from '$lib/utils/errors';
+	import { folderOf, isAndroid } from '$lib/utils/platform';
 
 	let { runIds, onclose }: { runIds: string[]; onclose: () => void } = $props();
 	let format = $state<'csv' | 'json' | 'xlsx'>('csv');
 	let exporting = $state(false);
 	let error = $state('');
+	const android = isAndroid();
 	let result = $state<{ dir: string; count: number } | null>(null);
 
 	async function handleExport() {
@@ -19,10 +21,11 @@
 		error = '';
 		exporting = true;
 		try {
-			const dir = await open({ directory: true, title: t('bulk.chooseFolder') });
-			if (!dir || Array.isArray(dir)) return;
-			const written = await exportRuns(runIds, dir, format);
-			result = { dir, count: written.length };
+			// Android cannot write into a picked folder: the files go to Download/Query2Table.
+			const dir = android ? null : await open({ directory: true, title: t('bulk.chooseFolder') });
+			if (!android && (!dir || Array.isArray(dir))) return;
+			const written = await exportRuns(runIds, dir as string | null, format);
+			result = { dir: (dir as string | null) ?? folderOf(written[0] ?? ''), count: written.length };
 		} catch (reason) {
 			error = errorText(reason);
 		} finally {
@@ -59,7 +62,7 @@
 		{#if result}<button class="button primary" onclick={onclose}>{t('export.done')}</button>
 		{:else}<button class="button" disabled={exporting} onclick={onclose}>{t('export.cancel')}</button
 			><button class="button primary" disabled={exporting} onclick={handleExport}
-				><FolderOpenIcon size={16} />{exporting ? t('export.exporting') : t('bulk.export')}</button
+				><FolderOpenIcon size={16} />{exporting ? t('export.exporting') : t(android ? 'bulk.exportToDownloads' : 'bulk.export')}</button
 			>{/if}
 	{/snippet}
 </Dialog>

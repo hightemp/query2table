@@ -48,21 +48,36 @@ pub async fn add_attachments(state: State<'_, AppState>, paths: Vec<String>) -> 
     Ok(out)
 }
 
-/// Attaches pasted file content. The raw body is the file; the `x-file-name` header (URI-encoded)
-/// names it.
+/// Attaches file content (pasted, dropped, or picked on Android). The raw body is the file and the
+/// `x-file-name` header (URI-encoded) names it. Android's IPC cannot carry raw bytes, so there the
+/// body is `{ name, data }` with the file in base64.
 #[tauri::command]
 pub async fn add_attachment_data(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<AttachResult, String> {
-    let name = request
+    let header_name = request
         .headers()
         .get("x-file-name")
         .and_then(|v| v.to_str().ok())
-        .map(|v| url::form_urlencoded::parse(format!("n={v}").as_bytes()).next().map(|(_, n)| n.into_owned()).unwrap_or_default())
-        .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| "pasted".to_string());
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-        return Err("Expected file content".into());
+        .map(|v| url::form_urlencoded::parse(format!("n={v}").as_bytes()).next().map(|(_, n)| n.into_owned()).unwrap_or_default());
+    let (name, bytes) = attachment_body(request.body(), header_name)?;
+    Ok(store(&state).await.add_bytes(&name, bytes).await.into())
+}
+
+/// The file name and content of an `add_attachment_data` request.
+fn attachment_body(body: &tauri::ipc::InvokeBody, header_name: Option<String>) -> Result<(String, Vec<u8>), String> {
+    use base64::Engine;
+    let (name, bytes) = match body {
+        tauri::ipc::InvokeBody::Raw(bytes) => (header_name, bytes.clone()),
+        tauri::ipc::InvokeBody::Json(value) => {
+            let data = value.get("data").and_then(|d| d.as_str()).ok_or("Expected file content")?;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .map_err(|e| format!("The file content is damaged: {e}"))?;
+            let name = value.get("name").and_then(|n| n.as_str()).map(str::to_string).or(header_name);
+            (name, bytes)
+        }
     };
-    Ok(store(&state).await.add_bytes(&name, bytes.clone()).await.into())
+    let name = name.filter(|n| !n.is_empty()).unwrap_or_else(|| "pasted".to_string());
+    Ok((name, bytes))
 }
 
 /// Attachments by id, e.g. to restore a saved draft; unknown ids are skipped.
@@ -158,4 +173,20 @@ pub async fn get_vision_status(
     settings.extend(overrides.unwrap_or_default());
     let plan = crate::providers::llm::capabilities::VisionPlan::resolve(&settings).await;
     Ok(VisionStatus { main_sees: plan.main_sees, detected: plan.detected, reader: plan.reader })
+}
+
+#[cfg(test)]
+mod body_tests {
+    use tauri::ipc::InvokeBody;
+
+    #[test]
+    fn file_content_comes_raw_or_in_base64() {
+        let raw = InvokeBody::Raw(b"abc".to_vec());
+        assert_eq!(super::attachment_body(&raw, Some("a.txt".into())).unwrap(), ("a.txt".to_string(), b"abc".to_vec()));
+        assert_eq!(super::attachment_body(&raw, None).unwrap().0, "pasted");
+        let json = InvokeBody::Json(serde_json::json!({ "name": "notes.txt", "data": "aGVsbG8=" }));
+        assert_eq!(super::attachment_body(&json, None).unwrap(), ("notes.txt".to_string(), b"hello".to_vec()));
+        assert!(super::attachment_body(&InvokeBody::Json(serde_json::json!([1, 2])), None).is_err());
+        assert!(super::attachment_body(&InvokeBody::Json(serde_json::json!({ "data": "%%%" })), None).unwrap_err().contains("damaged"));
+    }
 }

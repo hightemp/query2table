@@ -163,12 +163,45 @@ test('Application settings include the theme and files show full paths', async (
 test('Settings can be exported and imported as a file', async ({ page }) => {
 	await page.goto('/settings');
 	await page.getByRole('button', { name: 'Export settings…' }).click();
-	expect((await calls(page, 'export_settings'))[0].args.path).toBe('/tmp/query2table-fixture.csv');
+	const dialog = page.getByRole('dialog', { name: 'Export settings' });
+	// Keys stay out unless asked for.
+	await expect(dialog.getByRole('checkbox', { name: 'Include API keys and proxies' })).not.toBeChecked();
+	await expect(dialog.getByText(/Anyone with the file/)).toBeHidden();
+	await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+	await expect(dialog).toBeHidden();
+	const [plain] = await calls(page, 'export_settings');
+	expect(plain.args).toMatchObject({ path: '/tmp/query2table-fixture.csv', includeSecrets: false });
+	await expect(page.getByText('Settings exported. API keys and proxies are not included.')).toBeVisible();
 	await page.getByRole('button', { name: 'Import settings…' }).click();
 	await expect(page.getByText('Imported 2 settings. Review them and save.')).toBeVisible();
 	await expect(page.getByRole('spinbutton', { name: 'Temperature', exact: true })).toHaveValue('0.3');
 	await expect(page.getByText('2 unsaved changes')).toBeVisible();
 	expect(await calls(page, 'update_settings')).toHaveLength(0);
+});
+
+test('Settings can be moved to another device with their API keys', async ({ page }) => {
+	await page.addInitScript(() => {
+		(window as any).__uiFixture.importValues = { brave_api_key: 'new-brave-key', llm_temperature: '0.3' };
+	});
+	await page.goto('/settings');
+	await page.getByRole('button', { name: 'Export settings…' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Export settings' });
+	await dialog.getByRole('checkbox', { name: 'Include API keys and proxies' }).check();
+	await expect(dialog.getByText(/Anyone with the file/)).toBeVisible();
+	await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+	expect((await calls(page, 'export_settings'))[0].args.includeSecrets).toBe(true);
+	await expect(page.getByText('Settings exported with API keys and proxies. Keep the file private.')).toBeVisible();
+
+	// Cancel writes nothing.
+	await page.getByRole('button', { name: 'Export settings…' }).click();
+	await dialog.getByRole('button', { name: 'Cancel' }).click();
+	expect(await calls(page, 'export_settings')).toHaveLength(1);
+
+	await page.getByRole('button', { name: 'Import settings…' }).click();
+	await expect(
+		page.getByText('Imported 2 settings, including API keys or proxies. Review them and save.')
+	).toBeVisible();
+	await expect(page.getByText('2 unsaved changes')).toBeVisible();
 });
 
 test('A saved value outside the range is flagged but does not block other changes', async ({ page }) => {

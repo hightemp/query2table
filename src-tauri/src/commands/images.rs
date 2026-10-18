@@ -114,15 +114,25 @@ pub async fn proxy_image(url: String) -> Result<String, String> {
 /// matching the downloaded file. Returns the path written.
 #[tauri::command]
 pub async fn save_image(
+    app: tauri::AppHandle,
     url: String,
     fallback_url: Option<String>,
     path: String,
 ) -> Result<String, String> {
     let (content_type, bytes) =
         download_with_fallback(&url, fallback_url.as_deref(), SAVE_LIMIT).await?;
-    let mut path = PathBuf::from(path);
+    // Android gives a content address chosen in the save dialog, named there already.
+    if let tauri_plugin_fs::FilePath::Url(_) = crate::utils::files::picked(&path) {
+        crate::utils::files::write(&app, &path, &bytes).map_err(|e| format!("Could not write the image: {e}"))?;
+        return Ok(path);
+    }
+    write_image_at(&content_type, bytes, PathBuf::from(path)).await
+}
+
+/// Writes a downloaded image to `path`, adding the extension of its type when the path has none.
+async fn write_image_at(content_type: &str, bytes: Vec<u8>, mut path: PathBuf) -> Result<String, String> {
     if path.extension().is_none() {
-        path.set_extension(extension_for(&content_type));
+        path.set_extension(extension_for(content_type));
     }
     tokio::fs::write(&path, bytes)
         .await
@@ -144,13 +154,36 @@ pub struct SaveImagesResult {
     pub failed: Vec<(String, String)>,
 }
 
-/// Saves several images into a folder. Existing files are never overwritten.
+/// Saves several images into a folder. Existing files are never overwritten. Without a folder
+/// (Android, where a picked folder cannot be written) they go to Pictures/Query2Table.
 #[tauri::command]
 pub async fn save_images(
+    app: tauri::AppHandle,
     items: Vec<ImageDownload>,
-    directory: String,
+    directory: Option<String>,
 ) -> Result<SaveImagesResult, String> {
-    let dir = PathBuf::from(directory);
+    let Some(directory) = directory else {
+        let mut result = SaveImagesResult::default();
+        for item in items {
+            let saved = match download_with_fallback(&item.url, item.fallback_url.as_deref(), SAVE_LIMIT).await {
+                Ok((content_type, bytes)) => {
+                    let name = format!("{}.{}", safe_file_stem(&item.name), extension_for(&content_type));
+                    crate::utils::shared_storage::save(&app, crate::utils::shared_storage::SharedFolder::Pictures, &name, &bytes)
+                }
+                Err(error) => Err(error),
+            };
+            match saved {
+                Ok(path) => result.saved.push(path),
+                Err(error) => result.failed.push((item.name, error)),
+            }
+        }
+        return Ok(result);
+    };
+    save_images_in(items, PathBuf::from(directory)).await
+}
+
+/// Saves the images into `dir`, never overwriting a file.
+async fn save_images_in(items: Vec<ImageDownload>, dir: PathBuf) -> Result<SaveImagesResult, String> {
     if !dir.is_dir() {
         return Err(format!("Folder not found: {}", dir.display()));
     }
@@ -209,17 +242,16 @@ mod tests {
         assert!(error.contains("Not an image"), "{error}");
 
         let dir = tempfile::tempdir().unwrap();
-        let saved = save_image(page.clone(), Some(thumb.clone()), dir.path().join("pic").display().to_string())
-            .await
-            .unwrap();
+        let (content_type, bytes) = download_with_fallback(&page, Some(&thumb), SAVE_LIMIT).await.unwrap();
+        let saved = write_image_at(&content_type, bytes, dir.path().join("pic")).await.unwrap();
         assert!(saved.ends_with("pic.png"), "{saved}");
 
-        let result = save_images(
+        let result = save_images_in(
             vec![
                 ImageDownload { url: page.clone(), fallback_url: Some(thumb), name: "Tower / night".into() },
                 ImageDownload { url: page, fallback_url: None, name: "Broken".into() },
             ],
-            dir.path().display().to_string(),
+            dir.path().to_path_buf(),
         )
         .await
         .unwrap();
