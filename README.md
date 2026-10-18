@@ -113,6 +113,7 @@ On Android, open the downloaded APK and allow installing apps from your browser 
 - **Image search mode** — a dedicated pipeline that searches images instead of text: generates 6–12 diverse query variations (LLM or static fallbacks), executes image searches via Brave / Serper, then ranks every result with an LLM using a strict relevance rubric (0.0–1.0); images scoring below 0.7 are dropped, the rest are stored sorted by score with real-time per-image UI updates; budget, cancellation, and stop conditions (count / cost / time) are respected throughout
 - **Link search mode** — a dedicated pipeline that returns the most relevant pages instead of a table: generates search query variations from your request, executes web searches via Brave / Serper (deduplicated by URL), fetches and parses each page, then has an LLM read the full content and score its relevance (0.0–1.0) to your query while generating a short description; pages below the confidence threshold are dropped, the rest are stored sorted by score with real-time per-link UI updates; budget, cancellation, and stop conditions are respected throughout
 - **Research mode** — an agentic mode that answers open-ended questions in Markdown instead of a table: the LLM drives a tool-calling loop (search the web, fetch a page as Markdown, think, answer) for up to a fixed number of steps, streaming each step to a live timeline; reasoning (`think`) steps and any failures (`error` steps, shown in red) are surfaced so the process stays transparent, and the final sourced Markdown answer is rendered (sanitized) and exportable as `.md`; budget, cancellation, and stop conditions are respected throughout
+- **Formulas and pictures in research answers** — LaTeX formulas are drawn (MathJax, offline); the agent can search for images, look at them, and place fitting ones in its answer, kept with the run
 - **Row-level sources** — every row links back to the pages it was extracted from
 - **Entity deduplication** — fuzzy matching + LLM-assisted disambiguation
 - **Configurable stop conditions** — target row count, max cost, max duration
@@ -121,6 +122,7 @@ On Android, open the downloaded APK and allow installing apps from your browser 
 - **Dark / Light theme** — toggle in the sidebar
 - **System tray** — completion notifications (desktop)
 - **Android app** — the same app on phones, with a layout for small screens
+- **In-app updates** — new versions are announced with their changes and installed from the app after their signature is checked (desktop and Android)
 - **Local-first** — all data in SQLite, no cloud backend required
 
 ## Tech Stack

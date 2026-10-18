@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.10.0 — 2026-10-18
+
+Research answers get formulas and pictures, and the app can now update itself.
+
+### Updates from the app
+
+- Query2Table checks for a new version at startup (at most once a day) and shows it in the sidebar; on phones Settings gets a dot.
+- The update window lists what changed. **Update** downloads it with progress, checks its signature and installs it; then restart now or later. A version can be skipped.
+- Every update is signed, and the signature is tied to its version: a changed file or an older file passed off as new is refused and nothing is installed.
+- Linux AppImage, deb and rpm, Windows and macOS update in place (deb and rpm ask for the administrator password). On Android the app downloads and checks the APK and opens the system installer; allow it to install apps when Android asks.
+- Settings → Application → Updates shows the version, checks by hand and turns the startup check off.
+- This is the first version with updates: install 0.10.0 by hand once, later versions come through the app.
+
+### Formulas in research answers
+
+- LaTeX formulas in answers are drawn: `\(…\)` and `$…$` inside text, `$$…$$` and `\[…\]` on their own lines. Prices such as “$5 to $10” stay text.
+- Long formulas scroll on their own; a formula that cannot be read shows its source.
+- Copies and Markdown exports keep the LaTeX.
+
+### Pictures in research answers
+
+- The research agent can search for images and put fitting ones in its answer, with a caption and the page they come from. Models that see images look at the candidates first, including pictures on pages they read.
+- Pictures are downloaded and kept with the run, so answers show them offline and never load them from the web. Click one to see it full size.
+- Pages the pictures come from appear in Sources.
+- Settings → Runs → Research: **Images in answers** turns this off, **Images per answer** limits how many are kept.
+
+### Android
+
+- Attached files open in other apps (a PDF viewer, an office app), or in the app you pick.
+
 ## 0.9.0 — 2026-10-10
 
 Query2Table comes to Android, reads the files you attach, and shows what a run is doing at every stage.
