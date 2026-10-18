@@ -97,6 +97,10 @@ export const test = base.extend({
 				clipboard: '',
 				runAttachments: [] as unknown[],
 				runQueries: [] as unknown[],
+				update: null as Record<string, unknown> | null,
+				updateCheckError: null as Record<string, unknown> | null,
+				updateResult: 'restart' as string | Record<string, unknown>,
+				restarted: false,
 				researchImages: [] as { url: string; source_url: string | null; title: string; width: number; height: number }[],
 				rowSources: null as unknown[] | null,
 				visionDetected: false as boolean | null,
@@ -248,6 +252,19 @@ export const test = base.extend({
 									url: 'https://example.com',
 								})),
 							};
+						case 'check_update':
+							if (fixture.updateCheckError) throw fixture.updateCheckError;
+							return fixture.update;
+						case 'install_update':
+							fixture.emit('update:progress', { downloaded: 4 * 1024 * 1024, total: 8 * 1024 * 1024 });
+							await new Promise((resolve) => setTimeout(resolve, 300));
+							if (typeof fixture.updateResult !== 'string') throw fixture.updateResult;
+							return fixture.updateResult;
+						case 'restart_app':
+							fixture.restarted = true;
+							return;
+						case 'plugin:app|version':
+							return '0.9.0';
 						case 'get_research_images':
 							return fixture.researchImages.map((image) => ({ run_id: args.runId, turn_index: 0, media_type: 'image/png', ...image }));
 						case 'get_research_image':

@@ -6,6 +6,7 @@ pub mod providers;
 pub mod storage;
 pub mod export;
 pub mod utils;
+pub mod updates;
 
 use storage::db::Database;
 use std::sync::Arc;
@@ -112,6 +113,9 @@ pub fn run() {
     // Android: saving several files at once into the shared Pictures and Download folders.
     #[cfg(target_os = "android")]
     let builder = builder.plugin(utils::android_files::init());
+    // Desktop updates; Android installs its APK through `updates` and `android_files`.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     builder
         .plugin(tauri_plugin_opener::init())
@@ -120,6 +124,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .manage(run_controller)
+        .manage(updates::UpdateState::default())
         .setup(|app| {
             #[cfg(mobile)]
             {
@@ -183,6 +188,9 @@ pub fn run() {
             commands::run::get_research_result,
             commands::run::get_research_images,
             commands::run::get_research_image,
+            updates::check_update,
+            updates::install_update,
+            updates::restart_app,
             commands::run::ask_follow_up,
             commands::run::get_run_queries,
             commands::images::proxy_image,

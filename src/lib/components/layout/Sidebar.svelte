@@ -10,7 +10,9 @@
 		SunIcon,
 		MoonIcon,
 		MonitorIcon,
+		DownloadIcon,
 	} from '@lucide/svelte';
+	import { noticeVersion, openUpdateDialog, updates } from '$lib/stores/updates';
 	import {
 		sidebarCollapsed,
 		themePreference,
@@ -21,6 +23,9 @@
 	import { toast } from '$lib/stores/toasts';
 	import { modKey } from '$lib/utils/shortcuts';
 	import { t, type MessageKey } from '$lib/i18n';
+
+	/** A found update the reader has not skipped. */
+	let noticeFor = $derived(noticeVersion($updates));
 
 	const nav: { href: string; label: MessageKey; icon: typeof SearchIcon }[] = [
 		{ href: '/', label: 'nav.query', icon: SearchIcon },
@@ -84,11 +89,27 @@
 				class="nav-item"
 				class:active
 			>
-				<item.icon size={20} />
+				<span class="nav-icon"
+					><item.icon size={20} />{#if noticeFor && item.href === '/settings'}<span
+							class="update-dot"
+							aria-hidden="true"
+						></span>{/if}</span
+				>
 				<span class="nav-label" class:hidden={$sidebarCollapsed}>{t(item.label)}</span>
 			</a>
 		{/each}
 	</nav>
+
+	{#if noticeFor}
+		<button
+			class="update-notice"
+			class:collapsed={$sidebarCollapsed}
+			onclick={openUpdateDialog}
+			aria-label={t('updates.notice', { version: noticeFor })}
+			use:tooltip={$sidebarCollapsed ? t('updates.notice', { version: noticeFor }) : undefined}
+			><DownloadIcon size={16} />{#if !$sidebarCollapsed}<span>{t('updates.notice', { version: noticeFor })}</span>{/if}</button
+		>
+	{/if}
 
 	<div class="sidebar-footer">
 		{#if $sidebarCollapsed}
@@ -254,7 +275,50 @@
 	}
 
 	/* Phones and narrow windows: a tab bar along the bottom. The theme is chosen in Settings. */
+	.nav-icon {
+		position: relative;
+		display: inline-flex;
+	}
+	.update-dot {
+		position: absolute;
+		top: -2px;
+		right: -3px;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--app-accent);
+		box-shadow: 0 0 0 2px var(--app-panel);
+	}
+	.update-notice {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: auto 10px 8px;
+		padding: 8px 10px;
+		border: 1px solid var(--app-accent);
+		border-radius: var(--app-radius);
+		background: transparent;
+		color: var(--app-accent);
+		font-size: var(--app-text-sm);
+		font-weight: 600;
+		text-align: left;
+		cursor: pointer;
+	}
+	.update-notice + .sidebar-footer {
+		margin-top: 0;
+	}
+	.update-notice:hover {
+		background: var(--app-subtle);
+	}
+	.update-notice.collapsed {
+		justify-content: center;
+		margin: auto 8px 8px;
+		padding: 8px;
+	}
 	@media (max-width: 640px) {
+		.update-notice {
+			display: none;
+		}
 		.sidebar,
 		.sidebar.collapsed {
 			width: 100%;

@@ -27,6 +27,9 @@ import type {
 	LinkAddedEvent,
 	ResearchImage,
 	ResearchResult,
+	UpdateInfo,
+	UpdateInstalled,
+	UpdateProgress,
 	ResearchStepEvent,
 	ResearchAnswerEvent,
 	RowSource,
@@ -507,4 +510,29 @@ export async function exportRun(
 	turnIndex: number | null = null
 ): Promise<void> {
 	return invoke('export_run', { request: { run_id: runId, format, path, turn_index: turnIndex } });
+}
+
+// --- Updates ---
+
+/** A newer release, or null when the app is up to date. Rejects with an `UpdateError`. */
+export async function checkUpdate(): Promise<UpdateInfo | null> {
+	return invoke('check_update');
+}
+
+/** Downloads, verifies and installs the update found by `checkUpdate`. */
+export async function installUpdate(): Promise<UpdateInstalled> {
+	return invoke('install_update');
+}
+
+export async function restartApp(): Promise<void> {
+	return invoke('restart_app');
+}
+
+export async function onUpdateProgress(callback: (progress: UpdateProgress) => void): Promise<UnlistenFn> {
+	return listen<UpdateProgress>('update:progress', (event) => callback(event.payload));
+}
+
+export async function appVersion(): Promise<string> {
+	const { getVersion } = await import('@tauri-apps/api/app');
+	return getVersion();
 }

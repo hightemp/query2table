@@ -448,3 +448,29 @@ export interface SearchQueryInfo {
 	result_count: number;
 	error: string | null;
 }
+
+/** A release newer than the running app (`check_update`). */
+export interface UpdateInfo {
+	version: string;
+	current_version: string;
+	/** What changed, as Markdown. */
+	notes: string | null;
+	/** Seconds since 1970. */
+	date: number | null;
+	/** How it installs: appimage, deb, rpm, msi, nsis, app, apk. */
+	installer: string | null;
+}
+
+/** Why checking or installing an update failed. */
+export interface UpdateError {
+	kind: 'check' | 'download' | 'signature' | 'install';
+	message: string;
+}
+
+/** restart: installed, restart to use it; installer: the Android installer is open; permission: allow installing apps first. */
+export type UpdateInstalled = 'restart' | 'installer' | 'permission';
+
+export interface UpdateProgress {
+	downloaded: number;
+	total: number | null;
+}

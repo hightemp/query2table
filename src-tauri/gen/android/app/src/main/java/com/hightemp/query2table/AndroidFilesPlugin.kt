@@ -7,9 +7,11 @@ import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -33,6 +35,11 @@ class CreateArgs {
 class ViewArgs {
   lateinit var path: String
   lateinit var mimeType: String
+}
+
+@InvokeArg
+class InstallArgs {
+  lateinit var path: String
 }
 
 @InvokeArg
@@ -134,5 +141,35 @@ class AndroidFilesPlugin(private val activity: Activity) : Plugin(activity) {
       n++
     }
     return file
+  }
+
+  /**
+   * Opens the system installer for an update APK in the app's cache. When the app may not install
+   * apps yet, opens the screen that allows it instead and resolves `started: false`.
+   */
+  @Command
+  fun installApk(invoke: Invoke) {
+    val args = invoke.parseArgs(InstallArgs::class.java)
+    val result = JSObject()
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !activity.packageManager.canRequestPackageInstalls()) {
+        activity.startActivity(
+          Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}"))
+        )
+        result.put("started", false)
+        invoke.resolve(result)
+        return
+      }
+      val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", File(args.path))
+      val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "application/vnd.android.package-archive")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      activity.startActivity(intent)
+      result.put("started", true)
+      invoke.resolve(result)
+    } catch (e: Exception) {
+      invoke.reject(e.message ?: "Could not start the installer")
+    }
   }
 }

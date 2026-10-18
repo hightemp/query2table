@@ -1,7 +1,8 @@
 //! File work Android allows only through its own APIs (`AndroidFilesPlugin.kt`):
 //! - saving several files at once: the app cannot write into a folder the user picks, so files go
 //!   to the shared Pictures/Query2Table and Download/Query2Table folders instead;
-//! - opening an attached file in another app, which needs a content address, not a path.
+//! - opening an attached file in another app, which needs a content address, not a path;
+//! - installing an app update (the system installer, after the user allows it).
 
 use tauri::{AppHandle, Runtime};
 
@@ -66,6 +67,16 @@ mod android {
         mime_type: &'a str,
     }
 
+    #[derive(Serialize)]
+    struct InstallArgs<'a> {
+        path: &'a str,
+    }
+
+    #[derive(Deserialize)]
+    struct Install {
+        started: bool,
+    }
+
     #[derive(Deserialize)]
     struct Created {
         uri: String,
@@ -105,6 +116,16 @@ mod android {
             .run_mobile_plugin::<()>("view", ViewArgs { path: &path, mime_type: mime })
             .map_err(|e| e.to_string())
     }
+
+    pub fn install_apk<R: Runtime>(app: &AppHandle<R>, path: &std::path::Path) -> Result<bool, String> {
+        let path = path.to_string_lossy();
+        let install: Install = app
+            .state::<Handle<R>>()
+            .0
+            .run_mobile_plugin("installApk", InstallArgs { path: &path })
+            .map_err(|e| e.to_string())?;
+        Ok(install.started)
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -124,6 +145,13 @@ pub fn save<R: Runtime>(app: &AppHandle<R>, folder: SharedFolder, name: &str, by
 #[cfg(target_os = "android")]
 pub fn view<R: Runtime>(app: &AppHandle<R>, path: &std::path::Path, mime: &str) -> Result<(), String> {
     android::view(app, path, mime)
+}
+
+/// Opens the system installer for the update APK at `path` (in the app's cache folder). False
+/// when the app may not install apps yet: the screen allowing it was opened instead.
+#[cfg(target_os = "android")]
+pub fn install_apk<R: Runtime>(app: &AppHandle<R>, path: &std::path::Path) -> Result<bool, String> {
+    android::install_apk(app, path)
 }
 
 #[cfg(test)]

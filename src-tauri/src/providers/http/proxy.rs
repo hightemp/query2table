@@ -46,6 +46,12 @@ fn runtime_proxy() -> Option<String> {
     RUNTIME_PROXY.read().ok().and_then(|g| g.clone())
 }
 
+/// The proxy the app's requests use, as one address: the one chosen in Settings, else the
+/// HTTPS proxy from the environment. For clients `apply_proxy` cannot configure.
+pub fn proxy_url() -> Option<String> {
+    runtime_proxy().or_else(|| config().https.or(config().http))
+}
+
 
 fn read_env(name: &str) -> Option<String> {
     std::env::var(name)

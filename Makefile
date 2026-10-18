@@ -1,6 +1,6 @@
 VERSION := $(shell cat VERSION | tr -d '[:space:]')
 
-.PHONY: dev build check test release bump-version \
+.PHONY: dev build check test release bump-version updater-keys \
 	android-init android-devices android-emulator android-dev android-apk android-install android-run android-logs android-keystore
 
 dev:
@@ -32,6 +32,22 @@ release: bump-version
 	git tag "v$(VERSION)"
 	git push --atomic origin main "refs/tags/v$(VERSION)"
 	@echo "Release v$(VERSION) pushed. CI will build and publish."
+
+# --- Updates -------------------------------------------------------------------
+# Creates the key that signs updates (keep the key and its password safe: without them no update
+# can be published, and installed apps accept only updates signed with it), writes its public key
+# into tauri.conf.json and prints the GitHub secrets to add.
+UPDATER_KEY ?= $(HOME)/.tauri/query2table.key
+
+updater-keys:
+	@test ! -e "$(UPDATER_KEY)" || { echo "$(UPDATER_KEY) already exists"; exit 1; }
+	@mkdir -p "$(dir $(UPDATER_KEY))"
+	npm run tauri signer generate -- -w "$(UPDATER_KEY)"
+	@node -e 'const fs = require("fs"); const p = "src-tauri/tauri.conf.json"; const c = JSON.parse(fs.readFileSync(p, "utf8")); c.plugins.updater.pubkey = fs.readFileSync(process.argv[1], "utf8").trim(); fs.writeFileSync(p, JSON.stringify(c, null, 2) + "\n");' "$(UPDATER_KEY).pub"
+	@echo "Wrote the public key into src-tauri/tauri.conf.json (commit it)."
+	@echo "For signed releases, add these GitHub secrets:"
+	@echo "  gh secret set TAURI_SIGNING_PRIVATE_KEY < $(UPDATER_KEY)"
+	@echo "  gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD   # the password above"
 
 # --- Android -------------------------------------------------------------------
 # Needs ANDROID_HOME, NDK_HOME and JAVA_HOME (17) set, and adb on PATH.

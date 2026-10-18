@@ -34,5 +34,16 @@
       "icons/icon.ico"
     ]
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEzRTg1NkE3NkQ1MEYzM0MKUldRODgxQnRwMWJvRTJFNDA4Vzh1dFg1SFZETjRsUHRzNWowUCtUaDhFa0puZW1aM3VBUTk3UjcK",
+      "endpoints": [
+        "https://github.com/hightemp/query2table/releases/latest/download/latest.json"
+      ],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
 }

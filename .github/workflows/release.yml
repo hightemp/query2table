@@ -80,17 +80,36 @@ jobs:
             if (!section) throw new Error(`Missing changelog section for ${version}`);
             core.setOutput('body', section.slice(section.indexOf('\n') + 1).trim());
 
+      # Installed apps take only updates signed with this key; a release without it would break updates.
+      - name: Check the update signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::No TAURI_SIGNING_PRIVATE_KEY secret. See make updater-keys."
+            exit 1
+          fi
+          if ! grep -q '"pubkey": "[^"]' src-tauri/tauri.conf.json; then
+            echo "::error::No updater public key in src-tauri/tauri.conf.json. See make updater-keys."
+            exit 1
+          fi
+
+      # Signs the update files and publishes latest.json, which installed apps check.
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Query2Table ${{ github.ref_name }}'
           releaseBody: ${{ steps.release-notes.outputs.body }}
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
+          includeUpdaterJson: true
+          args: ${{ matrix.args }} --config src-tauri/tauri.updater.conf.json
 
   android:
     # Runs after the desktop builds, which create the GitHub release this APK is added to.
@@ -185,3 +204,21 @@ jobs:
           version="${TAG#v}"
           cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk "Query2Table_${version}_android.apk"
           gh release upload "$TAG" "Query2Table_${version}_android.apk" --clobber
+
+      # The app checks the same latest.json as the desktop apps and verifies this signature.
+      - name: Sign the APK for updates and list it in latest.json
+        if: steps.key.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          version="${TAG#v}"
+          apk="Query2Table_${version}_android.apk"
+          npm run tauri signer sign -- --app-version "$version" "$apk"
+          gh release download "$TAG" --pattern latest.json --output latest.json --clobber
+          url="https://github.com/${{ github.repository }}/releases/download/$TAG/$apk"
+          jq --arg url "$url" --arg sig "$(cat "$apk.sig")" \
+            '.platforms["android-universal"] = {url: $url, signature: $sig}' latest.json > latest.next.json
+          mv latest.next.json latest.json
+          gh release upload "$TAG" "$apk.sig" latest.json --clobber

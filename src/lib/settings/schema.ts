@@ -42,7 +42,7 @@ export const SECTIONS: SectionDef[] = [
 	{ id: 'search', groups: ['Provider', 'Pricing'] },
 	{ id: 'runs', groups: ['Fetching', 'Quality', 'Content', 'Research'] },
 	{ id: 'network', groups: ['Proxies'] },
-	{ id: 'app', groups: ['Appearance', 'Notifications', 'Files'] },
+	{ id: 'app', groups: ['Appearance', 'Notifications', 'Updates', 'Files'] },
 ];
 
 export const FIELDS: FieldDef[] = [
@@ -126,6 +126,7 @@ export const FIELDS: FieldDef[] = [
 	{ key: 'attachment_max_mb', section: 'runs', group: 'Content', kind: 'number', default: '50', min: 1, max: 500, step: 1, unit: 'MB', advanced: true, keywords: 'attach files upload size' },
 	// Application
 	{ key: 'notifications_enabled', section: 'app', group: 'Notifications', kind: 'switch', default: 'true' },
+	{ key: 'update_check', section: 'app', group: 'Updates', kind: 'switch', default: 'true', keywords: 'updates new version upgrade' },
 	{ key: 'show_site_icons', section: 'app', group: 'Appearance', kind: 'switch', default: 'true', keywords: 'favicon' },
 ];
 

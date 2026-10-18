@@ -19,6 +19,9 @@
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { errorText } from '$lib/utils/errors';
 	import { loadLanguage, t } from '$lib/i18n';
+	import UpdateDialog from '$lib/components/common/UpdateDialog.svelte';
+	import { checkAtStartup, updates } from '$lib/stores/updates';
+	import { get } from 'svelte/store';
 
 	let { children }: { children: Snippet } = $props();
 	let settingsError = $state('');
@@ -32,7 +35,10 @@
 			await settings.load();
 		} catch (error) {
 			settingsError = errorText(error);
+			return;
 		}
+		// The quiet daily check for a new version (Settings › Application › Updates).
+		void checkAtStartup(get(settings).get('update_check'));
 	}
 
 	$effect(() => {
@@ -126,6 +132,7 @@
 </div>
 <Toaster />
 {#if $attachmentPreview}<AttachmentPreview url={$attachmentPreview} />{/if}
+{#if $updates.open}<UpdateDialog />{/if}
 {#if $contextMenu}
 	{#key $contextMenu}
 		<ContextMenu

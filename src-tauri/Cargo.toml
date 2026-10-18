@@ -51,8 +51,15 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 zip = { version = "8", default-features = false, features = ["deflate"] }
 hayro = "0.8"
 futures = "0.3"
+semver = "1"
+minisign-verify = "0.2"
+
+# Updates: the Tauri updater on desktop; Android downloads the APK itself.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
 
 [dev-dependencies]
+tauri = { version = "2", features = ["test"] }
 tempfile = "3"
 mockall = "0.13"
 wiremock = "0.6"
