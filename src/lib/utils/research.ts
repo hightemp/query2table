@@ -1,5 +1,6 @@
 import { t, type MessageKey } from '$lib/i18n';
-import { marked, type Token, type Tokens } from 'marked';
+import type { Token, Tokens } from 'marked';
+import { markdown as marked, type MathToken } from './math';
 import type { ResearchStep } from '$lib/types';
 import { displayHost } from './hosts';
 import { markdownLink } from './linkMenu';
@@ -250,6 +251,8 @@ function inlineText(tokens: Token[] | undefined): string {
 					return '\n';
 				case 'image':
 					return (token as Tokens.Image).text;
+				case 'math':
+					return (token as MathToken).raw;
 				default:
 					if ('tokens' in token && token.tokens) return inlineText(token.tokens);
 					return 'text' in token ? String(token.text) : '';
@@ -286,6 +289,9 @@ function blockText(tokens: Token[], indent = ''): string[] {
 			}
 			case 'code':
 				blocks.push((token as Tokens.Code).text);
+				break;
+			case 'math':
+				blocks.push(indent + (token as MathToken).raw.trim());
 				break;
 			case 'blockquote':
 				blocks.push(...blockText((token as Tokens.Blockquote).tokens, indent));

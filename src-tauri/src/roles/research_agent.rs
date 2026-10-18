@@ -113,6 +113,9 @@ Rules:
 {rules}
 - You have at most {max_steps} steps. When you have enough information, call "answer".
 - The "answer" markdown must directly and completely address the user's request.
+- Write mathematical formulas in LaTeX: \(...\) inside a sentence, and $$...$$ on lines
+  of their own for displayed formulas. Inside the JSON string every backslash is doubled
+  ("\\(E = mc^2\\)", "\\frac{{a}}{{b}}").
 - Do not end the answer with offers of further help ("If you want, I can also…");
   instead put 2-3 short follow-up questions the user may ask next, written in the user's
   language, in the "follow_ups" field: {{"action": "answer", "markdown": "...", "follow_ups": ["...", "..."]}}
@@ -492,6 +495,14 @@ mod tests {
         assert!(prompt.contains("\"follow_ups\""));
         assert!(prompt.contains("at most 16 steps"));
         assert!(prompt.contains("Do not end the answer with offers"));
+    }
+
+    #[test]
+    fn the_prompt_asks_for_formulas_in_latex() {
+        let prompt = ResearchAgent::system_prompt(16);
+        assert!(prompt.contains(r"formulas in LaTeX: \(...\) inside a sentence"));
+        assert!(prompt.contains("$$...$$ on lines"));
+        assert!(prompt.contains(r#""\\frac{a}{b}""#));
     }
 
     #[test]

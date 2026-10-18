@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n';
-	import { marked, Renderer } from 'marked';
+	import { Renderer } from 'marked';
 	import DOMPurify from 'dompurify';
 	import { openExternal } from '$lib/utils/links';
 	import { toast } from '$lib/stores/toasts';
@@ -9,6 +9,7 @@
 	import { webUrl } from '$lib/utils/values';
 	import { isAttachmentUrl, plainInline, uniqueSlugger } from '$lib/utils/research';
 	import { showAttachment } from '$lib/stores/attachmentPreview';
+	import { markdown } from '$lib/utils/math';
 	let {
 		content,
 		idPrefix,
@@ -30,10 +31,37 @@
 			return `<h${depth} id="${id}">${this.parser.parseInline(tokens)}</h${depth}>`;
 		};
 		// Answers cite attached files as attachment:// links; keep those besides web links.
-		return DOMPurify.sanitize(marked.parse(content, { async: false, renderer }) as string, {
+		return DOMPurify.sanitize(markdown.parse(content, { async: false, renderer }) as string, {
 			ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|attachment):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
 		});
 	});
+	let root: HTMLDivElement;
+	// Formulas arrive as placeholders showing their source; MathJax (loaded on first use) draws them.
+	$effect(() => {
+		void html;
+		const pending = [...root.querySelectorAll<HTMLElement>('.math[data-tex]:not([data-drawn])')];
+		if (!pending.length) return;
+		let current = true;
+		import('$lib/utils/mathRender').then(({ renderMath }) => {
+			for (const element of pending) {
+				const tex = element.dataset.tex ?? '';
+				renderMath(tex, 'display' in element.dataset).then(
+					(svg) => {
+						if (!current) return;
+						element.innerHTML = svg;
+						element.dataset.drawn = '';
+						element.setAttribute('role', 'img');
+						element.setAttribute('aria-label', tex);
+					},
+					() => current && element.classList.add('math-error')
+				);
+			}
+		});
+		return () => {
+			current = false;
+		};
+	});
+
 	async function open(event: MouseEvent) {
 		const anchor = (event.target as Element)?.closest('a');
 		if (!anchor) return;
@@ -57,6 +85,7 @@
 </script>
 
 <div
+	bind:this={root}
 	class="markdown"
 	onclick={open}
 	oncontextmenu={(event) => {
@@ -175,6 +204,25 @@
 		border-left: 3px solid var(--app-border);
 		margin: 16px 0;
 		color: var(--app-muted);
+	}
+	.markdown :global(.math-display) {
+		display: block;
+		margin: 0.75em 0;
+		text-align: center;
+		/* A long formula scrolls by itself instead of widening the answer. */
+		overflow-x: auto;
+		overflow-y: hidden;
+		overflow-wrap: normal;
+	}
+	.markdown :global(.math svg) {
+		display: inline;
+		max-width: none;
+	}
+	.markdown :global(.math-error) {
+		font-family: var(--app-font-mono);
+		font-size: 0.9em;
+		text-decoration: wavy underline var(--app-danger);
+		text-underline-offset: 3px;
 	}
 	.markdown :global(hr) {
 		border: 0;

@@ -1920,3 +1920,21 @@ The same code base builds an Android app (Tauri v2 mobile). The Android Studio p
 - [x] **M6** Settings move between devices: Export settings asks whether to include API keys and proxies (off by default, with a warning); import takes them only from a file marked `includes_secrets` and never clears a key with an empty one. Settings files are read and written through the fs plugin (`utils/files.rs`), so Android `content://` addresses from the file picker work. Verified on the emulator.
 - [x] **M7** Files on Android: attaching uses the WebView's own picker (names kept) and sends content as base64, since Android's IPC carries JSON only; one image or one export goes through the save dialog (`content://` written through the fs plugin, exports made in a scratch folder first); several images go to Pictures/Query2Table and bulk exports to Download/Query2Table through `AndroidFilesPlugin.kt` (MediaStore; plain files with the storage permission on Android 9 and older). Verified on the emulator: attach, save one and several images, Excel export, bulk export.
 - [x] **M8** Opening an attached file in another app on Android: a copy in the app's cache is shared through the FileProvider with `ACTION_VIEW` (`AndroidFilesPlugin.view`); unknown types open the system's app chooser. Verified on the emulator: a PDF opens in the PDF viewer, a text file offers "Open with".
+
+## Math formulas in research answers
+
+Research answers render LaTeX formulas.
+
+### Decisions (agreed with the user)
+
+- Library: **MathJax**, bundled with the app (no CDN), so formulas also work offline and on Android. SVG output, so no font files are needed.
+- Delimiters: `$$…$$` and `\[…\]` for display formulas, `\(…\)` for inline ones, always. A single `$…$` is a formula only by pandoc's rule: no space after the opening `$`, no space before the closing `$`, and no digit right after it, so prices like "from $5 to $10" stay text. Code spans and code blocks are never touched.
+- The research prompt (`roles/research_agent.rs`) asks the model to write formulas in LaTeX: `\(…\)` inline, `$$…$$` on their own lines.
+- Copying an answer and Markdown export keep the LaTeX source.
+
+### Tasks
+
+- [x] **F1** Formula tokens for `marked` (`src/lib/utils/math.ts`, the shared `markdown` instance) with the delimiter rules above; copying as text keeps the LaTeX source. Tests: `src/tests/math.test.ts` (prices, escaped `\$`, code, emphasis, lists, tables).
+- [x] **F2** `Markdown.svelte` shows formulas as placeholders with their source and draws them with MathJax 4 (`src/lib/utils/mathRender.ts`, loaded with `import()` on the first formula; the font's extra glyph files are bundled and load only when needed). SVG in `currentColor`, sanitized; no `\href`/`\style` (the `html` package is left out); a formula that fails to parse keeps its source with a wavy underline; display formulas scroll horizontally; inline formulas stay one picture.
+- [x] **F3** The research prompt asks for LaTeX formulas (`\(…\)` inline, `$$…$$` displayed, backslashes doubled in JSON); test `the_prompt_asks_for_formulas_in_latex`.
+- [x] **F4** Playwright `tests/ui/research-math.spec.ts`: inline and display formulas are drawn as SVG, prices stay text, a broken formula shows its source, a long formula scrolls inside its box, Copy Markdown / Copy as text keep the LaTeX.
