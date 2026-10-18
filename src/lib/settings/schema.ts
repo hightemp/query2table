@@ -40,7 +40,7 @@ export interface FieldDef {
 export const SECTIONS: SectionDef[] = [
 	{ id: 'llm', groups: ['Connection', 'Generation', 'Images', 'Pricing'] },
 	{ id: 'search', groups: ['Provider', 'Pricing'] },
-	{ id: 'runs', groups: ['Fetching', 'Quality', 'Content'] },
+	{ id: 'runs', groups: ['Fetching', 'Quality', 'Content', 'Research'] },
 	{ id: 'network', groups: ['Proxies'] },
 	{ id: 'app', groups: ['Appearance', 'Notifications', 'Files'] },
 ];
@@ -121,6 +121,7 @@ export const FIELDS: FieldDef[] = [
 	{ key: 'max_extraction_text_chars', section: 'runs', group: 'Content', kind: 'number', default: '12000', min: 1000, max: 500000, step: 1, unit: 'chars', advanced: true },
 	{ key: 'max_pdf_text_chars', section: 'runs', group: 'Content', kind: 'number', default: '500000', min: 1000, max: 5000000, step: 1, unit: 'chars', advanced: true },
 	{ key: 'max_file_fragments', section: 'runs', group: 'Content', kind: 'number', default: '400', min: 10, max: 5000, step: 1, advanced: true, keywords: 'attached files table rows cost' },
+	{ key: 'research_images', section: 'runs', group: 'Research', kind: 'switch', default: 'true', keywords: 'pictures photos images answer' },
 	{ key: 'attachment_max_mb', section: 'runs', group: 'Content', kind: 'number', default: '50', min: 1, max: 500, step: 1, unit: 'MB', advanced: true, keywords: 'attach files upload size' },
 	// Application
 	{ key: 'notifications_enabled', section: 'app', group: 'Notifications', kind: 'switch', default: 'true' },

@@ -1,14 +1,14 @@
 import { t, type MessageKey } from '$lib/i18n';
 import type { Token, Tokens } from 'marked';
 import { markdown as marked, type MathToken } from './math';
-import type { ResearchStep } from '$lib/types';
+import type { ResearchImage, ResearchStep } from '$lib/types';
 import { displayHost } from './hosts';
 import { markdownLink } from './linkMenu';
 import { attachmentPlace, placeLabel } from './attachments';
 
-export type StepKind = 'search' | 'fetch' | 'read' | 'think' | 'error';
+export type StepKind = 'search' | 'image_search' | 'view_image' | 'fetch' | 'read' | 'think' | 'error';
 
-const STEP_KINDS = ['search', 'fetch', 'read', 'think', 'error'];
+const STEP_KINDS = ['search', 'image_search', 'view_image', 'fetch', 'read', 'think', 'error'];
 
 /** A place in an attached file: `attachment://<id>?page=3`. */
 export function isAttachmentUrl(url: string | null | undefined): boolean {
@@ -98,6 +98,8 @@ export interface ResearchSource {
 	cited: boolean;
 	/** A place in an attached file rather than a web page. */
 	file?: boolean;
+	/** Pictures of the answer that come from this page. */
+	images?: string[];
 }
 
 /** Comparable form of a URL: no fragment, lower-case host, no trailing slash. */
@@ -113,12 +115,13 @@ function withoutHash(raw: string): string {
 /** Links in Markdown text, in order: `[title](url)` and bare http(s) addresses. */
 export function answerLinks(markdown: string): { url: URL; raw: string; title: string }[] {
 	const found: { url: URL; raw: string; title: string; at: number }[] = [];
-	const linked = /\[([^\]]*)\]\(((?:https?|attachment):\/\/[^)\s]+)\)/g;
+	// Pictures (`![alt](url)`) are not links; their pages come from the kept images.
+	const linked = /(?<!!)\[([^\]]*)\]\(((?:https?|attachment):\/\/[^)\s]+)\)/g;
 	for (const match of markdown.matchAll(linked)) {
 		const url = parseUrl(match[2]);
 		if (url) found.push({ url, raw: match[2], title: match[1].trim(), at: match.index ?? 0 });
 	}
-	const bare = /(?<![(\[\w])https?:\/\/[^\s)<>\]"'`]+/g;
+	const bare = /(?<![(\[\w<])https?:\/\/[^\s)<>\]"'`]+/g;
 	for (const match of markdown.matchAll(bare)) {
 		const raw = match[0].replace(/[.,;:!?]+$/, '');
 		const url = parseUrl(raw);
@@ -132,7 +135,15 @@ function fileName(label: string): string {
 	return label.split(', ')[0].trim();
 }
 
-export function collectSources(steps: ResearchStep[], answer: string | null): ResearchSource[] {
+/** Picture addresses in Markdown, in order: `![alt](url)`. */
+export function answerImages(markdown: string): string[] {
+	const found: string[] = [];
+	for (const match of markdown.matchAll(/!\[[^\]]*\]\(\s*<?([^\s)>]+)>?(?:\s+"[^"]*")?\s*\)/g))
+		if (!found.includes(match[1])) found.push(match[1]);
+	return found;
+}
+
+export function collectSources(steps: ResearchStep[], answer: string | null, images: ResearchImage[] = []): ResearchSource[] {
 	const sources = new Map<string, ResearchSource>();
 	for (const { url, raw, title } of answer ? answerLinks(answer) : []) {
 		const key = sourceKey(url);
@@ -150,6 +161,24 @@ export function collectSources(steps: ResearchStep[], answer: string | null): Re
 			cited: true,
 			...(file ? { file } : {}),
 		});
+	}
+	// Pages the answer's pictures come from count as cited.
+	for (const address of answer ? answerImages(answer) : []) {
+		const image = images.find((item) => item.url === address);
+		const page = parseUrl(image?.source_url);
+		if (!image?.source_url || !page) continue;
+		const key = sourceKey(page);
+		const existing = sources.get(key);
+		if (existing) existing.images = [...(existing.images ?? []), address];
+		else
+			sources.set(key, {
+				url: withoutHash(image.source_url),
+				title: '',
+				domain: displayHost(page.hostname),
+				read: false,
+				cited: true,
+				images: [address],
+			});
 	}
 	for (const step of steps) {
 		if (step.step_type === 'read' && isAttachmentUrl(step.url)) {
@@ -249,8 +278,10 @@ function inlineText(tokens: Token[] | undefined): string {
 				}
 				case 'br':
 					return '\n';
-				case 'image':
-					return (token as Tokens.Image).text;
+				case 'image': {
+					const image = token as Tokens.Image;
+					return image.text ? `${image.text} (${image.href})` : image.href;
+				}
 				case 'math':
 					return (token as MathToken).raw;
 				default:

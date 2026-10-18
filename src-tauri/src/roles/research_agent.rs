@@ -11,6 +11,10 @@ pub enum AgentAction {
     Search { query: String },
     /// Fetch a web page (converted to markdown) at the given URL.
     Fetch { url: String },
+    /// Search for images.
+    ImageSearch { query: String },
+    /// Look at one image (models that see images).
+    ViewImage { url: String },
     /// Read an attached file: a page, sheet rows, a section, the fragments matching a query, or
     /// its beginning.
     ReadFile { file: String, place: crate::attachments::Locator, query: Option<String> },
@@ -43,11 +47,15 @@ pub struct Tools {
     pub web: bool,
     /// Reading attached files.
     pub files: bool,
+    /// Image search, and images in the answer.
+    pub images: bool,
+    /// Looking at images: the model sees them.
+    pub view: bool,
 }
 
 impl Default for Tools {
     fn default() -> Self {
-        Self { web: true, files: false }
+        Self { web: true, files: false, images: false, view: false }
     }
 }
 
@@ -64,6 +72,12 @@ impl ResearchAgent {
         if tools.web {
             list.push(r#"search    — run a web search.            JSON: {"action": "search", "query": "<search query>"}"#.to_string());
             list.push(r#"fetch     — read a web page as markdown. JSON: {"action": "fetch", "url": "<absolute http(s) url>"}"#.to_string());
+        }
+        if tools.images {
+            list.push(r#"image_search — search for images.       JSON: {"action": "image_search", "query": "<search query>"}"#.to_string());
+        }
+        if tools.images && tools.view {
+            list.push(r#"view_image — look at one image.         JSON: {"action": "view_image", "url": "<image address>"}"#.to_string());
         }
         if tools.files {
             list.push(
@@ -94,6 +108,14 @@ impl ResearchAgent {
         if tools.files {
             rules.push("The attached files are part of the request: read the parts you need before answering, and prefer them over the web for what they cover.".into());
             rules.push("Cite file passages as Markdown links to their attachment addresses with the place, e.g. [report.pdf, p. 3](attachment://ID?page=3).".into());
+        }
+        if tools.images {
+            rules.push("Add images to the answer only when they help (what something looks like, diagrams, maps, products) or the user asks for them. Insert them as ![short caption](image address) next to the text they illustrate, a few at most. Use only addresses from image_search results or images (![alt](address)) on pages you fetched; never make addresses up.".into());
+            if tools.view {
+                rules.push("Look at an image with view_image before using it when its caption does not show that it fits.".into());
+            } else {
+                rules.push("You cannot see images: judge them by their captions, sites and the text around them on the page.".into());
+            }
         }
         if !tools.web {
             rules.push("Answer from only the attached files. If they do not contain the answer, say so.".into());
@@ -232,15 +254,81 @@ Rules:
     /// Convert fetched HTML into Markdown. Falls back to plain text extraction
     /// when conversion fails or produces nothing useful.
     pub fn html_to_markdown(html: &str, url: &str) -> String {
-        match htmd::convert(html) {
+        let html = absolute_images(html, url);
+        match htmd::convert(&html) {
             Ok(md) if !md.trim().is_empty() => md,
             _ => {
                 warn!(url = %url, "htmd conversion failed/empty, falling back to text extraction");
-                let doc = crate::roles::document_parser::DocumentParser::parse(html, url);
+                let doc = crate::roles::document_parser::DocumentParser::parse(&html, url);
                 doc.text
             }
         }
     }
+}
+
+/// Images in Markdown, in order: (address, alt text), each address once.
+pub fn markdown_images(markdown: &str) -> Vec<(String, String)> {
+    static IMAGE: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r#"!\[([^\]]*)\]\(\s*<?([^\s)>]+)>?(?:\s+"[^"]*")?\s*\)"#).unwrap());
+    let mut found: Vec<(String, String)> = Vec::new();
+    for caps in IMAGE.captures_iter(markdown) {
+        let url = caps[2].to_string();
+        if !found.iter().any(|(u, _)| *u == url) {
+            found.push((url, caps[1].trim().to_string()));
+        }
+    }
+    found
+}
+
+/// Page images with addresses the agent can use: relative and lazy-loaded sources become
+/// absolute `http(s)` addresses; inline `data:` images and tracking pixels are dropped.
+fn absolute_images(html: &str, page_url: &str) -> String {
+    static IMG: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"(?is)<img\b[^>]*>").unwrap());
+    static ATTR: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r#"(?is)([a-z][a-z0-9_:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))"#).unwrap()
+    });
+    let Ok(base) = url::Url::parse(page_url) else { return html.to_string() };
+    IMG.replace_all(html, |caps: &regex::Captures| {
+        let tag = &caps[0];
+        let attrs: Vec<(String, String)> = ATTR
+            .captures_iter(tag)
+            .map(|a| {
+                let value = a.get(2).or(a.get(3)).or(a.get(4)).map_or("", |m| m.as_str());
+                (a[1].to_lowercase(), value.replace("&amp;", "&").trim().to_string())
+            })
+            .collect();
+        let get = |name: &str| attrs.iter().find(|(n, v)| n == name && !v.is_empty()).map(|(_, v)| v.as_str());
+        let tiny = ["width", "height"].iter().any(|n| get(n).and_then(|v| v.trim_end_matches("px").parse::<u32>().ok()).is_some_and(|v| v <= 2));
+        if tiny {
+            return String::new();
+        }
+        // The largest candidate of a srcset ("a.jpg 480w, b.jpg 1080w").
+        let from_srcset = |name: &str| {
+            get(name).and_then(|set| {
+                set.split(',')
+                    .filter_map(|c| {
+                        let mut parts = c.split_whitespace();
+                        let url = parts.next()?;
+                        let size = parts.next().and_then(|d| d.trim_end_matches(['w', 'x']).parse::<f64>().ok()).unwrap_or(1.0);
+                        Some((url, size))
+                    })
+                    .max_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|(url, _)| url)
+            })
+        };
+        let usable = |v: &&str| !v.starts_with("data:") && !v.starts_with("blob:");
+        let source = get("src")
+            .filter(usable)
+            .or_else(|| ["data-src", "data-lazy-src", "data-original", "data-url"].into_iter().find_map(|n| get(n).filter(usable)))
+            .or_else(|| from_srcset("srcset").filter(usable))
+            .or_else(|| from_srcset("data-srcset").filter(usable));
+        let Some(address) = source.and_then(|s| base.join(s).ok()).filter(|u| matches!(u.scheme(), "http" | "https")) else {
+            return String::new();
+        };
+        let escape = |v: &str| v.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;");
+        format!(r#"<img src="{}" alt="{}">"#, escape(address.as_str()), escape(get("alt").unwrap_or("")))
+    })
+    .into_owned()
 }
 
 /// Extract the first balanced JSON object substring from a string.
@@ -324,6 +412,20 @@ fn parse_json_action(json_str: &str) -> Result<AgentAction, String> {
                 .filter(|u| !u.trim().is_empty())
                 .ok_or_else(|| "fetch action missing 'url'".to_string())?;
             Ok(AgentAction::Fetch { url })
+        }
+        "image_search" => {
+            let query = parsed
+                .query
+                .filter(|q| !q.trim().is_empty())
+                .ok_or_else(|| "image_search action missing 'query'".to_string())?;
+            Ok(AgentAction::ImageSearch { query })
+        }
+        "view_image" => {
+            let url = parsed
+                .url
+                .filter(|u| !u.trim().is_empty())
+                .ok_or_else(|| "view_image action missing 'url'".to_string())?;
+            Ok(AgentAction::ViewImage { url: url.trim().to_string() })
         }
         "read_file" | "read" => {
             let file = parsed
@@ -596,9 +698,9 @@ mod tests {
     fn the_prompt_offers_only_the_tools_of_the_run() {
         let web = ResearchAgent::system_prompt(10);
         assert!(web.contains(r#""action": "search""#) && !web.contains("read_file"));
-        let both = ResearchAgent::system_prompt_with(10, Tools { web: true, files: true });
+        let both = ResearchAgent::system_prompt_with(10, Tools { web: true, files: true, ..Default::default() });
         assert!(both.contains(r#""action": "search""#) && both.contains("read_file") && both.contains("attachment://ID?page=3"));
-        let files = ResearchAgent::system_prompt_with(10, Tools { web: false, files: true });
+        let files = ResearchAgent::system_prompt_with(10, Tools { web: false, files: true, ..Default::default() });
         assert!(!files.contains(r#""action": "search""#) && !files.contains(r#""action": "fetch""#));
         assert!(files.contains("only the attached files") && files.contains("You have at most 10 steps"));
     }
@@ -660,6 +762,70 @@ mod tests {
         let md = ResearchAgent::html_to_markdown(html, "https://example.com");
         assert!(md.contains("Title"));
         assert!(md.contains("Hello"));
+    }
+
+    #[test]
+    fn image_actions_are_parsed() {
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"image_search","query":"red panda"}"#).unwrap(),
+            AgentAction::ImageSearch { query: "red panda".into() }
+        );
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"view_image","url":" https://x.com/a.jpg "}"#).unwrap(),
+            AgentAction::ViewImage { url: "https://x.com/a.jpg".into() }
+        );
+        assert!(ResearchAgent::parse_action(r#"{"action":"image_search"}"#).is_err());
+        assert!(ResearchAgent::parse_action(r#"{"action":"view_image","url":""}"#).is_err());
+    }
+
+    #[test]
+    fn image_tools_are_offered_as_allowed() {
+        let none = ResearchAgent::system_prompt(10);
+        assert!(!none.contains("image_search") && !none.contains("view_image"));
+        let blind = ResearchAgent::system_prompt_with(10, Tools { images: true, ..Default::default() });
+        assert!(blind.contains(r#"{"action": "image_search""#));
+        assert!(!blind.contains("view_image"));
+        assert!(blind.contains("![short caption](image address)"));
+        assert!(blind.contains("images (![alt](address)) on pages you fetched"));
+        assert!(blind.contains("You cannot see images"));
+        let seeing = ResearchAgent::system_prompt_with(10, Tools { images: true, view: true, ..Default::default() });
+        assert!(seeing.contains(r#"{"action": "view_image""#));
+        assert!(seeing.contains("Look at an image with view_image before using it"));
+        // Looking at images comes only with image search.
+        assert!(!ResearchAgent::system_prompt_with(10, Tools { view: true, ..Default::default() }).contains("view_image"));
+    }
+
+    #[test]
+    fn page_images_get_absolute_addresses() {
+        let html = r#"<html><body><p>Intro</p>
+            <img src="/img/panda.jpg" alt="Red panda">
+            <img src="data:image/gif;base64,R0lGOD" data-src="lazy/cat.png?a=1&amp;b=2" alt="Cat">
+            <img srcset="small.webp 480w, large.webp 1080w" alt="Dog">
+            <img src="https://track.example/p.gif" width="1" height="1">
+            <img src="data:image/png;base64,AAA" alt="Inline">
+            <img src="javascript:alert(1)" alt="Bad">
+            </body></html>"#;
+        let md = ResearchAgent::html_to_markdown(html, "https://zoo.example/animals/index.html");
+        let images = markdown_images(&md);
+        assert_eq!(
+            images,
+            vec![
+                ("https://zoo.example/img/panda.jpg".to_string(), "Red panda".to_string()),
+                ("https://zoo.example/animals/lazy/cat.png?a=1&b=2".to_string(), "Cat".to_string()),
+                ("https://zoo.example/animals/large.webp".to_string(), "Dog".to_string()),
+            ],
+            "{md}"
+        );
+        assert!(!md.contains("track.example") && !md.contains("data:") && !md.contains("javascript"));
+    }
+
+    #[test]
+    fn markdown_images_are_found_once_in_order() {
+        let md = r#"Look ![A panda](https://x.com/p.jpg "Panda") and [a link](https://x.com/page) ![](<https://x.com/q.png>) ![again](https://x.com/p.jpg)"#;
+        assert_eq!(
+            markdown_images(md),
+            vec![("https://x.com/p.jpg".to_string(), "A panda".to_string()), ("https://x.com/q.png".to_string(), String::new())]
+        );
     }
 
     #[test]

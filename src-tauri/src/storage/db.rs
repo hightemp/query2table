@@ -386,6 +386,25 @@ impl Database {
         ] {
             sqlx::query(statement).execute(&self.pool).await?;
         }
+        // Pictures placed in research answers, kept with the run (downscaled) so answers show
+        // them offline. `url` is the web address the answer uses.
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS research_images (
+                run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                turn_index INTEGER NOT NULL DEFAULT 0,
+                url TEXT NOT NULL,
+                source_url TEXT,
+                title TEXT NOT NULL DEFAULT '',
+                media_type TEXT NOT NULL,
+                width INTEGER NOT NULL,
+                height INTEGER NOT NULL,
+                data BLOB NOT NULL,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                PRIMARY KEY (run_id, url)
+            )"
+        )
+        .execute(&self.pool)
+        .await?;
         // Research runs saved before conversations become one-turn conversations.
         sqlx::query(
             "INSERT INTO research_turns (id, run_id, turn_index, question, answer_markdown, status, created_at)
@@ -461,6 +480,8 @@ impl Database {
             ("enable_content_truncation", "true"),
             ("max_extraction_text_chars", "12000"),
             ("max_pdf_text_chars", "500000"),
+            // Research
+            ("research_images", "true"),
             // Quality
             ("precision_recall", "balanced"),
             ("evidence_strictness", "moderate"),

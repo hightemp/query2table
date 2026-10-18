@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ResearchStep } from '$lib/types';
+import type { ResearchImage, ResearchStep } from '$lib/types';
 import {
 	describeStep,
 	collectSources,
@@ -7,6 +7,7 @@ import {
 	slugify,
 	markdownToText,
 	answerWithSources,
+	answerImages,
 } from '$lib/utils/research';
 
 const step = (overrides: Partial<ResearchStep>): ResearchStep => ({
@@ -161,5 +162,50 @@ describe('copying answers with file citations', () => {
 		expect(answerWithSources('Grew [here](attachment://abc?page=3).', sources)).toBe(
 			'Grew here (report.pdf, p. 3).\n\n## Sources\n\n1. report.pdf, p. 3\n2. [Site](https://a.example)\n'
 		);
+	});
+});
+
+describe('answer images', () => {
+	const image = (url: string, source_url: string | null): ResearchImage => ({
+		run_id: 'r',
+		turn_index: 0,
+		url,
+		source_url,
+		title: 'A panda',
+		media_type: 'image/jpeg',
+		width: 40,
+		height: 30,
+	});
+
+	it('names image steps', () => {
+		expect(describeStep(step({ step_type: 'image_search', content: 'red panda' }), 0)).toMatchObject({ label: 'Image search', summary: 'red panda' });
+		const view = describeStep(step({ step_type: 'view_image', content: 'Red panda', url: 'https://img.example.com/p.jpg' }), 1);
+		expect(view).toMatchObject({ label: 'Looked at image', summary: 'Red panda', domain: 'img.example.com' });
+	});
+
+	it('finds pictures in the answer once each', () => {
+		expect(answerImages('![A](https://x.com/a.jpg) and ![B](<https://x.com/b.png> "B") ![A again](https://x.com/a.jpg)')).toEqual([
+			'https://x.com/a.jpg',
+			'https://x.com/b.png',
+		]);
+	});
+
+	it('cites the pages pictures come from, not the picture addresses', () => {
+		const answer = 'Pandas ![Panda](https://img.example.com/p.jpg) and [a zoo](https://zoo.example/pandas). ![Lost](https://img.example.com/lost.jpg)';
+		const sources = collectSources([step({ step_type: 'fetch', content: 'Zoo pandas', url: 'https://zoo.example/pandas' })], answer, [
+			image('https://img.example.com/p.jpg', 'https://zoo.example/pandas'),
+			image('https://img.example.com/other.jpg', 'https://elsewhere.example/'),
+		]);
+		expect(sources).toEqual([
+			{ url: 'https://zoo.example/pandas', title: 'Zoo pandas', domain: 'zoo.example', read: true, cited: true, images: ['https://img.example.com/p.jpg'] },
+		]);
+		// Without kept pictures the addresses of pictures are still not sources.
+		expect(collectSources([], answer).map((s) => s.url)).toEqual(['https://zoo.example/pandas']);
+	});
+
+	it('copies pictures with their web addresses', () => {
+		const answer = 'Pandas:\n\n![Panda](https://img.example.com/p.jpg)';
+		expect(answerWithSources(answer, [])).toBe(answer);
+		expect(markdownToText(answer)).toBe('Pandas:\n\nPanda (https://img.example.com/p.jpg)');
 	});
 });

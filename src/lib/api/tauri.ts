@@ -25,6 +25,7 @@ import type {
 	ImageAddedEvent,
 	LinkResult,
 	LinkAddedEvent,
+	ResearchImage,
 	ResearchResult,
 	ResearchStepEvent,
 	ResearchAnswerEvent,
@@ -459,6 +460,16 @@ export function onLinkAdded(cb: (e: LinkAddedEvent) => void): Promise<UnlistenFn
 
 export async function getResearchResult(runId: string): Promise<ResearchResult> {
 	return invoke('get_research_result', { runId });
+}
+
+/** Pictures kept for a research run's answers. */
+export async function getResearchImages(runId: string): Promise<ResearchImage[]> {
+	return invoke('get_research_images', { runId });
+}
+
+/** A kept picture as a data URL; null when it was not kept. */
+export async function getResearchImage(runId: string, url: string): Promise<string | null> {
+	return invoke('get_research_image', { runId, url });
 }
 
 /** Asks a follow-up question in a research conversation. */

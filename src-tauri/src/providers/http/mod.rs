@@ -1,4 +1,5 @@
 pub mod client;
+pub mod images;
 pub mod proxy;
 pub mod rate_limiter;
 pub mod robots;

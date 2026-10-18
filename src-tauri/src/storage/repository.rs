@@ -984,6 +984,45 @@ impl Repository {
         .await
     }
 
+    /// Keeps a picture of a research answer; a picture already kept for the run is left as is.
+    pub async fn add_research_image(&self, image: &ResearchImageRow, data: &[u8]) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO research_images (run_id, turn_index, url, source_url, title, media_type, width, height, data, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())"
+        )
+        .bind(&image.run_id)
+        .bind(image.turn_index)
+        .bind(&image.url)
+        .bind(&image.source_url)
+        .bind(&image.title)
+        .bind(&image.media_type)
+        .bind(image.width)
+        .bind(image.height)
+        .bind(data)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// The pictures kept for a run's answers, without their data.
+    pub async fn get_research_images(&self, run_id: &str) -> Result<Vec<ResearchImageRow>, sqlx::Error> {
+        sqlx::query_as::<_, ResearchImageRow>(
+            "SELECT run_id, turn_index, url, source_url, title, media_type, width, height FROM research_images WHERE run_id = ? ORDER BY turn_index, created_at"
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    /// The type and data of a kept picture.
+    pub async fn get_research_image_data(&self, run_id: &str, url: &str) -> Result<Option<(String, Vec<u8>)>, sqlx::Error> {
+        sqlx::query_as::<_, (String, Vec<u8>)>("SELECT media_type, data FROM research_images WHERE run_id = ? AND url = ?")
+            .bind(run_id)
+            .bind(url)
+            .fetch_optional(&self.pool)
+            .await
+    }
+
     pub async fn create_research_result(
         &self,
         run_id: &str,
@@ -1219,6 +1258,20 @@ pub struct LinkResultRow {
     pub hidden: bool,
     pub visited_at: Option<i64>,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow, serde::Serialize)]
+pub struct ResearchImageRow {
+    pub run_id: String,
+    pub turn_index: i64,
+    /// The web address the answer uses.
+    pub url: String,
+    /// The page the picture comes from, when known.
+    pub source_url: Option<String>,
+    pub title: String,
+    pub media_type: String,
+    pub width: i64,
+    pub height: i64,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]

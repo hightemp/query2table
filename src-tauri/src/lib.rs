@@ -181,6 +181,8 @@ pub fn run() {
             commands::run::set_link_visited,
             commands::run::set_link_hidden,
             commands::run::get_research_result,
+            commands::run::get_research_images,
+            commands::run::get_research_image,
             commands::run::ask_follow_up,
             commands::run::get_run_queries,
             commands::images::proxy_image,

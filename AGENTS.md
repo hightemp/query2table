@@ -72,6 +72,9 @@ Images go to models as `Message.images` (`ImageInput`; OpenAI-compatible sends `
 ## Run stages
 Table, Links and Images runs report their stage (`run:stage`: interpret, schema, plan, search, read, rank, compare, dedup) and every search query (`run:search_queries`, `run:search_query`) through `orchestrator/search_log.rs`; query status, new-result count and error are kept in `search_queries` (`get_run_queries`). The query page shows `RunStages` in place of results not found yet, then as a folded line; saved runs show the folded summary.
 
+## Images in research answers
+The research agent has `image_search` and, for models that see images, `view_image` (`Tools.images`/`Tools.view`, setting `research_images`). Page images reach it as `![alt](absolute url)` (`absolute_images` in `roles/research_agent.rs`). Images it came across are remembered per turn (`SeenImage`); after the answer, `keep_answer_images` in `orchestrator/research_pipeline.rs` downloads only those the answer shows into the `research_images` table (downscaled, with the source page). Image downloading and downscaling live in `providers/http/images.rs`. The frontend never loads answer images from the web: `Markdown.svelte` fills placeholders from `get_research_image` (data URL) given the run's `get_research_images` list from `ResearchView`.
+
 ## Math formulas
 Research answers render LaTeX. Parse Markdown with `markdown` from `src/lib/utils/math.ts` (a `Marked` instance with the formula extension), not the global `marked`: it yields `math` tokens for `\(…\)`, `\[…\]`, `$$…$$` and `$…$` (pandoc's rule, so prices stay text) and renders them as `.math[data-tex]` placeholders. `Markdown.svelte` draws them with MathJax 4 from `src/lib/utils/mathRender.ts`, loaded on demand; the font's glyph files come from the bundle through `import.meta.glob`. Copies and exports keep the LaTeX source.
 

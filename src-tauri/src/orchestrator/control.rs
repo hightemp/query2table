@@ -944,8 +944,12 @@ mod tests {
             config.search.brave_api_key = "unused-local-test-key".into();
             let (tx, task) = spawn_pipeline(mode, config, repo.clone());
 
+            // Only chat requests: research also asks the catalog whether the model sees images.
+            let chats = || async {
+                server.received_requests().await.unwrap().into_iter().filter(|r| r.url.path() == "/api/chat").count()
+            };
             timeout(Duration::from_secs(2), async {
-                while server.received_requests().await.unwrap().is_empty() {
+                while chats().await == 0 {
                     sleep(Duration::from_millis(5)).await;
                 }
             })
@@ -956,11 +960,7 @@ mod tests {
             assert!(!task.is_finished(), "{mode}: pause must retain work");
             tx.send(PipelineCommand::Resume).await.unwrap();
             wait_status(&repo, mode, "running").await;
-            assert_eq!(
-                server.received_requests().await.unwrap().len(),
-                1,
-                "{mode}: resume restarted request"
-            );
+            assert_eq!(chats().await, 1, "{mode}: resume restarted request");
             tx.send(PipelineCommand::Pause).await.unwrap();
             wait_status(&repo, mode, "paused").await;
             tx.send(PipelineCommand::Cancel).await.unwrap();

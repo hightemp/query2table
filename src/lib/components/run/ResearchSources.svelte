@@ -31,6 +31,9 @@
 						<span class="domain">{source.domain}</span>
 						{#if source.cited}<span class="tag cited" use:tooltip={t('research.citedHint')}>{t('research.cited')}</span>{/if}
 						{#if source.read}<span class="tag" use:tooltip={t('research.readHint')}>{t('research.read')}</span>{/if}
+						{#if source.images?.length}<span class="tag" use:tooltip={t('research.imageSourceHint')}
+								>{t('research.imageSource', { count: source.images.length })}</span
+							>{/if}
 					</div>
 				</div>
 			</li>

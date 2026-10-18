@@ -603,6 +603,7 @@
 						limits={$runState.limits}
 						attachments={$runState.attachments}
 						sourceMode={$runState.sourceMode}
+						runId={$runState.runId}
 						onask={$runState.runId
 							? (question, limits, files) => askFollowUp(question, limits, files.attachments, files.sourceMode)
 							: undefined}

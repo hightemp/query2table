@@ -102,6 +102,8 @@ pub struct PipelineConfig {
     pub fetch_timeout_secs: u64,
     /// New pages taken from the results of each search query.
     pub max_pages_per_query: usize,
+    /// Research may search for images and put them in its answers.
+    pub research_images: bool,
 }
 
 impl PipelineConfig {
@@ -159,6 +161,7 @@ impl PipelineConfig {
             attachments: Vec::new(),
             attachments_dir: crate::attachments::store::AttachmentStore::default_dir(),
             web_search: true,
+            research_images: settings.get("research_images").is_none_or(|v| v != "false"),
             llm_vision: settings.get("llm_vision").cloned().unwrap_or_else(|| "auto".into()),
             vision_model: settings.get("vision_model").map(|m| m.trim().to_string()).unwrap_or_default(),
             image_compare_max: bounded(settings, "image_compare_max", 30, 0, 200),

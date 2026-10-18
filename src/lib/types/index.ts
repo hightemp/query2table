@@ -343,6 +343,20 @@ export interface ResearchStep {
 	url: string | null;
 }
 
+/** A picture of a research answer, kept with the run. */
+export interface ResearchImage {
+	run_id: string;
+	turn_index: number;
+	/** The web address the answer uses. */
+	url: string;
+	/** The page the picture comes from. */
+	source_url: string | null;
+	title: string;
+	media_type: string;
+	width: number;
+	height: number;
+}
+
 export interface ResearchTurnInfo {
 	turn_index: number;
 	question: string;

@@ -347,6 +347,7 @@ pub fn test_pipeline_config() -> PipelineConfig {
         vision_max_pages: 50,
         attachments_dir: std::env::temp_dir().join("query2table-test-attachments"),
         web_search: true,
+        research_images: true,
         llm_vision: "auto".into(),
         vision_model: String::new(),
         image_compare_max: 30,

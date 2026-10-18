@@ -217,26 +217,8 @@ impl ImageRanker {
 
     /// A small copy of a found picture (the thumbnail, or the full image) to show a model.
     async fn load_picture(result: &ImageSearchResult) -> Option<ImageInput> {
-        for url in [&result.thumbnail_url, &result.image_url] {
-            if url.is_empty() {
-                continue;
-            }
-            let Ok((_, bytes)) = crate::commands::images::download_image(url, 8 * 1024 * 1024).await else { continue };
-            let small = tokio::task::spawn_blocking(move || {
-                let image = image::load_from_memory(&bytes).ok()?;
-                let image = image.thumbnail(COMPARE_SIDE, COMPARE_SIDE);
-                let mut out = std::io::Cursor::new(Vec::new());
-                image::DynamicImage::ImageRgb8(image.to_rgb8()).write_to(&mut out, image::ImageFormat::Jpeg).ok()?;
-                Some(out.into_inner())
-            })
-            .await
-            .ok()
-            .flatten();
-            if let Some(bytes) = small {
-                return Some(ImageInput::from_bytes("image/jpeg", &bytes));
-            }
-        }
-        None
+        let picture = crate::providers::http::images::picture(&[&result.thumbnail_url, &result.image_url], COMPARE_SIDE, 8 * 1024 * 1024).await.ok()?;
+        Some(ImageInput::from_bytes(picture.media_type, &picture.bytes))
     }
 
     /// Parse a JSON array of f64 scores from LLM response.

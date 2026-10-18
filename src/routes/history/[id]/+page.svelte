@@ -371,7 +371,7 @@
 					>{/if}
 			{:else if current.run_type === 'research'}
 				{#if researchAnswer || researchSteps.length > 0}
-					<ResearchView turns={researchTurns} limits={researchLimits} attachments={researchFiles} onask={continueConversation} />
+					<ResearchView turns={researchTurns} limits={researchLimits} attachments={researchFiles} runId={run.id} onask={continueConversation} />
 				{:else}<EmptyState>{t('runPage.noResearch')}</EmptyState>{/if}
 			{:else if schema.length > 0 && rows.length > 0}
 				<ResultsTable {schema} {rows} onrowclick={(row, order) => selection.select(row.id, order)} />

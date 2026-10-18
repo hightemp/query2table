@@ -2,7 +2,7 @@
 	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import type { ResearchStep } from '$lib/types';
-	import { SearchIcon, FileTextIcon, FileSearchIcon, LightbulbIcon, TriangleAlertIcon } from '@lucide/svelte';
+	import { SearchIcon, FileTextIcon, FileSearchIcon, LightbulbIcon, TriangleAlertIcon, ImageIcon, ScanEyeIcon } from '@lucide/svelte';
 	import { showAttachment } from '$lib/stores/attachmentPreview';
 	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
 	import { describeStep, type StepView } from '$lib/utils/research';
@@ -10,6 +10,8 @@
 	let { steps, running = false }: { steps: ResearchStep[]; running?: boolean } = $props();
 	const icons = {
 		search: SearchIcon,
+		image_search: ImageIcon,
+		view_image: ScanEyeIcon,
 		fetch: FileTextIcon,
 		read: FileSearchIcon,
 		think: LightbulbIcon,

@@ -1938,3 +1938,26 @@ Research answers render LaTeX formulas.
 - [x] **F2** `Markdown.svelte` shows formulas as placeholders with their source and draws them with MathJax 4 (`src/lib/utils/mathRender.ts`, loaded with `import()` on the first formula; the font's extra glyph files are bundled and load only when needed). SVG in `currentColor`, sanitized; no `\href`/`\style` (the `html` package is left out); a formula that fails to parse keeps its source with a wavy underline; display formulas scroll horizontally; inline formulas stay one picture.
 - [x] **F3** The research prompt asks for LaTeX formulas (`\(…\)` inline, `$$…$$` displayed, backslashes doubled in JSON); test `the_prompt_asks_for_formulas_in_latex`.
 - [x] **F4** Playwright `tests/ui/research-math.spec.ts`: inline and display formulas are drawn as SVG, prices stay text, a broken formula shows its source, a long formula scrolls inside its box, Copy Markdown / Copy as text keep the LaTeX.
+
+## Images in research answers
+
+The research agent can search for images and place them in its answer where they help.
+
+### Decisions (agreed with the user)
+
+- Images go **inside the answer text** where they fit, as Markdown `![caption](url)`, with a caption and a link to the page they come from; clicking one opens it full size. They are also listed in Sources.
+- Images placed in an answer are **downloaded and stored locally** with the run, like attachments: old answers keep their pictures offline and sites do not see every opening of the answer. Copies and Markdown exports keep the original web addresses.
+- The agent **looks at the candidates when its model sees images** (as in the vision settings): thumbnails of the first results come with the search results; otherwise it chooses by title, site and size.
+- Images found on **fetched pages** count too: page Markdown keeps its images (`![alt](url)`) with absolute addresses, and the agent can look at one with a `view_image` tool before using it; the prompt tells it so.
+- The agent **decides itself** when images help (appearance, diagrams, maps, products) or when the user asks; a research setting "Images in answers" (on by default) turns the tool off.
+
+### Tasks
+
+- [x] **RI1** Setting `research_images` (Runs › Research, default on) in `PipelineConfig`; the image tools are offered only with web search on and the setting on (`Tools.images`), `view_image` only when the main model sees images (`VisionPlan::main_sees`, `Tools.view`).
+- [x] **RI2** `image_search` tool through `SearchManager::search_images`: up to 10 numbered results with title, size, image and page addresses; a model that sees images gets small pictures of the first 6 with them. Step `image_search` in Activity; failures recorded as error steps.
+- [x] **RI2a** Page images: `absolute_images` in `roles/research_agent.rs` rewrites `<img>` before Markdown conversion: addresses made absolute against the page, lazy `data-src`/`srcset` used when `src` is missing or a `data:` placeholder, `data:`/`blob:`/non-http images and 1–2 px pixels dropped. Images on read pages are remembered with their page.
+- [x] **RI2b** `view_image` tool: downloads the image (image types only, 15 MB cap), downscales it to 1024 px and gives it to the model with its size. Step `view_image` with the image's title and address.
+- [x] **RI3** Prompt rules: images only when they help or the user asks, `![short caption](address)` next to the text, a few at most, only addresses from image results or read pages; look first with `view_image` (models that see images) or judge by captions and pages (others).
+- [x] **RI4** After the answer, `keep_answer_images` downloads its images (only addresses the agent came across; the thumbnail when the original fails; at most 8; downscaled to 1600 px) into `research_images` (run, turn, address, source page, title, data; removed with the run). Images not found or read by the agent are not downloaded and are logged.
+- [x] **RI5** `Markdown.svelte` renders answer images as placeholders filled with the kept copy (`get_research_image`, data URL), never the web address; caption with the source site; a picture without a copy is a link to its address. Click opens it full size (`ResearchTurn`, links to the source page and the original). Sources list the pages pictures come from as cited, with an image count; image addresses are not sources. Copy keeps addresses (plain text: "caption (address)").
+- [x] **RI6** Tests: Rust `tests/research_images.rs` (search, previews, view, page images, keeping, thumbnail fallback, made-up addresses, deletion, blind model, setting off) and unit tests in `research_agent.rs`; vitest `research.test.ts` (steps, image sources, copying); Playwright `tests/ui/research-images.spec.ts` (kept pictures, no web requests, viewer, Sources, Activity, copy, phone width, setting).

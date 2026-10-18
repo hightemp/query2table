@@ -1,6 +1,9 @@
 <script lang="ts">
 	import FileChips from '$lib/components/common/FileChips.svelte';
-	import type { AttachmentInfo } from '$lib/types';
+	import type { AttachmentInfo, ResearchImage } from '$lib/types';
+	import Dialog from '$lib/components/common/Dialog.svelte';
+	import ExternalLink from '$lib/components/common/ExternalLink.svelte';
+	import { displayHost } from '$lib/utils/hosts';
 	import { t, type MessageKey } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import type { ResearchStep } from '$lib/types';
@@ -29,6 +32,8 @@
 		showQuestion = false,
 		cost = null,
 		files = [],
+		images = null,
+		loadImage,
 	}: {
 		answer: string | null;
 		steps: ResearchStep[];
@@ -42,7 +47,31 @@
 		cost?: number | null;
 		/** Files attached with this question. */
 		files?: AttachmentInfo[];
+		/** Pictures kept with the run's answers; null while not known yet. */
+		images?: ResearchImage[] | null;
+		loadImage?: (url: string) => Promise<string | null>;
 	} = $props();
+
+	/** The picture shown full size. */
+	let viewing = $state<{ url: string; src: string; image: ResearchImage; caption: string } | null>(null);
+	async function showImage(url: string) {
+		const image = images?.find((item) => item.url === url);
+		const src = image && (await loadImage?.(url));
+		if (!image || !src) return;
+		const caption = answerImageCaption(url) || image.title;
+		viewing = { url, src, image, caption };
+	}
+	function answerImageCaption(url: string): string {
+		for (const match of (answer ?? '').matchAll(/!\[([^\]]*)\]\(\s*<?([^\s)>]+)/g)) if (match[2] === url) return match[1].trim();
+		return '';
+	}
+	function pageHost(url: string | null): string {
+		try {
+			return url ? displayHost(new URL(url).hostname) : '';
+		} catch {
+			return '';
+		}
+	}
 
 	type Tab = 'answer' | 'activity' | 'sources';
 	const id = $props.id();
@@ -52,7 +81,7 @@
 	$effect(() => {
 		if (!answer && chosen === 'answer') chosen = null;
 	});
-	let sources = $derived(collectSources(steps, answer));
+	let sources = $derived(collectSources(steps, answer, images ?? []));
 	let headings = $derived(answer ? answerHeadings(answer) : []);
 	let showContents = $derived(headings.length >= 3);
 	let activeHeading = $state<string | null>(null);
@@ -226,7 +255,7 @@
 		{#if tab === 'answer' && answer}
 			<div class="answer-layout" class:with-contents={showContents} bind:this={layout}>
 				<div class="answer" aria-label={t('research.answer')} role="region">
-					<Markdown content={answer} idPrefix={`${id}-h`} />
+					<Markdown content={answer} idPrefix={`${id}-h`} {images} {loadImage} onimage={showImage} />
 				</div>
 				{#if showContents}
 					<nav class="contents" aria-label={t('research.contents')}>
@@ -254,6 +283,20 @@
 			<ResearchSteps {steps} {running} />
 		{/if}
 	</div>
+	{#if viewing}
+		<Dialog title={viewing.caption || t('research.image')} variant="image" onclose={() => (viewing = null)}>
+			<div class="image-view"><img src={viewing.src} alt={viewing.caption} /></div>
+			<p class="image-meta">
+				{[pageHost(viewing.image.source_url), `${viewing.image.width} × ${viewing.image.height}`].filter(Boolean).join(' · ')}
+			</p>
+			{#snippet footer()}
+				<div class="image-links">
+					{#if viewing?.image.source_url}<ExternalLink href={viewing.image.source_url} label={t('images.sourcePage')} />{/if}
+					{#if viewing}<ExternalLink href={viewing.url} label={t('images.openOriginal')} />{/if}
+				</div>
+			{/snippet}
+		</Dialog>
+	{/if}
 	{#if cost !== null}<p class="turn-cost">{t('research.turnCost', { amount: formatUsd(cost) })}</p>{/if}
 </section>
 
@@ -271,6 +314,27 @@
 	}
 	.turn-note.failed {
 		color: var(--app-danger);
+	}
+	.image-view {
+		display: flex;
+		justify-content: center;
+	}
+	.image-view img {
+		max-width: 100%;
+		max-height: min(70vh, 900px);
+		object-fit: contain;
+		border-radius: var(--app-radius);
+	}
+	.image-meta {
+		margin-top: 8px;
+		color: var(--app-muted);
+		font-size: var(--app-text-sm);
+	}
+	.image-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		margin-right: auto;
 	}
 	.turn-cost {
 		margin-top: 8px;

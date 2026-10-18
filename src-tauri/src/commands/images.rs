@@ -6,45 +6,7 @@ use std::path::{Path, PathBuf};
 const PREVIEW_LIMIT: usize = 10 * 1024 * 1024;
 const SAVE_LIMIT: usize = 50 * 1024 * 1024;
 
-fn client() -> Result<reqwest::Client, String> {
-    let builder = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-    crate::providers::http::apply_proxy(builder)
-        .build()
-        .map_err(|e| format!("HTTP client error: {e}"))
-}
-
-/// Downloads an image and returns its content type and bytes.
-/// Pages, other non-image responses and files above `limit` are rejected.
-pub(crate) async fn download_image(url: &str, limit: usize) -> Result<(String, Vec<u8>), String> {
-    let resp = client()?
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("Fetch error: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let content_type = resp
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("image/jpeg")
-        .split(';')
-        .next()
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    if !content_type.starts_with("image/") {
-        return Err(format!("Not an image: {content_type}"));
-    }
-    let bytes = resp.bytes().await.map_err(|e| format!("Read error: {e}"))?;
-    if bytes.len() > limit {
-        return Err(format!("Image too large (>{}MB)", limit / 1024 / 1024));
-    }
-    Ok((content_type, bytes.to_vec()))
-}
+use crate::providers::http::images::download_image;
 
 /// Tries the original image first, then the fallback (usually the thumbnail).
 async fn download_with_fallback(

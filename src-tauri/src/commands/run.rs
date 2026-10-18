@@ -703,6 +703,23 @@ pub struct ResearchResultInfo {
     pub turns: Vec<ResearchTurnInfo>,
 }
 
+/// Pictures kept for a research run's answers (without their data).
+#[tauri::command]
+pub async fn get_research_images(
+    state: State<'_, AppState>,
+    run_id: String,
+) -> Result<Vec<crate::storage::repository::ResearchImageRow>, String> {
+    Repository::new(state.db.pool().clone()).get_research_images(&run_id).await.map_err(|e| e.to_string())
+}
+
+/// A kept picture of a research answer as a data URL; None when it was not kept.
+#[tauri::command]
+pub async fn get_research_image(state: State<'_, AppState>, run_id: String, url: String) -> Result<Option<String>, String> {
+    use base64::Engine;
+    let found = Repository::new(state.db.pool().clone()).get_research_image_data(&run_id, &url).await.map_err(|e| e.to_string())?;
+    Ok(found.map(|(media_type, data)| format!("data:{media_type};base64,{}", base64::engine::general_purpose::STANDARD.encode(data))))
+}
+
 #[tauri::command]
 pub async fn get_research_result(
     state: State<'_, AppState>,

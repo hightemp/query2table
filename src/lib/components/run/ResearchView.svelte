@@ -2,7 +2,8 @@
 	import { tooltip } from '$lib/actions/tooltip';
 	import { t } from '$lib/i18n';
 	import { tick } from 'svelte';
-	import type { Accounting, RunAttachment } from '$lib/types';
+	import type { Accounting, ResearchImage, RunAttachment } from '$lib/types';
+	import { getResearchImage, getResearchImages } from '$lib/api/tauri';
 	import type { SourceMode, StopConditions } from '$lib/api/tauri';
 	import type { FollowUpFiles } from './FollowUpBox.svelte';
 	import type { ResearchTurnState } from '$lib/stores/run';
@@ -24,6 +25,7 @@
 		limits = null,
 		attachments = [],
 		sourceMode = 'web',
+		runId = null,
 		onask,
 	}: {
 		turns: ResearchTurnState[];
@@ -35,10 +37,43 @@
 		/** Files of the conversation, by the turn they came with. */
 		attachments?: RunAttachment[];
 		sourceMode?: SourceMode;
+		/** The run, for the pictures kept with its answers. */
+		runId?: string | null;
 		/** Enables follow-up questions. */
 		onask?: (question: string, limits: Required<StopConditions>, files: FollowUpFiles) => Promise<void>;
 	} = $props();
 	let view = $state<HTMLDivElement>();
+
+	// Pictures kept with the answers; asked again when an answer arrives.
+	let images = $state<ResearchImage[] | null>(null);
+	let answered = $derived(turns.filter((turn) => turn.answer).length);
+	$effect(() => {
+		const id = runId;
+		void answered;
+		if (!id) {
+			images = [];
+			return;
+		}
+		let current = true;
+		getResearchImages(id).then(
+			(found) => current && (images = found),
+			() => current && (images = [])
+		);
+		return () => {
+			current = false;
+		};
+	});
+	const copies = new Map<string, Promise<string | null>>();
+	function loadImage(url: string): Promise<string | null> {
+		if (!runId) return Promise.resolve(null);
+		const key = `${runId}\n${url}`;
+		let copy = copies.get(key);
+		if (!copy) {
+			copy = getResearchImage(runId, url).catch(() => null);
+			copies.set(key, copy);
+		}
+		return copy;
+	}
 	let scrolled = $state(false);
 
 	let fullLimits = $derived<Required<StopConditions>>({
@@ -87,6 +122,8 @@
 					showQuestion={i > 0}
 					files={attachments.filter((a) => a.turn_index === turn.index).map((a) => a.attachment)}
 					cost={turns.length > 1 ? (turn.accounting?.spent_usd ?? null) : null}
+					{images}
+					{loadImage}
 				/>
 			</div>
 		{/each}

@@ -10,13 +10,24 @@
 	import { isAttachmentUrl, plainInline, uniqueSlugger } from '$lib/utils/research';
 	import { showAttachment } from '$lib/stores/attachmentPreview';
 	import { markdown } from '$lib/utils/math';
+	import { displayHost } from '$lib/utils/hosts';
+	import type { ResearchImage } from '$lib/types';
 	let {
 		content,
 		idPrefix,
+		images = null,
+		loadImage,
+		onimage,
 	}: {
 		content: string;
 		/** Prefix of heading ids, so a contents list can link to them: `${idPrefix}-${slug}`. */
 		idPrefix?: string;
+		/** Pictures kept for the answer; null while not known yet. Others are never loaded from the web. */
+		images?: ResearchImage[] | null;
+		/** The kept copy of a picture as a data URL. */
+		loadImage?: (url: string) => Promise<string | null>;
+		/** A picture was clicked. */
+		onimage?: (url: string) => void;
 	} = $props();
 	const ownPrefix = $props.id();
 	const prefix = $derived(idPrefix ?? ownPrefix);
@@ -25,6 +36,12 @@
 		const slug = uniqueSlugger();
 		renderer.table = function (token) {
 			return `<div class="markdown-table">${Renderer.prototype.table.call(this, token)}</div>`;
+		};
+		// Pictures become placeholders; the kept copy is put in below, never the web address.
+		renderer.image = function ({ href, text }) {
+			const caption = escapeHtml(text.trim());
+			if (!/^https?:\/\//i.test(href)) return caption;
+			return `<span class="answer-image" data-image="${escapeHtml(href)}" data-caption="${caption}"><span class="answer-image-caption">${caption}</span></span>`;
 		};
 		renderer.heading = function ({ tokens, depth }) {
 			const id = `${prefix}-${slug(plainInline(tokens).trim())}`;
@@ -35,7 +52,85 @@
 			ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|attachment):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
 		});
 	});
+	function escapeHtml(text: string): string {
+		return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+	}
+
 	let root: HTMLDivElement;
+	// Answer pictures: the kept copy with its caption and source, or a link when none was kept.
+	$effect(() => {
+		void html;
+		const known = images;
+		const load = loadImage;
+		let current = true;
+		for (const element of root.querySelectorAll<HTMLElement>('.answer-image[data-image]')) {
+			const url = element.dataset.image ?? '';
+			const caption = element.dataset.caption ?? '';
+			const image = known?.find((item) => item.url === url);
+			if (!known) continue;
+			if (!image || !load) {
+				element.replaceChildren(captionLine(caption || t('research.image'), url, null));
+				element.classList.add('missing');
+				continue;
+			}
+			load(url).then(
+				(src) => {
+					if (!current) return;
+					if (!src) {
+						element.replaceChildren(captionLine(caption || t('research.image'), url, null));
+						element.classList.add('missing');
+						return;
+					}
+					const open = document.createElement('button');
+					open.type = 'button';
+					open.className = 'answer-image-open';
+					open.dataset.open = url;
+					open.setAttribute('aria-label', t('research.openImage', { name: caption || image.title || t('research.image') }));
+					const picture = document.createElement('img');
+					picture.src = src;
+					picture.alt = caption;
+					picture.width = image.width;
+					picture.height = image.height;
+					open.append(picture);
+					element.replaceChildren(open, captionLine(caption, null, image.source_url));
+					element.classList.remove('missing');
+				},
+				() => {}
+			);
+		}
+		return () => {
+			current = false;
+		};
+	});
+
+	/** "Caption · site" with the site linking to the page; a picture without a copy links to itself. */
+	function captionLine(caption: string, link: string | null, page: string | null): HTMLElement {
+		const line = document.createElement('span');
+		line.className = 'answer-image-caption';
+		if (link) {
+			const anchor = document.createElement('a');
+			anchor.href = link;
+			anchor.textContent = caption;
+			line.append(anchor);
+			return line;
+		}
+		line.append(caption);
+		let host = '';
+		try {
+			host = page ? displayHost(new URL(page).hostname) : '';
+		} catch {
+			host = '';
+		}
+		if (page && host) {
+			if (caption) line.append(' · ');
+			const anchor = document.createElement('a');
+			anchor.href = page;
+			anchor.textContent = host;
+			line.append(anchor);
+		}
+		return line;
+	}
+
 	// Formulas arrive as placeholders showing their source; MathJax (loaded on first use) draws them.
 	$effect(() => {
 		void html;
@@ -63,6 +158,11 @@
 	});
 
 	async function open(event: MouseEvent) {
+		const picture = (event.target as Element)?.closest<HTMLElement>('.answer-image-open');
+		if (picture?.dataset.open) {
+			onimage?.(picture.dataset.open);
+			return;
+		}
 		const anchor = (event.target as Element)?.closest('a');
 		if (!anchor) return;
 		const href = anchor.getAttribute('href');
@@ -204,6 +304,38 @@
 		border-left: 3px solid var(--app-border);
 		margin: 16px 0;
 		color: var(--app-muted);
+	}
+	.markdown :global(.answer-image) {
+		display: block;
+		margin: 16px 0;
+		max-width: min(100%, 640px);
+	}
+	.markdown :global(.answer-image-open) {
+		display: block;
+		padding: 0;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius);
+		background: var(--app-subtle);
+		overflow: hidden;
+		cursor: zoom-in;
+	}
+	.markdown :global(.answer-image-open img) {
+		display: block;
+		width: auto;
+		max-width: 100%;
+		max-height: 420px;
+		height: auto;
+		border-radius: 0;
+	}
+	.markdown :global(.answer-image-caption) {
+		display: block;
+		margin-top: 6px;
+		color: var(--app-muted);
+		font-size: var(--app-text-sm);
+		line-height: 1.5;
+	}
+	.markdown :global(.answer-image.missing .answer-image-caption) {
+		margin-top: 0;
 	}
 	.markdown :global(.math-display) {
 		display: block;

@@ -97,6 +97,7 @@ export const test = base.extend({
 				clipboard: '',
 				runAttachments: [] as unknown[],
 				runQueries: [] as unknown[],
+				researchImages: [] as { url: string; source_url: string | null; title: string; width: number; height: number }[],
 				rowSources: null as unknown[] | null,
 				visionDetected: false as boolean | null,
 				dialogFiles: ['/docs/report.pdf', '/docs/prices.xlsx'] as string[] | null,
@@ -247,6 +248,10 @@ export const test = base.extend({
 									url: 'https://example.com',
 								})),
 							};
+						case 'get_research_images':
+							return fixture.researchImages.map((image) => ({ run_id: args.runId, turn_index: 0, media_type: 'image/png', ...image }));
+						case 'get_research_image':
+							return fixture.researchImages.some((image) => image.url === args.url) ? imageData : null;
 						case 'proxy_image':
 							return fixture.delayImage
 								? new Promise<string>((resolve) => fixture.pendingImages.push(resolve))
