@@ -34,15 +34,14 @@ pub fn max_steps(config: &PipelineConfig) -> u32 {
 }
 /// Image results shown to the agent from one image search.
 const IMAGE_RESULTS: usize = 10;
-/// Results whose pictures a model that sees images gets with an image search.
+/// Results whose pictures a model that sees images gets with an image search, at most
+/// "Pictures per request" (`max_inline_images`).
 const IMAGE_PREVIEWS: usize = 6;
 const PREVIEW_SIDE: u32 = 384;
 /// Longest side of an image the agent looks at with `view_image`.
 const VIEW_SIDE: u32 = 1024;
 /// Longest side of the pictures kept with an answer.
 const KEEP_SIDE: u32 = 1600;
-/// Most pictures kept from one answer.
-const ANSWER_IMAGES: usize = 8;
 const IMAGE_BYTES: usize = 15 * 1024 * 1024;
 
 /// An image address the agent came across: in image results, on a page it read, or one it looked at.
@@ -410,7 +409,7 @@ impl ResearchPipeline {
                                     self.record_step(step_index, "image_search", &query, None).await;
                                     let text = format!("Image results:\n{}", format_image_results(&results));
                                     if tools.view {
-                                        let (shown, pictures) = image_previews(&results).await;
+                                        let (shown, pictures) = image_previews(&results, IMAGE_PREVIEWS.min(self.config.max_inline_images)).await;
                                         if shown.is_empty() {
                                             Message::user(text)
                                         } else {
@@ -553,9 +552,10 @@ impl ResearchPipeline {
                 None => self.log("WARN", "research", &format!("Not keeping an image the agent did not find or read: {url}")).await,
             }
         }
-        if wanted.len() > ANSWER_IMAGES {
-            self.log("WARN", "research", &format!("Keeping the first {ANSWER_IMAGES} of {} images of the answer", wanted.len())).await;
-            wanted.truncate(ANSWER_IMAGES);
+        let most = self.config.research_max_images;
+        if wanted.len() > most {
+            self.log("WARN", "research", &format!("Keeping the first {most} of {} images of the answer", wanted.len())).await;
+            wanted.truncate(most);
         }
         let downloads = futures::future::join_all(wanted.iter().map(|(url, found)| {
             let mut sources = vec![url.as_str()];
@@ -682,9 +682,9 @@ fn format_image_results(results: &[crate::providers::search::types::ImageSearchR
 
 /// Small pictures of the first image results for a model that sees images: the result numbers
 /// that have one, and the pictures in the same order.
-async fn image_previews(results: &[crate::providers::search::types::ImageSearchResult]) -> (Vec<usize>, Vec<ImageInput>) {
+async fn image_previews(results: &[crate::providers::search::types::ImageSearchResult], most: usize) -> (Vec<usize>, Vec<ImageInput>) {
     let loaded = futures::future::join_all(
-        results.iter().take(IMAGE_PREVIEWS).map(|r| async move { picture(&[&r.thumbnail_url, &r.image_url], PREVIEW_SIDE, IMAGE_BYTES).await }),
+        results.iter().take(most).map(|r| async move { picture(&[&r.thumbnail_url, &r.image_url], PREVIEW_SIDE, IMAGE_BYTES).await }),
     )
     .await;
     let mut numbers = Vec::new();

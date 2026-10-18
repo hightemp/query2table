@@ -104,6 +104,8 @@ pub struct PipelineConfig {
     pub max_pages_per_query: usize,
     /// Research may search for images and put them in its answers.
     pub research_images: bool,
+    /// Most pictures of one research answer that are downloaded and kept.
+    pub research_max_images: usize,
 }
 
 impl PipelineConfig {
@@ -162,6 +164,7 @@ impl PipelineConfig {
             attachments_dir: crate::attachments::store::AttachmentStore::default_dir(),
             web_search: true,
             research_images: settings.get("research_images").is_none_or(|v| v != "false"),
+            research_max_images: bounded(settings, "research_max_images", 8, 1, 20),
             llm_vision: settings.get("llm_vision").cloned().unwrap_or_else(|| "auto".into()),
             vision_model: settings.get("vision_model").map(|m| m.trim().to_string()).unwrap_or_default(),
             image_compare_max: bounded(settings, "image_compare_max", 30, 0, 200),
@@ -1098,6 +1101,23 @@ mod settings_tests {
         let config = PipelineConfig::from_settings(&odd);
         assert_eq!((config.image_compare_max, config.max_file_fragments, config.max_inline_images), (200, 400, 1));
         assert_eq!(config.context, defaults.context);
+    }
+
+    #[test]
+    fn research_images_come_from_settings() {
+        let defaults = PipelineConfig::from_settings(&HashMap::new());
+        assert!(defaults.research_images);
+        assert_eq!(defaults.research_max_images, 8);
+        let config = PipelineConfig::from_settings(&HashMap::from([
+            ("research_images".to_string(), "false".to_string()),
+            ("research_max_images".to_string(), "3".to_string()),
+        ]));
+        assert!(!config.research_images);
+        assert_eq!(config.research_max_images, 3);
+        let odd = PipelineConfig::from_settings(&HashMap::from([("research_max_images".to_string(), "0".to_string())]));
+        assert_eq!(odd.research_max_images, 1);
+        let odd = PipelineConfig::from_settings(&HashMap::from([("research_max_images".to_string(), "500".to_string())]));
+        assert_eq!(odd.research_max_images, 20);
     }
 
     #[test]

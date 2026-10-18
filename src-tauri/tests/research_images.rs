@@ -202,6 +202,39 @@ async fn the_agent_finds_looks_at_and_keeps_images() {
 }
 
 #[tokio::test]
+async fn previews_and_kept_images_follow_their_limits() {
+    let server = MockServer::start().await;
+    let u = server.uri();
+    let mut results = Vec::new();
+    for name in ["a", "b", "c"] {
+        serve(&server, &format!("/img/{name}.png"), png(10, 200, 10), "image/png").await;
+        results.push(ImageSearchResult {
+            image_url: format!("{u}/img/{name}.png"),
+            thumbnail_url: format!("{u}/img/{name}.png"),
+            title: format!("Picture {name}"),
+            source_url: format!("{u}/page-{name}"),
+            width: None,
+            height: None,
+        });
+    }
+    let answer = format!("![A]({u}/img/a.png) ![B]({u}/img/b.png) ![C]({u}/img/c.png)");
+    script(&server, &[json!({"action": "image_search", "query": "pictures"}), json!({"action": "answer", "markdown": answer})]).await;
+    let repo = repo().await;
+    let settings = [("llm_vision", "on"), ("max_inline_images", "2"), ("research_max_images", "1")];
+    let (pipeline, _c) = ResearchPipeline::new("r4".into(), "Pictures".into(), config(&server, &settings), repo.clone(), None);
+    assert_eq!(pipeline.with_search(search(results)).run().await.unwrap(), PipelineState::Completed);
+
+    // Providers may take only a few pictures per message: "Pictures per request" applies.
+    let (text, previews) = last_message(&completions(&server).await[1]);
+    assert_eq!(previews, 2);
+    assert!(text.contains("Pictures of results 1, 2 follow"), "{text}");
+    let kept: Vec<String> = repo.get_research_images("r4").await.unwrap().into_iter().map(|k| k.url).collect();
+    assert_eq!(kept, vec![format!("{u}/img/a.png")]);
+    let logs = repo.get_run_logs("r4", 100).await.unwrap();
+    assert!(logs.iter().any(|l| l.message == "Keeping the first 1 of 3 images of the answer"), "{logs:?}");
+}
+
+#[tokio::test]
 async fn a_blind_model_gets_image_search_without_looking() {
     let server = MockServer::start().await;
     let u = server.uri();

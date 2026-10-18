@@ -482,6 +482,7 @@ impl Database {
             ("max_pdf_text_chars", "500000"),
             // Research
             ("research_images", "true"),
+            ("research_max_images", "8"),
             // Quality
             ("precision_recall", "balanced"),
             ("evidence_strictness", "moderate"),

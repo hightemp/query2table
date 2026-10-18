@@ -798,6 +798,8 @@ export const en = {
 	"settings.field.openrouter_model.description": "Search and select a model from OpenRouter.",
 	"settings.field.research_images": "Images in answers",
 	"settings.field.research_images.description": "The research agent may search for images and put the fitting ones in its answer; they are kept with the run. Models that see images look at them first.",
+	"settings.field.research_max_images": "Images per answer",
+	"settings.field.research_max_images.description": "Most pictures of one research answer that are downloaded and kept with the run. Further pictures show as links.",
 	"settings.field.search_fallback_enabled": "Use the other provider as backup",
 	"settings.field.search_fallback_enabled.description": "When a search fails, try the other provider if it has a key.",
 	"settings.field.search_provider": "Search provider",

@@ -92,6 +92,7 @@ test('Images in answers can be turned off in Settings', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: 'Research', level: 3 })).toBeAttached();
 	const images = page.getByRole('switch', { name: 'Images in answers' });
 	await expect(images).toBeChecked();
+	await expect(page.getByRole('spinbutton', { name: 'Images per answer' })).toHaveValue('8');
 	await images.click();
 	await expect(images).not.toBeChecked();
 });

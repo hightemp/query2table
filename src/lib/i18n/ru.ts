@@ -800,6 +800,8 @@ export const ru: Record<MessageKey, Message> = {
 	"settings.field.openrouter_model.description": "Найдите и выберите модель OpenRouter.",
 	"settings.field.research_images": "Картинки в ответах",
 	"settings.field.research_images.description": "Агент исследования может искать картинки и вставлять подходящие в ответ; они сохраняются вместе с запуском. Модели, которые видят изображения, сначала их рассматривают.",
+	"settings.field.research_max_images": "Картинок в одном ответе",
+	"settings.field.research_max_images.description": "Сколько картинок одного ответа исследования скачивать и сохранять вместе с запуском. Остальные показываются ссылками.",
 	"settings.field.search_fallback_enabled": "Использовать второй провайдер как запасной",
 	"settings.field.search_fallback_enabled.description": "Если поиск не удался, попробовать второй провайдер, если для него есть ключ.",
 	"settings.field.search_provider": "Поисковый провайдер",

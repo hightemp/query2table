@@ -122,6 +122,7 @@ export const FIELDS: FieldDef[] = [
 	{ key: 'max_pdf_text_chars', section: 'runs', group: 'Content', kind: 'number', default: '500000', min: 1000, max: 5000000, step: 1, unit: 'chars', advanced: true },
 	{ key: 'max_file_fragments', section: 'runs', group: 'Content', kind: 'number', default: '400', min: 10, max: 5000, step: 1, advanced: true, keywords: 'attached files table rows cost' },
 	{ key: 'research_images', section: 'runs', group: 'Research', kind: 'switch', default: 'true', keywords: 'pictures photos images answer' },
+	{ key: 'research_max_images', section: 'runs', group: 'Research', kind: 'number', default: '8', min: 1, max: 20, step: 1, keywords: 'pictures photos images answer kept storage' },
 	{ key: 'attachment_max_mb', section: 'runs', group: 'Content', kind: 'number', default: '50', min: 1, max: 500, step: 1, unit: 'MB', advanced: true, keywords: 'attach files upload size' },
 	// Application
 	{ key: 'notifications_enabled', section: 'app', group: 'Notifications', kind: 'switch', default: 'true' },
