@@ -168,7 +168,7 @@ pub async fn save_images(
             let saved = match download_with_fallback(&item.url, item.fallback_url.as_deref(), SAVE_LIMIT).await {
                 Ok((content_type, bytes)) => {
                     let name = format!("{}.{}", safe_file_stem(&item.name), extension_for(&content_type));
-                    crate::utils::shared_storage::save(&app, crate::utils::shared_storage::SharedFolder::Pictures, &name, &bytes)
+                    crate::utils::android_files::save(&app, crate::utils::android_files::SharedFolder::Pictures, &name, &bytes)
                 }
                 Err(error) => Err(error),
             };

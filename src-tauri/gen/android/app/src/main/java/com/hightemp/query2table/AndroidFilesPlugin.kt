@@ -2,7 +2,9 @@ package com.hightemp.query2table
 
 import android.Manifest
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.ContentValues
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
 import android.os.Build
@@ -10,6 +12,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -27,18 +30,26 @@ class CreateArgs {
 }
 
 @InvokeArg
+class ViewArgs {
+  lateinit var path: String
+  lateinit var mimeType: String
+}
+
+@InvokeArg
 class ScanArgs {
   lateinit var path: String
   lateinit var mimeType: String
 }
 
 /**
- * Creates files in the shared Pictures/Query2Table and Download/Query2Table folders, where the
- * Gallery and Files apps show them. Returns where to write (`uri`: a content address, or a plain
- * path before Android 10) and the folder and name to show (`path`); Rust writes the bytes.
+ * File work Android does not allow through paths.
+ * - `create`: a file in the shared Pictures/Query2Table or Download/Query2Table folder, where the
+ *   Gallery and Files apps show it. Returns where to write (`uri`: a content address, or a plain
+ *   path before Android 10) and the folder and name to show (`path`); Rust writes the bytes.
+ * - `view`: opens a file of the app's cache in another app, through the FileProvider.
  */
 @TauriPlugin
-class SharedStoragePlugin(private val activity: Activity) : Plugin(activity) {
+class AndroidFilesPlugin(private val activity: Activity) : Plugin(activity) {
   private val subfolder = "Query2Table"
 
   @Command
@@ -81,6 +92,24 @@ class SharedStoragePlugin(private val activity: Activity) : Plugin(activity) {
       }
     } catch (e: Exception) {
       invoke.reject(e.message ?: "Could not create the file")
+    }
+  }
+
+  @Command
+  fun view(invoke: Invoke) {
+    val args = invoke.parseArgs(ViewArgs::class.java)
+    try {
+      val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", File(args.path))
+      val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, args.mimeType)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+      activity.startActivity(intent)
+      invoke.resolve()
+    } catch (e: ActivityNotFoundException) {
+      invoke.reject("No app on this phone opens ${args.mimeType} files.")
+    } catch (e: Exception) {
+      invoke.reject(e.message ?: "Could not open the file")
     }
   }
 

@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 use tauri::State;
+#[cfg(not(target_os = "android"))]
 use tauri_plugin_opener::OpenerExt;
 
 use crate::attachments::retrieve;
@@ -121,13 +122,40 @@ pub async fn open_attachment(app: tauri::AppHandle, state: State<'_, AppState>, 
         .await
         .map_err(|e| e.to_string())?
         .ok_or("The file is no longer available")?;
-    let folder = std::env::temp_dir().join("query2table-files").join(&id);
-    tokio::fs::create_dir_all(&folder).await.map_err(|e| e.to_string())?;
-    let copy = folder.join(&file_name);
+    // Another app gets a copy under the original name. On Android it lives in the app's cache,
+    // which the FileProvider shares; the system temp folder is not writable there.
+    #[cfg(target_os = "android")]
+    let base = {
+        use tauri::Manager;
+        app.path().app_cache_dir().map_err(|e| e.to_string())?
+    };
+    #[cfg(not(target_os = "android"))]
+    let base = std::env::temp_dir();
+    let copy = opened_copy_path(&base, &id, &file_name);
+    if let Some(folder) = copy.parent() {
+        tokio::fs::create_dir_all(folder).await.map_err(|e| e.to_string())?;
+    }
     tokio::fs::copy(&stored, &copy).await.map_err(|e| format!("Could not open the file: {e}"))?;
+    #[cfg(target_os = "android")]
+    {
+        let ext = file_name.rsplit_once('.').map(|(_, ext)| ext).unwrap_or("");
+        let mime = match crate::utils::android_files::mime_for_extension(ext) {
+            // Unknown types let the user pick any app.
+            "application/octet-stream" => "*/*",
+            mime => mime,
+        };
+        crate::utils::android_files::view(&app, &copy, mime).map_err(|e| format!("Could not open the file: {e}"))
+    }
+    #[cfg(not(target_os = "android"))]
     app.opener()
         .open_path(copy.to_string_lossy().into_owned(), None::<&str>)
         .map_err(|e| format!("Could not open the file: {e}"))
+}
+
+/// Where an attachment is copied to be opened in another app: its own folder under `base`, so the
+/// copy keeps the original name.
+fn opened_copy_path(base: &std::path::Path, id: &str, file_name: &str) -> std::path::PathBuf {
+    base.join("query2table-files").join(id).join(file_name)
 }
 
 #[derive(Debug, Serialize)]
@@ -178,6 +206,12 @@ pub async fn get_vision_status(
 #[cfg(test)]
 mod body_tests {
     use tauri::ipc::InvokeBody;
+
+    #[test]
+    fn opened_copies_keep_the_name_in_a_folder_of_their_own() {
+        let path = super::opened_copy_path(std::path::Path::new("/cache"), "att1", "Report 2025.pdf");
+        assert_eq!(path, std::path::Path::new("/cache/query2table-files/att1/Report 2025.pdf"));
+    }
 
     #[test]
     fn file_content_comes_raw_or_in_base64() {

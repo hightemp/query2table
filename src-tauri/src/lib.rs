@@ -111,7 +111,7 @@ pub fn run() {
     let builder = tauri::Builder::default();
     // Android: saving several files at once into the shared Pictures and Download folders.
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(utils::shared_storage::init());
+    let builder = builder.plugin(utils::android_files::init());
 
     builder
         .plugin(tauri_plugin_opener::init())

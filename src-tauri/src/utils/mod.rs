@@ -5,4 +5,4 @@ pub mod text;
 pub mod i18n;
 pub mod paths;
 pub mod files;
-pub mod shared_storage;
+pub mod android_files;
