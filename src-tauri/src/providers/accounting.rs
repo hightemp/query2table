@@ -19,6 +19,18 @@ pub struct PriceQuote {
     pub credit_based: bool,
 }
 impl PriceQuote {
+    /// Models served on the user's machine (local Ollama, LM Studio, llama.cpp) cost nothing.
+    pub fn local() -> Self {
+        Self {
+            input_per_million: 0.0,
+            output_per_million: 0.0,
+            cached_input_per_million: None,
+            cache_write_per_million: None,
+            per_request: 0.0,
+            source: "Local server".into(),
+            credit_based: false,
+        }
+    }
     pub fn valid(&self) -> bool {
         [
             Some(self.input_per_million),
@@ -132,8 +144,10 @@ pub fn validate_pricing_setting(key: &str, value: &str) -> Result<(), String> {
             for (scope, quote) in quotes {
                 let (provider, endpoint, model): (String, String, String) =
                     serde_json::from_str(&scope).map_err(|_| invalid())?;
-                if !["openrouter", "ollama", "ollama_cloud", "openai_compatible"]
+                let known = ["openrouter", "ollama", "ollama_cloud", "openai_compatible"]
                     .contains(&provider.as_str())
+                    || crate::providers::llm::presets::find(&provider).is_some();
+                if !known
                     || endpoint.trim().is_empty()
                     || model.trim().is_empty()
                     || !quote.valid()

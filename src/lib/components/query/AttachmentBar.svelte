@@ -20,6 +20,7 @@
 	import { refreshVisionStatus, visionStatus } from '$lib/stores/vision';
 	import { errorText } from '$lib/utils/errors';
 	import { isAndroid } from '$lib/utils/platform';
+	import { modelKey } from '$lib/settings/llmProviders';
 
 	let {
 		draft = queryFiles,
@@ -41,7 +42,7 @@
 	let note = $derived(privacyNote(provider, $settings));
 	// Recheck who reads images whenever the saved model settings change.
 	let visionKey = $derived(
-		['llm_provider', 'openrouter_model', 'ollama_model', 'ollama_cloud_model', 'openai_model', 'llm_vision', 'vision_model']
+		['llm_provider', modelKey(provider), 'llm_vision', 'vision_model']
 			.map((key) => $settings.get(key) ?? '')
 			.join('|')
 	);

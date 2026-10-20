@@ -73,6 +73,7 @@
 		type LlmProvider as LlmProviderId,
 	} from '$lib/settings/schema';
 	import { configurationProblems } from '$lib/utils/runConfig';
+	import { apiKeyKey, backendOf, endpointOf, modelKey as modelKeyOf, presetOf, providerName, urlKey } from '$lib/settings/llmProviders';
 	import { validPricingOverrides } from '$lib/utils/pricing';
 	import { debugUi } from '$lib/utils/diagnostics';
 	import { errorText, presentError } from '$lib/utils/errors';
@@ -132,20 +133,9 @@
 	let errors = $derived(validationErrors(settingsMap));
 	let problems = $derived(configurationProblems(settingsMap));
 	let provider = $derived(settingsMap.get('llm_provider') || 'openrouter');
-	let modelKey = $derived(
-		({ openrouter: 'openrouter_model', ollama: 'ollama_model', ollama_cloud: 'ollama_cloud_model', openai_compatible: 'openai_model' } as Record<string, string>)[provider] ??
-			'openrouter_model'
-	);
+	let modelKey = $derived(modelKeyOf(provider));
 	let activeModel = $derived(settingsMap.get(modelKey) ?? '');
-	let activeEndpoint = $derived(
-		provider === 'openrouter'
-			? 'https://openrouter.ai/api/v1'
-			: provider === 'ollama'
-				? (settingsMap.get('ollama_url') ?? 'http://localhost:11434')
-				: provider === 'ollama_cloud'
-					? (settingsMap.get('ollama_cloud_url') ?? 'https://ollama.com')
-					: (settingsMap.get('openai_base_url') ?? 'http://localhost:8080/v1')
-	);
+	let activeEndpoint = $derived(endpointOf(provider, settingsMap));
 	let isGptOss = $derived(['ollama', 'ollama_cloud'].includes(provider) && /(?:^|\/)gpt-oss(?:[:\-]|$)/i.test(activeModel));
 	let invalidReasoning = $derived(isGptOss && ['off', 'max'].includes(settingsMap.get('llm_reasoning_effort') ?? 'auto'));
 	let invalidPricing = $derived(!validPricingOverrides(settingsMap.get('llm_pricing_overrides') ?? '{}'));
@@ -431,19 +421,32 @@
 		};
 	});
 
-	const pickerProviders = ['openrouter_model', 'ollama_model', 'ollama_cloud_model', 'openai_model', 'vision_model'];
 	/** The model for images is picked from the current provider's catalog. */
-	function pickerProvider(field: FieldDef) {
-		return (field.key === 'vision_model' ? provider : (field.provider ?? 'openrouter')) as LlmProviderId;
+	function pickerProvider(field: FieldDef): LlmProviderId {
+		return field.key === 'vision_model' ? provider : (field.provider ?? 'openrouter');
 	}
 
 	// --- Images: who reads pictures and scans with the values on the page ---
 	let vision = $state<VisionStatus | null>(null);
 	let visionInputs = $derived(
 		JSON.stringify(
-			['llm_provider', modelKey, 'ollama_url', 'ollama_cloud_url', 'ollama_cloud_api_key', 'openai_base_url', 'openai_api_key', 'openrouter_api_key', 'llm_vision', 'vision_model'].map(
-				(key) => [key, settingsMap.get(key) ?? '']
-			)
+			[
+				'llm_provider',
+				modelKey,
+				urlKey(provider),
+				apiKeyKey(provider),
+				`${provider}_json_mode`,
+				'ollama_url',
+				'ollama_cloud_url',
+				'ollama_cloud_api_key',
+				'openai_base_url',
+				'openai_api_key',
+				'openrouter_api_key',
+				'llm_vision',
+				'vision_model',
+			]
+				.filter((key): key is string => !!key)
+				.map((key) => [key, settingsMap.get(key) ?? ''])
 		)
 	);
 	$effect(() => {
@@ -456,8 +459,7 @@
 		}, 300);
 		return () => clearTimeout(timer);
 	});
-	const providerTitle = (id: string) =>
-		({ openrouter: 'OpenRouter', ollama: 'Ollama', ollama_cloud: 'Ollama Cloud', openai_compatible: t('models.server') })[id] ?? id;
+	const providerTitle = providerName;
 </script>
 
 <svelte:window
@@ -495,23 +497,17 @@
 		onchange={(next) => handleChange(field.key, next)}
 	>
 		{#snippet control()}
-			{#if pickerProviders.includes(field.key)}
+			{#if field.kind === 'model'}
 				{@const picker = pickerProvider(field)}
+				{@const keyField = apiKeyKey(picker)}
 				<LlmModelPicker
 					id={field.key}
-					provider={picker}
+					provider={backendOf(picker)}
+					preset={presetOf(picker)?.id}
 					value={value(field)}
-					baseUrl={picker === 'ollama'
-						? value('ollama_url') || 'http://localhost:11434'
-						: picker === 'openai_compatible'
-							? value('openai_base_url') || 'http://localhost:8080/v1'
-							: value('ollama_cloud_url') || 'https://ollama.com'}
-					apiKey={picker === 'openrouter'
-						? value('openrouter_api_key')
-						: picker === 'openai_compatible'
-							? value('openai_api_key')
-							: value('ollama_cloud_api_key')}
-					allowCustom={picker === 'ollama' || picker === 'openai_compatible' || field.key === 'vision_model'}
+					baseUrl={endpointOf(picker, settingsMap)}
+					apiKey={keyField ? value(keyField) : ''}
+					allowCustom={['ollama', 'openai_compatible'].includes(backendOf(picker)) || field.key === 'vision_model'}
 					onchange={(model) => handleChange(field.key, model)}
 				/>
 			{/if}

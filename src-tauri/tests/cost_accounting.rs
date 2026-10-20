@@ -488,3 +488,47 @@ async fn a_follow_up_records_which_question_an_unreadable_reply_belonged_to() {
     let issue:query2table_lib::providers::llm::LlmIssue=serde_json::from_str(&issues[0]).unwrap();
     assert_eq!((issue.code.as_str(),issue.stage.as_deref(),issue.outcome.as_deref(),issue.turn_index),("invalid_response",Some("research"),Some("continued"),Some(1)));
 }
+
+#[tokio::test]
+async fn local_ollama_models_cost_nothing() {
+    use query2table_lib::providers::llm::manager::LlmBackend;
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "message": {"content": "{\"ok\":true}"}, "model": "llama3",
+            "prompt_eval_count": 1_000_000, "eval_count": 1_000_000
+        })))
+        .mount(&server)
+        .await;
+    let budget = BudgetTracker::new(100.0);
+    let manager = LlmManager::from_config(LlmConfig {
+        backend: LlmBackend::Ollama,
+        ollama_url: server.uri(),
+        ollama_model: "llama3".into(),
+        ..Default::default()
+    })
+    .unwrap()
+    .with_accounting(budget.observer());
+    manager.complete(vec![Message::user("test")], true).await.unwrap();
+    let stats = budget.snapshot();
+    assert_eq!((stats.unpriced_calls, stats.estimated_usd), (0, 0.0));
+    assert_eq!(stats.breakdown[0].pricing.as_ref().map(|p| p.source.as_str()), Some("Local server"));
+}
+
+#[tokio::test]
+async fn cloud_models_through_local_ollama_are_not_free() {
+    use query2table_lib::providers::llm::{ollama::OllamaProvider, LlmProvider};
+    let local = OllamaProvider::new("http://localhost:11434".into()).unwrap();
+    let at = chrono::Utc::now();
+    let measured = LlmUsage { prompt_tokens: Some(10), completion_tokens: Some(5), ..Default::default() };
+    assert_eq!(local.pricing("llama3", &measured, at).await.map(|p| p.source), Some("Local server".into()));
+    // A cloud model the local server forwards is billed by ollama.com.
+    assert!(local.pricing("gpt-oss:120b-cloud", &measured, at).await.map(|p| p.source) != Some("Local server".into()));
+    // Answered by another Ollama server: not known to be free.
+    let elsewhere = LlmUsage { remote_host: Some("http://gpu-box:11434".into()), ..measured.clone() };
+    assert!(local.pricing("llama3", &elsewhere, at).await.is_none());
+    // A cloud provider at a custom address is never treated as local.
+    let cloud = OllamaProvider::cloud("https://cloud.example.com".into(), "key".into()).unwrap();
+    assert!(cloud.pricing("gpt-oss:120b", &measured, at).await.is_none());
+}

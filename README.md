@@ -107,7 +107,7 @@ On Android, open the downloaded APK and allow installing apps from your browser 
 - **Automatic schema inference** — the app proposes table columns; you confirm or edit before execution
 - **Multi-provider search** — Brave Search + Serper with automatic fallback
 - **Multilingual query expansion** — searches across languages and geographies
-- **LLM-powered extraction** — OpenRouter (cloud) or Ollama (local) for entity extraction
+- **LLM-powered extraction** — OpenRouter, Ollama (local or Cloud), DeepSeek, Groq, Mistral, Gemini, xAI, OpenAI, LM Studio, llama.cpp, or any OpenAI-compatible address
 - **Streaming results** — rows appear in a live table as they're found
 - **PDF extraction** — automatically detects and extracts text from PDF documents found in search results
 - **Image search mode** — a dedicated pipeline that searches images instead of text: generates 6–12 diverse query variations (LLM or static fallbacks), executes image searches via Brave / Serper, then ranks every result with an LLM using a strict relevance rubric (0.0–1.0); images scoring below 0.7 are dropped, the rest are stored sorted by score with real-time per-image UI updates; budget, cancellation, and stop conditions (count / cost / time) are respected throughout

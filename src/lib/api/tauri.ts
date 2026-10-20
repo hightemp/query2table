@@ -368,8 +368,9 @@ export async function listOllamaModels(baseUrl: string): Promise<string[]> {
 	return invoke('list_ollama_models', { baseUrl });
 }
 
-export async function listOpenAiModels(baseUrl: string, apiKey: string): Promise<string[]> {
-	return invoke('list_openai_models', { baseUrl, apiKey });
+/** Models of an OpenAI-compatible server; `provider` names a preset with catalog quirks. */
+export async function listOpenAiModels(baseUrl: string, apiKey: string, provider?: string): Promise<string[]> {
+	return invoke('list_openai_models', { baseUrl, apiKey, provider: provider ?? null });
 }
 
 /** Writes settings without API keys or proxies to a JSON file. */

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n';
 	import type { Accounting } from '$lib/types';
+	import { presetOf } from '$lib/settings/llmProviders';
 	let {
 		accounting = null,
 		legacy = null,
@@ -41,7 +42,7 @@
 			{#if accounting.missing_usage_calls}<p>{t('cost.missingUsage', { count: accounting.missing_usage_calls })}</p>{/if}
 			{#each accounting.breakdown as line}
 				<div class="cost-line">
-					<strong>{line.provider} · {line.model}</strong
+					<strong>{presetOf(line.provider)?.name ?? line.provider} · {line.model}</strong
 					>{#if line.requested_model && line.requested_model !== line.model}<span
 							>{t('cost.requestedAs', { model: line.requested_model })}</span
 						>{/if}<span

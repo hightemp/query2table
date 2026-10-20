@@ -9,6 +9,7 @@ use tracing::{info, warn};
 use super::ollama::OllamaProvider;
 use super::openai_compatible::OpenAiCompatibleProvider;
 use super::openrouter::OpenRouterProvider;
+use super::presets::{self, Preset};
 use super::types::*;
 use crate::utils::retry::{retry_with_backoff, RetryAction, RetryConfig};
 
@@ -36,6 +37,9 @@ pub struct LlmConfig {
     pub openai_api_key: String,
     pub openai_model: String,
     pub openai_json_mode: bool,
+    /// A service run through the OpenAI-compatible client (DeepSeek, LM Studio…); its address,
+    /// key and model are in the `openai_*` fields. None: "Custom address".
+    pub preset: Option<&'static Preset>,
     pub temperature: f32,
     pub max_tokens: u32,
     pub reasoning_effort: ReasoningEffort,
@@ -57,6 +61,7 @@ impl Default for LlmConfig {
             openai_api_key: String::new(),
             openai_model: String::new(),
             openai_json_mode: true,
+            preset: None,
             temperature: 0.2,
             max_tokens: 4096,
             reasoning_effort: ReasoningEffort::Auto,
@@ -95,7 +100,7 @@ impl LlmManager {
                     LlmBackend::OpenRouter => ("openrouter", &config.openrouter_model),
                     LlmBackend::Ollama => ("ollama", &config.ollama_model),
                     LlmBackend::OllamaCloud => ("ollama_cloud", &config.ollama_cloud_model),
-                    LlmBackend::OpenAiCompatible => ("openai_compatible", &config.openai_model),
+                    LlmBackend::OpenAiCompatible => (config.preset.map_or("openai_compatible", |p| p.id), &config.openai_model),
                 };
                 let _ = sender.send(LlmIssue {
                     code: error.code().into(),
@@ -132,11 +137,21 @@ impl LlmManager {
                 config.ollama_cloud_url.clone(),
                 config.ollama_cloud_api_key.clone(),
             )?),
-            LlmBackend::OpenAiCompatible => Arc::new(OpenAiCompatibleProvider::new(
-                config.openai_base_url.clone(),
-                config.openai_api_key.clone(),
-                config.openai_json_mode,
-            )?),
+            LlmBackend::OpenAiCompatible => {
+                if let Some(preset) = config.preset.filter(|p| !p.local) {
+                    if config.openai_api_key.trim().is_empty() {
+                        return Err(LlmError::NotConfigured(format!("{} API key is required", preset.name)));
+                    }
+                }
+                Arc::new(
+                    OpenAiCompatibleProvider::new(
+                        config.openai_base_url.clone(),
+                        config.openai_api_key.clone(),
+                        config.openai_json_mode,
+                    )?
+                    .with_preset(config.preset),
+                )
+            }
         };
 
         let model = match config.backend {
@@ -204,9 +219,10 @@ impl LlmManager {
             LlmBackend::OpenRouter => ("openrouter", "https://openrouter.ai/api/v1"),
             LlmBackend::Ollama => ("ollama", self.config.ollama_url.as_str()),
             LlmBackend::OllamaCloud => ("ollama_cloud", self.config.ollama_cloud_url.as_str()),
-            LlmBackend::OpenAiCompatible => {
-                ("openai_compatible", self.config.openai_base_url.as_str())
-            }
+            LlmBackend::OpenAiCompatible => (
+                self.config.preset.map_or("openai_compatible", |p| p.id),
+                self.config.openai_base_url.as_str(),
+            ),
         };
         let key = serde_json::to_string(&(
             provider,
@@ -493,11 +509,29 @@ impl LlmManager {
 
     /// Build LlmConfig from settings stored in the database.
     pub fn config_from_settings(settings: &std::collections::HashMap<String, String>) -> LlmConfig {
-        let backend = match settings.get("llm_provider").map(|s| s.as_str()) {
+        let provider = settings.get("llm_provider").map(|s| s.as_str());
+        let preset = provider.and_then(presets::find);
+        let backend = match provider {
             Some("ollama") => LlmBackend::Ollama,
             Some("ollama_cloud") => LlmBackend::OllamaCloud,
             Some("openai_compatible") => LlmBackend::OpenAiCompatible,
+            _ if preset.is_some() => LlmBackend::OpenAiCompatible,
             _ => LlmBackend::OpenRouter,
+        };
+        // A preset fills the OpenAI-compatible connection from its own settings.
+        let compatible = |field: &str| match preset {
+            Some(preset) => format!("{}_{field}", preset.id),
+            None => format!("openai_{field}"),
+        };
+        let base_url = match preset {
+            Some(preset) if !preset.local => preset.url.to_string(),
+            Some(preset) => settings
+                .get(&compatible("url"))
+                .map(|url| url.trim())
+                .filter(|url| !url.is_empty())
+                .unwrap_or(preset.url)
+                .to_string(),
+            None => settings.get("openai_base_url").cloned().unwrap_or_else(|| LlmConfig::default().openai_base_url),
         };
 
         let defaults = LlmConfig::default();
@@ -535,16 +569,14 @@ impl LlmManager {
                 .get("ollama_cloud_model")
                 .cloned()
                 .unwrap_or(defaults.ollama_cloud_model),
-            openai_base_url: settings
-                .get("openai_base_url")
-                .cloned()
-                .unwrap_or(defaults.openai_base_url),
-            openai_api_key: settings.get("openai_api_key").cloned().unwrap_or_default(),
-            openai_model: settings.get("openai_model").cloned().unwrap_or_default(),
+            openai_base_url: base_url,
+            openai_api_key: settings.get(&compatible("api_key")).cloned().unwrap_or_default(),
+            openai_model: settings.get(&compatible("model")).cloned().unwrap_or_default(),
             openai_json_mode: settings
-                .get("openai_json_mode")
+                .get(&compatible("json_mode"))
                 .map(|v| v != "false")
-                .unwrap_or(true),
+                .unwrap_or(preset.is_none_or(|preset| preset.json_mode)),
+            preset,
             temperature: settings
                 .get("llm_temperature")
                 .and_then(|v| v.parse().ok())

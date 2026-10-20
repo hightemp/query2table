@@ -8,6 +8,7 @@
 	} from '$lib/api/tauri';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import { errorText } from '$lib/utils/errors';
+	import { providerName } from '$lib/settings/llmProviders';
 
 	let {
 		id,
@@ -15,6 +16,7 @@
 		provider,
 		baseUrl = '',
 		apiKey,
+		preset,
 		allowCustom = false,
 		onchange,
 	}: {
@@ -23,6 +25,8 @@
 		provider: 'ollama_cloud' | 'openrouter' | 'ollama' | 'openai_compatible';
 		baseUrl?: string;
 		apiKey: string;
+		/** A preset run by the OpenAI-compatible client: its name and catalog quirks. */
+		preset?: string;
 		/** Local servers: typed text is the model name, the list only suggests. */
 		allowCustom?: boolean;
 		onchange: (model: string) => void;
@@ -64,9 +68,7 @@
 		};
 	});
 	const listId = $derived(`${id}-options`);
-	const providerLabel = $derived(
-		{ openrouter: 'OpenRouter', ollama_cloud: 'Ollama Cloud', ollama: 'Ollama', openai_compatible: t('models.server') }[provider]
-	);
+	const providerLabel = $derived(providerName(preset ?? provider));
 	const filtered = $derived(
 		models.filter(
 			(model) => !filtering || model.toLowerCase().includes(filter.trim().toLowerCase())
@@ -75,6 +77,7 @@
 
 	$effect(() => {
 		const backend = provider;
+		const presetId = preset;
 		const url = baseUrl.trim();
 		const key = apiKey.trim();
 		void reload;
@@ -92,7 +95,7 @@
 						: backend === 'ollama'
 							? await listOllamaModels(url)
 							: backend === 'openai_compatible'
-								? await listOpenAiModels(url, key)
+								? await listOpenAiModels(url, key, presetId)
 								: await listOllamaCloudModels(url, key);
 				if (current) models = result;
 			} catch (e) {

@@ -330,6 +330,13 @@ impl LlmProvider for OllamaProvider {
         } else {
             self.cloud && official
         };
+        // A model the local server runs itself. Cloud models reached through it (`:cloud`,
+        // or answered by another host) and other cloud addresses stay unknown without a rate.
+        let model_name = usage.remote_model.as_deref().or(usage.model.as_deref()).unwrap_or(model);
+        let cloud_name = [model, model_name].iter().any(|name| name.ends_with(":cloud") || name.ends_with("-cloud"));
+        if !self.cloud && usage.remote_host.is_none() && !cloud_name {
+            return Some(crate::providers::accounting::PriceQuote::local());
+        }
         if !cloud {
             return None;
         }

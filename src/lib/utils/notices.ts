@@ -1,6 +1,7 @@
 import { t, type MessageKey } from '$lib/i18n';
 import type { Accounting, LlmIssueEvent, LlmIssueOutcome } from '$lib/types';
 import { presentError } from '$lib/utils/errors';
+import { providerName } from '$lib/settings/llmProviders';
 
 export type NoticeLevel = 'info' | 'warning' | 'error';
 
@@ -220,7 +221,7 @@ function costNotices(accounting: Accounting | null): Notice[] {
 			if (line.unpriced_calls > 0)
 				totals.set(line.provider, (totals.get(line.provider) ?? 0) + line.unpriced_calls);
 		}
-		const providers = [...totals].map(([provider, n]) => `${PROVIDER_NAMES[provider] ?? provider}: ${n}`).join(' · ');
+		const providers = [...totals].map(([provider, n]) => `${PROVIDER_NAMES[provider] ?? providerName(provider)}: ${n}`).join(' · ');
 		// Search prices live in the Search section, model rates under LLM.
 		const section = [...totals.keys()].some((p) => !['brave', 'serper'].includes(p)) ? 'llm' : 'search';
 		notices.push({

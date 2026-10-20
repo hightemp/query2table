@@ -3,6 +3,7 @@
 	import NumberInput from '$lib/components/common/NumberInput.svelte';
 	import Checkbox from '$lib/components/common/Checkbox.svelte';
 	import { pricingScope } from '$lib/utils/pricing';
+	import { providerName } from '$lib/settings/llmProviders';
 	let {
 		provider,
 		endpoint,
@@ -58,7 +59,7 @@
 	>
 
 	{#if rate}
-		<p class="scope">{model} · {provider}</p>
+		<p class="scope">{model} · {providerName(provider)}</p>
 		<div class="rate-fields">
 			<label
 				>{t('pricing.input')}<NumberInput

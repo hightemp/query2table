@@ -51,7 +51,7 @@ export interface SettingGroup {
 }
 
 export interface SettingDef {
-	provider?: 'openrouter' | 'ollama' | 'ollama_cloud' | 'openai_compatible';
+	provider?: string;
 	key: string;
 	label: string;
 	description: string;

@@ -38,6 +38,8 @@ pub async fn vision_support(config: &LlmConfig, model: &str) -> Option<bool> {
         LlmBackend::OllamaCloud => {
             OllamaProvider::cloud(config.ollama_cloud_url.clone(), config.ollama_cloud_api_key.clone()).ok()?.sees_images(model).await
         }
+        // Preset catalogs do not say which models see images; "auto" treats them as text-only.
+        LlmBackend::OpenAiCompatible if config.preset.is_some() => None,
         LlmBackend::OpenAiCompatible => {
             OpenAiCompatibleProvider::new(config.openai_base_url.clone(), config.openai_api_key.clone(), true).ok()?.sees_images(model).await
         }

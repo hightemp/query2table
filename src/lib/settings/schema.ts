@@ -1,9 +1,11 @@
 import { t, type MessageKey } from '$lib/i18n';
+import { LLM_PRESETS, LLM_PROVIDERS, presetOf, type LlmPreset } from './llmProviders';
 
 /** What each setting is, where it lives on the Settings page and which values it accepts. */
 
 export type SectionId = 'llm' | 'search' | 'runs' | 'network' | 'app';
-export type LlmProvider = 'openrouter' | 'ollama' | 'ollama_cloud' | 'openai_compatible';
+/** An `llm_provider` value (see `llmProviders.ts`). */
+export type LlmProvider = string;
 export type FieldKind = 'select' | 'text' | 'url' | 'password' | 'number' | 'range' | 'switch' | 'model';
 
 export interface SectionDef {
@@ -35,6 +37,24 @@ export interface FieldDef {
 	keepOnReset?: boolean;
 	/** Extra words the settings search should match. */
 	keywords?: string;
+	/** A preset's own setting: labelled from the shared preset texts. */
+	preset?: LlmPreset;
+}
+
+/** Connection and JSON-mode settings of each preset; cloud addresses are fixed. */
+function presetFields(group: 'Connection' | 'Generation'): FieldDef[] {
+	return LLM_PRESETS.flatMap((preset): FieldDef[] => {
+		const base = { section: 'llm' as const, provider: preset.id, preset };
+		if (group === 'Generation')
+			return [{ ...base, key: `${preset.id}_json_mode`, group, kind: 'switch', default: String(preset.jsonMode), advanced: true }];
+		return [
+			...(preset.local
+				? [{ ...base, key: `${preset.id}_url`, group, kind: 'url', default: preset.url, placeholder: preset.url, keepOnReset: true } as FieldDef]
+				: []),
+			{ ...base, key: `${preset.id}_api_key`, group, kind: 'password', default: '', keepOnReset: true },
+			{ ...base, key: `${preset.id}_model`, group, kind: 'model', default: '', keepOnReset: true },
+		];
+	});
 }
 
 export const SECTIONS: SectionDef[] = [
@@ -50,12 +70,7 @@ export const FIELDS: FieldDef[] = [
 	{
 		key: 'llm_provider', section: 'llm', group: 'Connection',
 		kind: 'select', default: 'openrouter', keepOnReset: true,
-		options: [
-			'openrouter',
-			'ollama',
-			'ollama_cloud',
-			'openai_compatible',
-		],
+		options: LLM_PROVIDERS,
 	},
 	{ key: 'openrouter_api_key', section: 'llm', group: 'Connection', provider: 'openrouter', kind: 'password', default: '', placeholder: 'sk-or-…', keepOnReset: true },
 	{ key: 'openrouter_model', section: 'llm', group: 'Connection', provider: 'openrouter', kind: 'model', default: 'openai/gpt-4.1-mini', keepOnReset: true },
@@ -67,6 +82,7 @@ export const FIELDS: FieldDef[] = [
 	{ key: 'openai_base_url', section: 'llm', group: 'Connection', provider: 'openai_compatible', kind: 'url', default: 'http://localhost:8080/v1', placeholder: 'http://localhost:8080/v1', keepOnReset: true },
 	{ key: 'openai_api_key', section: 'llm', group: 'Connection', provider: 'openai_compatible', kind: 'password', default: '', keepOnReset: true },
 	{ key: 'openai_model', section: 'llm', group: 'Connection', provider: 'openai_compatible', kind: 'model', default: '', keepOnReset: true },
+	...presetFields('Connection'),
 	// LLM — generation
 	{ key: 'llm_temperature', section: 'llm', group: 'Generation', kind: 'range', default: '0.7', min: 0, max: 1, step: 0.05, keywords: 'creativity randomness' },
 	{
@@ -90,6 +106,7 @@ export const FIELDS: FieldDef[] = [
 	},
 	{ key: 'llm_max_tokens', section: 'llm', group: 'Generation', kind: 'number', default: '4096', min: 256, max: 200000, step: 1, advanced: true, unit: 'tokens' },
 	{ key: 'openai_json_mode', section: 'llm', group: 'Generation', provider: 'openai_compatible', kind: 'switch', default: 'true', advanced: true },
+	...presetFields('Generation'),
 	// LLM — images (attached pictures and scanned pages)
 	{ key: 'llm_vision', section: 'llm', group: 'Images', kind: 'select', default: 'auto', options: ['auto', 'on', 'off'], keywords: 'vision pictures photos scans' },
 	{ key: 'vision_model', section: 'llm', group: 'Images', kind: 'model', default: '', keepOnReset: true, keywords: 'vision pictures photos scans ocr' },
@@ -142,15 +159,31 @@ export function groupLabel(group: string): string {
 	return t(`settings.group.${group}` as MessageKey);
 }
 
+/** `api_key`, `model`, `url` or `json_mode` of a preset's setting. */
+function presetSetting(field: FieldDef): string {
+	return field.key.slice(field.preset!.id.length + 1);
+}
+
 export function fieldLabel(field: FieldDef): string {
+	if (field.preset) return t(`settings.field.preset_${presetSetting(field)}` as MessageKey);
 	return t(`settings.field.${field.key}` as MessageKey);
 }
 
 export function fieldDescription(field: FieldDef): string {
+	const preset = field.preset;
+	if (preset) {
+		const setting = presetSetting(field);
+		if (setting === 'api_key')
+			return preset.keyPage ? t('settings.field.preset_api_key.description', { page: preset.keyPage }) : t('settings.field.openai_api_key.description');
+		if (setting === 'model' && preset.local) return t('settings.field.preset_model.localDescription', { name: preset.name });
+		return t(`settings.field.preset_${setting}.description` as MessageKey, { name: preset.name });
+	}
 	return t(`settings.field.${field.key}.description` as MessageKey);
 }
 
 export function optionLabel(field: FieldDef, value: string): string {
+	const preset = field.key === 'llm_provider' ? presetOf(value) : undefined;
+	if (preset) return preset.local ? t('settings.option.llm_provider.local', { name: preset.name }) : preset.name;
 	return t(`settings.option.${field.key}.${value}` as MessageKey);
 }
 

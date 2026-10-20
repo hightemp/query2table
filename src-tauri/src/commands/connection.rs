@@ -100,12 +100,18 @@ pub async fn check_llm(
             Ok(result)
         }
         LlmBackend::OpenAiCompatible => {
+            if let Some(preset) = config.preset.filter(|p| !p.local) {
+                if config.openai_api_key.trim().is_empty() {
+                    return Err(format!("{} API key is required", preset.name));
+                }
+            }
             let models = OpenAiCompatibleProvider::new(config.openai_base_url.clone(), config.openai_api_key.clone(), true)
                 .map_err(|e| e.to_string())?
+                .with_preset(config.preset)
                 .list_models()
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(model_report(&models, &config.openai_model, "the server"))
+            Ok(model_report(&models, &config.openai_model, config.preset.map_or("the server", |p| p.name)))
         }
     }
 }
@@ -187,9 +193,11 @@ pub async fn list_ollama_models(base_url: String) -> Result<Vec<String>, String>
 }
 
 #[tauri::command]
-pub async fn list_openai_models(base_url: String, api_key: String) -> Result<Vec<String>, String> {
+pub async fn list_openai_models(base_url: String, api_key: String, provider: Option<String>) -> Result<Vec<String>, String> {
+    let preset = provider.as_deref().and_then(crate::providers::llm::presets::find);
     OpenAiCompatibleProvider::new(base_url, api_key, true)
         .map_err(|e| e.to_string())?
+        .with_preset(preset)
         .list_models()
         .await
         .map_err(|e| e.to_string())
@@ -253,7 +261,7 @@ mod tests {
             ("openai_model", "local-model"),
         ]);
         assert!(check_llm(&good, None).await.unwrap().ok);
-        assert_eq!(list_openai_models(base_url.clone(), "good".into()).await.unwrap(), ["local-model"]);
+        assert_eq!(list_openai_models(base_url.clone(), "good".into(), None).await.unwrap(), ["local-model"]);
         let mut bad = good.clone();
         bad.insert("openai_api_key".into(), "wrong".into());
         let error = check_llm(&bad, None).await.unwrap_err();

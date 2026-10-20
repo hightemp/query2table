@@ -58,6 +58,7 @@
 	import { errorText } from '$lib/utils/errors';
 	import { configurationProblems } from '$lib/utils/runConfig';
 	import { RowSelection } from '$lib/utils/rowSelection.svelte';
+	import { modelKey, providerName } from '$lib/settings/llmProviders';
 	import {
 		DEFAULT_STOP_INPUT,
 		stopSettingKeys,
@@ -291,24 +292,7 @@
 	}
 
 	let provider = $derived($settings.get('llm_provider') ?? 'openrouter');
-	const providerNames: Record<string, string> = {
-		openrouter: 'OpenRouter',
-		ollama: 'Ollama',
-		ollama_cloud: 'Ollama Cloud',
-		openai_compatible: 'OpenAI-compatible',
-	};
-	let model = $derived(
-		$settings.get(
-			(
-				{
-					openrouter: 'openrouter_model',
-					ollama: 'ollama_model',
-					ollama_cloud: 'ollama_cloud_model',
-					openai_compatible: 'openai_model',
-				} as Record<string, string>
-			)[provider]
-		) || t('query.noModel')
-	);
+	let model = $derived($settings.get(modelKey(provider)) || t('query.noModel'));
 </script>
 
 <div class="query-page">
@@ -374,7 +358,7 @@
 					</div>
 				{/if}
 				<div class="connection-summary">
-					<span>{providerNames[provider] ?? provider}</span><span class="model-name" use:tooltip={{ text: model, whenTruncated: true }}
+					<span>{provider === 'openai_compatible' ? 'OpenAI-compatible' : providerName(provider)}</span><span class="model-name" use:tooltip={{ text: model, whenTruncated: true }}
 						>{model}</span
 					><a href="/settings#settings-llm">{t('query.configure')}</a>
 				</div>

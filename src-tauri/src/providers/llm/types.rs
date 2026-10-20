@@ -160,6 +160,7 @@ impl LlmUsage {
             completion_tokens: count("/usage/completion_tokens").or_else(|| count("/eval_count")),
             reasoning_tokens: count("/usage/completion_tokens_details/reasoning_tokens"),
             cached_prompt_tokens: count("/usage/prompt_tokens_details/cached_tokens")
+                .or_else(|| count("/usage/prompt_cache_hit_tokens"))
                 .or_else(|| count("/prompt_eval_cached_count")),
             cache_write_tokens: count("/usage/prompt_tokens_details/cache_write_tokens"),
             cost_usd: cost,

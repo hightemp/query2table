@@ -5,6 +5,7 @@ pub mod openrouter;
 pub mod ollama;
 pub mod manager;
 pub mod capabilities;
+pub mod presets;
 
 pub use types::*;
 

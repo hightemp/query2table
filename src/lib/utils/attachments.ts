@@ -1,5 +1,6 @@
 import { formatNumber, t, type MessageKey } from '$lib/i18n';
 import type { AttachError, AttachmentInfo } from '$lib/types';
+import { LLM_PRESETS, endpointOf, presetOf } from '$lib/settings/llmProviders';
 
 /** Extensions offered in the file dialog; keep in sync with `parse::EXTENSIONS` in Rust. */
 export const ATTACHMENT_EXTENSIONS = {
@@ -67,6 +68,7 @@ export function attachErrorText(error: Pick<AttachError, 'code' | 'message'>): s
 }
 
 const CLOUD_NAMES: Record<string, string> = { openrouter: 'OpenRouter', ollama_cloud: 'Ollama Cloud' };
+for (const preset of LLM_PRESETS) if (!preset.local) CLOUD_NAMES[preset.id] = preset.name;
 
 function isLocalHost(url: string | undefined): boolean {
 	try {
@@ -80,7 +82,7 @@ function isLocalHost(url: string | undefined): boolean {
 /** Where attached files go with the current model provider. */
 export function privacyNote(provider: string, settings: Map<string, string>): string {
 	if (CLOUD_NAMES[provider]) return t('attachments.sentTo', { service: CLOUD_NAMES[provider] });
-	const url = provider === 'ollama' ? settings.get('ollama_url') : provider === 'openai_compatible' ? settings.get('openai_base_url') : undefined;
+	const url = provider === 'ollama' ? settings.get('ollama_url') : presetOf(provider) ? endpointOf(provider, settings) : provider === 'openai_compatible' ? settings.get('openai_base_url') : undefined;
 	if (provider === 'ollama' && !url) return t('attachments.staysLocal');
 	if (isLocalHost(url)) return t('attachments.staysLocal');
 	return t('attachments.sentTo', { service: new URL(url!).hostname });

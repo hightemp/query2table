@@ -1,4 +1,5 @@
 import { t, type MessageKey } from '$lib/i18n';
+import { apiKeyKey, modelKey, needsKey, presetOf, providerName } from '$lib/settings/llmProviders';
 export interface ConfigProblem {
 	message: string;
 	/** Settings section id, used as `/settings#settings-<section>`. */
@@ -7,14 +8,13 @@ export interface ConfigProblem {
 	key: string;
 }
 
-const providerNames: Record<string, string> = {
-	openrouter: 'OpenRouter',
-	ollama: 'Ollama',
-	ollama_cloud: 'Ollama Cloud',
-	openai_compatible: 'OpenAI-compatible',
-};
-
 /** Settings each LLM provider needs before a run can start. Mirrors the backend checks. */
+function requirements(provider: string): { key: string; label: MessageKey }[] {
+	if (!presetOf(provider)) return llmRequirements[provider] ?? [];
+	const model = { key: modelKey(provider), label: 'config.model' as MessageKey };
+	return needsKey(provider) ? [{ key: apiKeyKey(provider)!, label: 'config.apiKey' }, model] : [model];
+}
+
 const llmRequirements: Record<string, { key: string; label: MessageKey }[]> = {
 	openrouter: [
 		{ key: 'openrouter_api_key', label: 'config.apiKey' },
@@ -49,11 +49,11 @@ export function configurationProblems(settings: Map<string, string>): ConfigProb
 	const filled = (key: string) => !!settings.get(key)?.trim();
 
 	const provider = settings.get('llm_provider') || 'openrouter';
-	const missing = (llmRequirements[provider] ?? []).filter((item) => !filled(item.key));
+	const missing = requirements(provider).filter((item) => !filled(item.key));
 	if (missing.length)
 		problems.push({
 			message: t('config.needs', {
-				provider: providerNames[provider] ?? provider,
+				provider: provider === 'openai_compatible' ? 'OpenAI-compatible' : providerName(provider),
 				items: missing.map((item) => t(item.label)).join(t('config.and')),
 			}),
 			section: 'llm',

@@ -17,6 +17,8 @@ pub struct OpenAiCompatibleProvider {
     base_url: String,
     name: &'static str,
     json_mode_enabled: bool,
+    /// The service this client talks to, when it is a preset (see `presets.rs`).
+    preset: Option<&'static super::presets::Preset>,
     prices: tokio::sync::OnceCell<
         Option<std::collections::HashMap<String, crate::providers::accounting::PriceQuote>>,
     >,
@@ -39,8 +41,18 @@ impl OpenAiCompatibleProvider {
             base_url,
             name: "openai_compatible",
             json_mode_enabled,
+            preset: None,
             prices: tokio::sync::OnceCell::new(),
         })
+    }
+
+    /// Talks to a preset service: its name in accounting and its request quirks.
+    pub fn with_preset(mut self, preset: Option<&'static super::presets::Preset>) -> Self {
+        if let Some(preset) = preset {
+            self.name = preset.id;
+        }
+        self.preset = preset;
+        self
     }
 
     pub(super) fn for_openrouter(mut self) -> Self {
@@ -90,10 +102,12 @@ impl OpenAiCompatibleProvider {
             .map_err(|_| {
                 LlmError::ParseError("The provider returned an invalid model catalog.".into())
             })?;
+        // Gemini lists `models/<id>` but documents plain ids for requests.
+        let prefix = if self.name == "gemini" { "models/" } else { "" };
         let mut models: Vec<String> = catalog
             .data
             .into_iter()
-            .map(|model| model.id)
+            .map(|model| model.id.strip_prefix(prefix).map(str::to_owned).unwrap_or(model.id))
             .filter(|id| !id.trim().is_empty())
             .collect();
         models.sort_unstable();
@@ -123,8 +137,12 @@ struct CatalogModel {
 struct ChatRequest {
     model: String,
     messages: Vec<ChatMessage>,
-    temperature: f32,
-    max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_completion_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     response_format: Option<ResponseFormat>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -229,13 +247,17 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 ReasoningEffort::On => Some("medium"),
                 effort => effort.level(),
             };
-            (None, level)
+            // Some services reject fields they do not know.
+            (None, level.filter(|_| self.preset.is_none_or(|preset| preset.reasoning_effort)))
         };
+        let completion_tokens = self.preset.is_some_and(|preset| preset.completion_tokens);
+        let fixed_temperature = self.preset.is_some_and(|preset| preset.fixed_temperature(&request.model));
         let body = ChatRequest {
             model: request.model.clone(),
             messages,
-            temperature: request.temperature,
-            max_tokens: request.max_tokens,
+            temperature: (!fixed_temperature).then_some(request.temperature),
+            max_tokens: (!completion_tokens).then_some(request.max_tokens),
+            max_completion_tokens: completion_tokens.then_some(request.max_tokens),
             response_format,
             reasoning,
             reasoning_effort,
@@ -305,6 +327,9 @@ impl LlmProvider for OpenAiCompatibleProvider {
         usage: &LlmUsage,
         _at: chrono::DateTime<chrono::Utc>,
     ) -> Option<crate::providers::accounting::PriceQuote> {
+        if self.preset.is_some_and(|preset| preset.local) {
+            return Some(crate::providers::accounting::PriceQuote::local());
+        }
         if self.name != "openrouter" {
             return None;
         }
