@@ -206,6 +206,7 @@ pub fn run() {
             commands::connection::test_proxy,
             commands::connection::list_ollama_models,
             commands::connection::list_openai_models,
+            commands::connection::list_anthropic_models,
             commands::run::list_history,
             commands::run::delete_runs,
             commands::run::restore_runs,

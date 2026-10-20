@@ -144,7 +144,7 @@ pub fn validate_pricing_setting(key: &str, value: &str) -> Result<(), String> {
             for (scope, quote) in quotes {
                 let (provider, endpoint, model): (String, String, String) =
                     serde_json::from_str(&scope).map_err(|_| invalid())?;
-                let known = ["openrouter", "ollama", "ollama_cloud", "openai_compatible"]
+                let known = ["openrouter", "ollama", "ollama_cloud", "openai_compatible", "anthropic"]
                     .contains(&provider.as_str())
                     || crate::providers::llm::presets::find(&provider).is_some();
                 if !known

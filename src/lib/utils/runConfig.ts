@@ -20,6 +20,10 @@ const llmRequirements: Record<string, { key: string; label: MessageKey }[]> = {
 		{ key: 'openrouter_api_key', label: 'config.apiKey' },
 		{ key: 'openrouter_model', label: 'config.model' },
 	],
+	anthropic: [
+		{ key: 'anthropic_api_key', label: 'config.apiKey' },
+		{ key: 'anthropic_model', label: 'config.model' },
+	],
 	ollama: [
 		{ key: 'ollama_url', label: 'config.serverUrl' },
 		{ key: 'ollama_model', label: 'config.model' },

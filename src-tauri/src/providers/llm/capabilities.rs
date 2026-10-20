@@ -17,6 +17,7 @@ fn cache_key(config: &LlmConfig, model: &str) -> String {
         LlmBackend::Ollama => config.ollama_url.as_str(),
         LlmBackend::OllamaCloud => config.ollama_cloud_url.as_str(),
         LlmBackend::OpenAiCompatible => config.openai_base_url.as_str(),
+        LlmBackend::Anthropic => config.anthropic_url.as_str(),
     };
     format!("{:?}|{address}|{model}", config.backend)
 }
@@ -40,6 +41,8 @@ pub async fn vision_support(config: &LlmConfig, model: &str) -> Option<bool> {
         }
         // Preset catalogs do not say which models see images; "auto" treats them as text-only.
         LlmBackend::OpenAiCompatible if config.preset.is_some() => None,
+        // Every current Claude model reads pictures.
+        LlmBackend::Anthropic => Some(true),
         LlmBackend::OpenAiCompatible => {
             OpenAiCompatibleProvider::new(config.openai_base_url.clone(), config.openai_api_key.clone(), true).ok()?.sees_images(model).await
         }
@@ -57,6 +60,7 @@ pub fn main_model(config: &LlmConfig) -> &str {
         LlmBackend::Ollama => &config.ollama_model,
         LlmBackend::OllamaCloud => &config.ollama_cloud_model,
         LlmBackend::OpenAiCompatible => &config.openai_model,
+        LlmBackend::Anthropic => &config.anthropic_model,
     }
 }
 

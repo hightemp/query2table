@@ -15,9 +15,9 @@ import { fieldByKey, fieldDescription, fieldLabel, fieldsIn, optionLabel } from 
 import { configurationProblems } from '$lib/utils/runConfig';
 import { privacyNote } from '$lib/utils/attachments';
 import LlmModelPicker from '$lib/components/settings/LlmModelPicker.svelte';
-import { listOpenAiModels } from '$lib/api/tauri';
+import { listAnthropicModels, listOpenAiModels } from '$lib/api/tauri';
 
-vi.mock('$lib/api/tauri', () => ({ listOpenAiModels: vi.fn() }));
+vi.mock('$lib/api/tauri', () => ({ listOpenAiModels: vi.fn(), listAnthropicModels: vi.fn() }));
 
 const map = (entries: Record<string, string>) => new Map(Object.entries(entries));
 
@@ -25,6 +25,7 @@ describe('model providers', () => {
 	it('lists the presets between Ollama Cloud and the custom address', () => {
 		expect(LLM_PROVIDERS).toEqual([
 			'openrouter',
+			'anthropic',
 			'ollama',
 			'ollama_cloud',
 			'deepseek',
@@ -120,5 +121,39 @@ describe('model picker for a preset', () => {
 		expect(await screen.findByRole('option', { name: 'gemini-2.5-flash' })).toBeInTheDocument();
 		expect(listOpenAiModels).toHaveBeenCalledWith('https://generativelanguage.googleapis.com/v1beta/openai', 'g-key', 'gemini');
 		expect(screen.getByRole('listbox', { name: /Gemini/ })).toBeInTheDocument();
+	});
+});
+
+describe('Anthropic', () => {
+	afterEach(cleanup);
+
+	it('has its own key, model and PDF switch', () => {
+		expect([backendOf('anthropic'), modelKey('anthropic'), apiKeyKey('anthropic'), urlKey('anthropic')]).toEqual([
+			'anthropic',
+			'anthropic_model',
+			'anthropic_api_key',
+			null,
+		]);
+		expect(endpointOf('anthropic', map({}))).toBe('https://api.anthropic.com/v1');
+		expect([providerName('anthropic'), needsKey('anthropic')]).toEqual(['Anthropic', true]);
+		const keys = (provider: string) => fieldsIn('llm', map({ llm_provider: provider })).map((f) => f.key);
+		expect(keys('anthropic')).toEqual(expect.arrayContaining(['anthropic_api_key', 'anthropic_model', 'anthropic_native_pdf']));
+		expect(keys('deepseek')).not.toContain('anthropic_native_pdf');
+		expect(fieldByKey('anthropic_native_pdf')?.default).toBe('false');
+		expect(optionLabel(fieldByKey('llm_provider')!, 'anthropic')).toBe('Anthropic (Claude)');
+		expect(configurationProblems(map({ llm_provider: 'anthropic', brave_api_key: 'b' }))[0]).toMatchObject({
+			message: 'Anthropic needs API key and model.',
+			key: 'anthropic_api_key',
+		});
+		expect(privacyNote('anthropic', map({}))).toBe('File contents will be sent to Anthropic.');
+	});
+
+	it('lists Claude models with the key', async () => {
+		vi.mocked(listAnthropicModels).mockReset().mockResolvedValue(['claude-sonnet-5-5']);
+		render(LlmModelPicker, { id: 'anthropic_model', provider: 'anthropic', value: '', apiKey: 'ant-key', onchange: vi.fn() });
+		await fireEvent.focus(screen.getByRole('combobox'));
+		expect(await screen.findByRole('option', { name: 'claude-sonnet-5-5' })).toBeInTheDocument();
+		expect(listAnthropicModels).toHaveBeenCalledWith('ant-key');
+		expect(screen.getByRole('listbox', { name: /Anthropic/ })).toBeInTheDocument();
 	});
 });

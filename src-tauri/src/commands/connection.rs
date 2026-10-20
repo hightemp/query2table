@@ -9,6 +9,7 @@ use serde::Serialize;
 use crate::providers::llm::manager::{LlmBackend, LlmManager};
 use crate::providers::llm::ollama::OllamaProvider;
 use crate::providers::llm::openai_compatible::OpenAiCompatibleProvider;
+use crate::providers::llm::anthropic::AnthropicProvider;
 use crate::providers::llm::openrouter::OpenRouterProvider;
 use crate::providers::search::brave::BraveSearchProvider;
 use crate::providers::search::serper::SerperProvider;
@@ -113,6 +114,17 @@ pub async fn check_llm(
                 .map_err(|e| e.to_string())?;
             Ok(model_report(&models, &config.openai_model, config.preset.map_or("the server", |p| p.name)))
         }
+        LlmBackend::Anthropic => {
+            if config.anthropic_api_key.trim().is_empty() {
+                return Err("Anthropic API key is required".into());
+            }
+            let models = AnthropicProvider::new(config.anthropic_url.clone(), config.anthropic_api_key.clone())
+                .map_err(|e| e.to_string())?
+                .list_models()
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(model_report(&models, &config.anthropic_model, "Anthropic"))
+        }
     }
 }
 
@@ -198,6 +210,15 @@ pub async fn list_openai_models(base_url: String, api_key: String, provider: Opt
     OpenAiCompatibleProvider::new(base_url, api_key, true)
         .map_err(|e| e.to_string())?
         .with_preset(preset)
+        .list_models()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_anthropic_models(api_key: String) -> Result<Vec<String>, String> {
+    AnthropicProvider::new(crate::providers::llm::anthropic::BASE_URL.into(), api_key)
+        .map_err(|e| e.to_string())?
         .list_models()
         .await
         .map_err(|e| e.to_string())

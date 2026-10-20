@@ -244,3 +244,96 @@ fn common_png() -> Vec<u8> {
     image.write_to(&mut out, image::ImageFormat::Png).unwrap();
     out.into_inner()
 }
+
+/// Claude through the Messages API, answering every request with `content`.
+async fn claude_config(s: &Setup, native_pdf: bool) -> PipelineConfig {
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "type": "message", "role": "assistant", "model": "claude-sonnet-5-5", "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": json!({"action": "answer", "markdown": "Acme made 12 million."}).to_string()}],
+            "usage": {"input_tokens": 10, "output_tokens": 5}
+        })))
+        .mount(&s.server)
+        .await;
+    let mut config = config(
+        s,
+        &[
+            ("llm_provider", "anthropic"),
+            ("anthropic_api_key", "ant-key"),
+            ("anthropic_model", "claude-sonnet-5-5"),
+            ("anthropic_native_pdf", if native_pdf { "true" } else { "false" }),
+        ],
+    );
+    config.llm.anthropic_url = format!("{}/v1", s.server.uri());
+    config
+}
+
+fn documents(request: &Value) -> Vec<Value> {
+    request["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|m| m["content"].as_array())
+        .flatten()
+        .filter(|block| block["type"] == "document")
+        .cloned()
+        .collect()
+}
+
+#[tokio::test]
+async fn claude_reads_attached_pdfs_itself_when_the_switch_is_on() {
+    use base64::Engine;
+    let s = setup().await;
+    let bytes = common_pdf(&["Acme revenue reached 12 million dollars in 2025", "The main office of Acme is in Berlin"]);
+    let report = s.store.add_bytes("report.pdf", bytes.clone()).await.unwrap();
+    let notes = s.store.add_bytes("notes.txt", b"Acme revenue notes: twelve million".to_vec()).await.unwrap();
+    let mut config = claude_config(&s, true).await;
+    config.attachments = vec![report.id.clone(), notes.id.clone()];
+    let (pipeline, _commands) = ResearchPipeline::new("r9".into(), "How much revenue did Acme make?".into(), config, s.repo.clone(), None);
+    assert_eq!(pipeline.run().await.unwrap(), PipelineState::Completed);
+
+    let sent = requests(&s.server).await;
+    let docs = documents(&sent[0]);
+    assert_eq!(docs.len(), 1, "only the PDF goes whole");
+    assert_eq!(docs[0]["source"]["media_type"], "application/pdf");
+    assert_eq!(docs[0]["source"]["data"], base64::engine::general_purpose::STANDARD.encode(&bytes));
+    let first = text_of(&sent[0]);
+    // The PDF is still listed with its address, but its text is not sent a second time.
+    assert!(first.contains("[F1] report.pdf") && first.contains(&format!("attachment://{}", report.id)), "{first}");
+    assert!(first.contains("sent whole"), "{first}");
+    assert!(!first.contains("revenue reached 12 million"), "{first}");
+    // Other files keep their fragments.
+    assert!(first.contains("twelve million"), "{first}");
+}
+
+#[tokio::test]
+async fn without_the_switch_claude_gets_the_pdf_text() {
+    let s = setup().await;
+    let report = s.store.add_bytes("report.pdf", common_pdf(&["Acme revenue reached 12 million dollars in 2025"])).await.unwrap();
+    let mut config = claude_config(&s, false).await;
+    config.attachments = vec![report.id.clone()];
+    let (pipeline, _commands) = ResearchPipeline::new("r10".into(), "How much revenue did Acme make?".into(), config, s.repo.clone(), None);
+    assert_eq!(pipeline.run().await.unwrap(), PipelineState::Completed);
+    let sent = requests(&s.server).await;
+    assert!(documents(&sent[0]).is_empty());
+    assert!(text_of(&sent[0]).contains("revenue reached 12 million"));
+}
+
+#[tokio::test]
+async fn scanned_pages_of_a_whole_pdf_are_not_transcribed_first() {
+    for native in [true, false] {
+        let s = setup().await;
+        let scan = s.store.add_bytes("scan.pdf", common_pdf(&["", "", "Typed last page"])).await.unwrap();
+        let mut config = claude_config(&s, native).await;
+        config.attachments = vec![scan.id.clone()];
+        let (pipeline, _commands) = ResearchPipeline::new("r11".into(), "What does the scan say?".into(), config, s.repo.clone(), None);
+        assert_eq!(pipeline.run().await.unwrap(), PipelineState::Completed);
+        let calls = requests(&s.server).await.len();
+        if native {
+            assert_eq!(calls, 1, "Claude reads the scan in the PDF itself");
+        } else {
+            assert!(calls > 1, "scanned pages are transcribed before the answer");
+        }
+    }
+}

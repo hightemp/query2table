@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n';
 	import {
+		listAnthropicModels,
 		listOllamaCloudModels,
 		listOllamaModels,
 		listOpenAiModels,
@@ -22,7 +23,7 @@
 	}: {
 		id: string;
 		value: string;
-		provider: 'ollama_cloud' | 'openrouter' | 'ollama' | 'openai_compatible';
+		provider: 'ollama_cloud' | 'openrouter' | 'anthropic' | 'ollama' | 'openai_compatible';
 		baseUrl?: string;
 		apiKey: string;
 		/** A preset run by the OpenAI-compatible client: its name and catalog quirks. */
@@ -92,6 +93,8 @@
 				const result =
 					backend === 'openrouter'
 						? await listOpenRouterModels(key)
+						: backend === 'anthropic'
+							? await listAnthropicModels(key)
 						: backend === 'ollama'
 							? await listOllamaModels(url)
 							: backend === 'openai_compatible'

@@ -187,6 +187,8 @@ export const test = base.extend({
 							return ['llama3:latest', 'qwen3:8b'];
 						case 'list_openai_models':
 							return ['local-model'];
+						case 'list_anthropic_models':
+							return ['claude-haiku-5-5', 'claude-sonnet-5-5'];
 						case 'export_settings':
 							return;
 						case 'read_settings_file':

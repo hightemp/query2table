@@ -67,7 +67,7 @@ export function attachErrorText(error: Pick<AttachError, 'code' | 'message'>): s
 	return KNOWN_ERRORS.includes(error.code) ? t(`attachments.error.${error.code}` as MessageKey) : error.message;
 }
 
-const CLOUD_NAMES: Record<string, string> = { openrouter: 'OpenRouter', ollama_cloud: 'Ollama Cloud' };
+const CLOUD_NAMES: Record<string, string> = { openrouter: 'OpenRouter', anthropic: 'Anthropic', ollama_cloud: 'Ollama Cloud' };
 for (const preset of LLM_PRESETS) if (!preset.local) CLOUD_NAMES[preset.id] = preset.name;
 
 function isLocalHost(url: string | undefined): boolean {

@@ -35,6 +35,8 @@ const mockInvoke = async (cmd: string, _args?: Record<string, unknown>) => {
 			return ['llama3:latest', 'gpt-oss:20b'];
 		case 'list_openai_models':
 			return ['llama-model'];
+		case 'list_anthropic_models':
+			return ['claude-sonnet-5-5'];
 		case 'update_setting':
 		case 'update_settings':
 			return undefined;

@@ -10,6 +10,7 @@ use super::ollama::OllamaProvider;
 use super::openai_compatible::OpenAiCompatibleProvider;
 use super::openrouter::OpenRouterProvider;
 use super::presets::{self, Preset};
+use super::anthropic::AnthropicProvider;
 use super::types::*;
 use crate::utils::retry::{retry_with_backoff, RetryAction, RetryConfig};
 
@@ -20,6 +21,7 @@ pub enum LlmBackend {
     Ollama,
     OllamaCloud,
     OpenAiCompatible,
+    Anthropic,
 }
 
 /// Configuration for the LLM manager.
@@ -40,10 +42,22 @@ pub struct LlmConfig {
     /// A service run through the OpenAI-compatible client (DeepSeek, LM Studio…); its address,
     /// key and model are in the `openai_*` fields. None: "Custom address".
     pub preset: Option<&'static Preset>,
+    pub anthropic_url: String,
+    pub anthropic_api_key: String,
+    pub anthropic_model: String,
+    /// Attached PDFs go to Claude whole (setting `anthropic_native_pdf`).
+    pub anthropic_native_pdf: bool,
     pub temperature: f32,
     pub max_tokens: u32,
     pub reasoning_effort: ReasoningEffort,
     pub pricing_overrides: String,
+}
+
+impl LlmConfig {
+    /// Claude reads attached PDFs itself (Anthropic with its switch on).
+    pub fn native_pdf(&self) -> bool {
+        self.backend == LlmBackend::Anthropic && self.anthropic_native_pdf
+    }
 }
 
 impl Default for LlmConfig {
@@ -62,6 +76,10 @@ impl Default for LlmConfig {
             openai_model: String::new(),
             openai_json_mode: true,
             preset: None,
+            anthropic_url: super::anthropic::BASE_URL.into(),
+            anthropic_api_key: String::new(),
+            anthropic_model: String::new(),
+            anthropic_native_pdf: false,
             temperature: 0.2,
             max_tokens: 4096,
             reasoning_effort: ReasoningEffort::Auto,
@@ -101,6 +119,7 @@ impl LlmManager {
                     LlmBackend::Ollama => ("ollama", &config.ollama_model),
                     LlmBackend::OllamaCloud => ("ollama_cloud", &config.ollama_cloud_model),
                     LlmBackend::OpenAiCompatible => (config.preset.map_or("openai_compatible", |p| p.id), &config.openai_model),
+                    LlmBackend::Anthropic => ("anthropic", &config.anthropic_model),
                 };
                 let _ = sender.send(LlmIssue {
                     code: error.code().into(),
@@ -152,6 +171,12 @@ impl LlmManager {
                     .with_preset(config.preset),
                 )
             }
+            LlmBackend::Anthropic => {
+                if config.anthropic_api_key.trim().is_empty() {
+                    return Err(LlmError::NotConfigured("Anthropic API key is required".into()));
+                }
+                Arc::new(AnthropicProvider::new(config.anthropic_url.clone(), config.anthropic_api_key.clone())?)
+            }
         };
 
         let model = match config.backend {
@@ -159,6 +184,7 @@ impl LlmManager {
             LlmBackend::Ollama => &config.ollama_model,
             LlmBackend::OllamaCloud => &config.ollama_cloud_model,
             LlmBackend::OpenAiCompatible => &config.openai_model,
+            LlmBackend::Anthropic => &config.anthropic_model,
         };
         if model.trim().is_empty() {
             return Err(LlmError::NotConfigured(format!(
@@ -223,6 +249,7 @@ impl LlmManager {
                 self.config.preset.map_or("openai_compatible", |p| p.id),
                 self.config.openai_base_url.as_str(),
             ),
+            LlmBackend::Anthropic => ("anthropic", self.config.anthropic_url.as_str()),
         };
         let key = serde_json::to_string(&(
             provider,
@@ -337,6 +364,7 @@ impl LlmManager {
             LlmBackend::Ollama => &self.config.ollama_model,
             LlmBackend::OllamaCloud => &self.config.ollama_cloud_model,
             LlmBackend::OpenAiCompatible => &self.config.openai_model,
+            LlmBackend::Anthropic => &self.config.anthropic_model,
         };
 
         let request = CompletionRequest {
@@ -515,6 +543,7 @@ impl LlmManager {
             Some("ollama") => LlmBackend::Ollama,
             Some("ollama_cloud") => LlmBackend::OllamaCloud,
             Some("openai_compatible") => LlmBackend::OpenAiCompatible,
+            Some("anthropic") => LlmBackend::Anthropic,
             _ if preset.is_some() => LlmBackend::OpenAiCompatible,
             _ => LlmBackend::OpenRouter,
         };
@@ -577,6 +606,10 @@ impl LlmManager {
                 .map(|v| v != "false")
                 .unwrap_or(preset.is_none_or(|preset| preset.json_mode)),
             preset,
+            anthropic_url: defaults.anthropic_url,
+            anthropic_api_key: settings.get("anthropic_api_key").cloned().unwrap_or_default(),
+            anthropic_model: settings.get("anthropic_model").cloned().unwrap_or_default(),
+            anthropic_native_pdf: settings.get("anthropic_native_pdf").is_some_and(|v| v == "true"),
             temperature: settings
                 .get("llm_temperature")
                 .and_then(|v| v.parse().ok())
@@ -599,6 +632,7 @@ fn safe_diagnostic_text(config: &LlmConfig, value: &str, max_chars: usize) -> St
         &config.openrouter_api_key,
         &config.ollama_cloud_api_key,
         &config.openai_api_key,
+        &config.anthropic_api_key,
     ] {
         if !secret.trim().is_empty() {
             sanitized = sanitized.replace(secret.trim(), "[REDACTED]");

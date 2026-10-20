@@ -6,7 +6,7 @@ use crate::attachments::retrieve::{self, FragmentHit};
 use crate::attachments::store::AttachmentStore;
 use crate::attachments::vision::{self, VisionReport};
 use crate::providers::llm::capabilities::VisionPlan;
-use crate::providers::llm::{ImageInput, LlmManager};
+use crate::providers::llm::{DocumentInput, ImageInput, LlmManager};
 
 /// A file as the model refers to it: `F1`, `F2`, … in attach order.
 #[derive(Debug, Clone, PartialEq)]
@@ -15,6 +15,8 @@ pub struct FileRef {
     pub id: String,
     pub file_name: String,
     pub kind: AttachmentKind,
+    pub mime: String,
+    pub page_count: Option<i64>,
 }
 
 /// Text read from a file for the model, with the place to cite.
@@ -31,7 +33,15 @@ pub struct RunFiles {
     store: AttachmentStore,
     pub files: Vec<FileRef>,
     pub plan: VisionPlan,
+    /// The model reads PDFs itself (Claude with "reads PDF files itself"): they are sent whole,
+    /// not as text, and their scanned pages are not transcribed.
+    pub native_pdf: bool,
 }
+
+/// PDFs sent whole in one request: Anthropic takes up to 32 MB (base64 grows the files by a third)
+/// and 100 pages under a 1M-token context.
+const WHOLE_PDF_BYTES: usize = 20 * 1024 * 1024;
+const WHOLE_PDF_PAGES: i64 = 100;
 
 /// Characters of overview per file in the first message.
 const OVERVIEW_CHARS: usize = 900;
@@ -39,7 +49,8 @@ const OVERVIEW_CHARS: usize = 900;
 /// How a run wants its files prepared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Prepare {
-    /// Pictures go to a model that sees them; descriptions only for a blind model.
+    /// Pictures go to a model that sees them; descriptions only for a blind model. PDFs go whole
+    /// to Claude when it reads them itself.
     ForModel,
     /// Every picture is described too, so all content can be read as text.
     AsText,
@@ -57,7 +68,11 @@ pub async fn load_for_run(
     let store = AttachmentStore::new(pool, config.attachments_dir.clone());
     let plan = || VisionPlan::for_config(&config.llm, &config.llm_vision, &config.vision_model);
     let files = match RunFiles::load_with(store, run_id, plan).await {
-        Ok(Some(files)) => files,
+        Ok(Some(mut files)) => {
+            // Only the research first message carries whole PDFs; other modes read them as text.
+            files.native_pdf = prepare == Prepare::ForModel && config.llm.native_pdf();
+            files
+        }
         Ok(None) => return (None, Vec::new()),
         Err(e) => return (None, vec![("WARN", format!("Could not load the attached files: {e}"))]),
     };
@@ -108,18 +123,63 @@ impl RunFiles {
             if files.iter().any(|f| f.id == info.id) {
                 continue;
             }
-            files.push(FileRef { label: format!("F{}", files.len() + 1), id: info.id, file_name: info.file_name, kind: info.kind });
+            files.push(FileRef {
+                label: format!("F{}", files.len() + 1),
+                id: info.id,
+                file_name: info.file_name,
+                kind: info.kind,
+                mime: info.mime,
+                page_count: info.page_count,
+            });
         }
-        Ok((!files.is_empty()).then_some(Self { store, files, plan }))
+        Ok((!files.is_empty()).then_some(Self { store, files, plan, native_pdf: false }))
     }
 
     pub fn ids(&self) -> Vec<String> {
         self.files.iter().map(|f| f.id.clone()).collect()
     }
 
-    /// Reads scanned pages and describes pictures as the vision plan allows.
+    /// Reads scanned pages and describes pictures as the vision plan allows; PDFs the model reads
+    /// itself are left as they are.
     pub async fn prepare(&self, llm: &LlmManager, max_pages: u32) -> VisionReport {
-        vision::prepare(&self.store, llm, &self.plan, &self.ids(), max_pages).await
+        let whole = self.whole_pdfs();
+        let ids: Vec<String> = self.ids().into_iter().filter(|id| !whole.contains(id)).collect();
+        vision::prepare(&self.store, llm, &self.plan, &ids, max_pages).await
+    }
+
+    /// Ids of the PDFs sent whole, within the request limits, in attach order.
+    pub fn whole_pdfs(&self) -> Vec<String> {
+        if !self.native_pdf {
+            return Vec::new();
+        }
+        let mut pages = 0;
+        let mut out = Vec::new();
+        for file in self.files.iter().filter(|f| f.mime == "application/pdf") {
+            let count = file.page_count.unwrap_or(1).max(1);
+            if pages + count > WHOLE_PDF_PAGES {
+                continue;
+            }
+            pages += count;
+            out.push(file.id.clone());
+        }
+        out
+    }
+
+    /// The PDFs to send whole and the ids actually sent (a file too large for the request stays text).
+    pub async fn documents(&self) -> (Vec<DocumentInput>, Vec<String>) {
+        let mut bytes_left = WHOLE_PDF_BYTES;
+        let mut documents = Vec::new();
+        let mut sent = Vec::new();
+        for id in self.whole_pdfs() {
+            let Ok(Some(bytes)) = self.store.original(&id).await else { continue };
+            if bytes.len() > bytes_left {
+                continue;
+            }
+            bytes_left -= bytes.len();
+            documents.push(DocumentInput::pdf(&bytes));
+            sent.push(id);
+        }
+        (documents, sent)
     }
 
     /// For extraction: reads scans and describes every picture, so all content is text.
@@ -145,6 +205,12 @@ impl RunFiles {
     /// The first message about the files: each file's overview with its cite address, then the
     /// fragments that best match `question`, within `budget` characters of fragment text.
     pub async fn context(&self, question: &str, budget: usize) -> String {
+        self.context_with(question, budget, &[]).await
+    }
+
+    /// Like [`Self::context`]; the files in `whole` were sent as documents, so only their
+    /// overview line is given.
+    pub async fn context_with(&self, question: &str, budget: usize, whole: &[String]) -> String {
         let mut out = String::from(
             "The user attached these files. They are part of the request: use them, and cite them as Markdown links \
              to their attachment addresses with the place, e.g. [report.pdf, p. 3](attachment://ID?page=3).\n",
@@ -153,12 +219,24 @@ impl RunFiles {
         for file in &self.files {
             let outline = outlines.iter().find(|(id, _)| *id == file.id).map(|(_, o)| o.as_str()).unwrap_or("");
             let outline: String = outline.chars().take(OVERVIEW_CHARS).collect();
+            if whole.contains(&file.id) {
+                out.push_str(&format!(
+                    "\n[{}] {} — attachment://{}\n(This file is sent whole as a document above: read it there and cite its pages with this address.)\n",
+                    file.label, file.file_name, file.id
+                ));
+                continue;
+            }
             out.push_str(&format!("\n[{}] {} — attachment://{}\n{}\n", file.label, file.file_name, file.id, outline));
         }
-        let mut hits = retrieve::search(self.store.pool(), &self.ids(), question, 12).await.unwrap_or_default();
+        let text_ids: Vec<String> = self.ids().into_iter().filter(|id| !whole.contains(id)).collect();
+        let mut hits = if text_ids.is_empty() {
+            Vec::new()
+        } else {
+            retrieve::search(self.store.pool(), &text_ids, question, 12).await.unwrap_or_default()
+        };
         if hits.is_empty() {
             // Nothing matches the wording ("make a table from this file"): show how each file begins.
-            for file in &self.files {
+            for file in self.files.iter().filter(|f| !whole.contains(&f.id)) {
                 hits.extend(retrieve::at(self.store.pool(), &file.id, &Locator::default(), 1).await.unwrap_or_default());
             }
         }

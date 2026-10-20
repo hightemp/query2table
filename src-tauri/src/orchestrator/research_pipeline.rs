@@ -250,7 +250,16 @@ impl ResearchPipeline {
             messages.push(Message::user(context));
         }
         if let Some(files) = &files {
-            messages.push(Message::user_with_images(files.context(&self.query, self.config.context.file_chars).await, files.images(self.config.max_inline_images).await));
+            let (documents, whole) = files.documents().await;
+            if !whole.is_empty() {
+                self.log("INFO", "research", &format!("Sent {} PDF file(s) to the model whole", whole.len())).await;
+            }
+            let mut message = Message::user_with_images(
+                files.context_with(&self.query, self.config.context.file_chars, &whole).await,
+                files.images(self.config.max_inline_images).await,
+            );
+            message.documents = documents;
+            messages.push(message);
         }
         messages.push(Message::user(format!("Research request:\n{}", self.query)));
 

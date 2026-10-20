@@ -87,6 +87,16 @@
 					oninput={(event) => edit('cached_input_per_million', event.currentTarget.value)}
 				/></label
 			>
+			{#if provider === 'anthropic'}
+				<label
+					>{t('pricing.cacheWrite')}<NumberInput
+						min="0"
+						step="any"
+						value={rate.cache_write_per_million ?? ''}
+						oninput={(event) => edit('cache_write_per_million', event.currentTarget.value)}
+					/></label
+				>
+			{/if}
 		</div>
 		<p>
 			{t('pricing.help')}

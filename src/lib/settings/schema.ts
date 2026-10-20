@@ -74,6 +74,8 @@ export const FIELDS: FieldDef[] = [
 	},
 	{ key: 'openrouter_api_key', section: 'llm', group: 'Connection', provider: 'openrouter', kind: 'password', default: '', placeholder: 'sk-or-…', keepOnReset: true },
 	{ key: 'openrouter_model', section: 'llm', group: 'Connection', provider: 'openrouter', kind: 'model', default: 'openai/gpt-4.1-mini', keepOnReset: true },
+	{ key: 'anthropic_api_key', section: 'llm', group: 'Connection', provider: 'anthropic', kind: 'password', default: '', placeholder: 'sk-ant-…', keepOnReset: true },
+	{ key: 'anthropic_model', section: 'llm', group: 'Connection', provider: 'anthropic', kind: 'model', default: '', keepOnReset: true },
 	{ key: 'ollama_url', section: 'llm', group: 'Connection', provider: 'ollama', kind: 'url', default: 'http://localhost:11434', placeholder: 'http://localhost:11434', keepOnReset: true },
 	{ key: 'ollama_model', section: 'llm', group: 'Connection', provider: 'ollama', kind: 'model', default: 'llama3', keepOnReset: true },
 	{ key: 'ollama_cloud_api_key', section: 'llm', group: 'Connection', provider: 'ollama_cloud', kind: 'password', default: '', keepOnReset: true },
@@ -109,6 +111,7 @@ export const FIELDS: FieldDef[] = [
 	...presetFields('Generation'),
 	// LLM — images (attached pictures and scanned pages)
 	{ key: 'llm_vision', section: 'llm', group: 'Images', kind: 'select', default: 'auto', options: ['auto', 'on', 'off'], keywords: 'vision pictures photos scans' },
+	{ key: 'anthropic_native_pdf', section: 'llm', group: 'Images', provider: 'anthropic', kind: 'switch', default: 'false', keywords: 'pdf documents files attached claude tables charts scans' },
 	{ key: 'vision_model', section: 'llm', group: 'Images', kind: 'model', default: '', keepOnReset: true, keywords: 'vision pictures photos scans ocr' },
 	{ key: 'max_inline_images', section: 'llm', group: 'Images', kind: 'number', default: '8', min: 1, max: 20, step: 1, advanced: true, keywords: 'pictures attached vision' },
 	{ key: 'vision_max_pages', section: 'llm', group: 'Images', kind: 'number', default: '50', min: 1, max: 1000, step: 1, advanced: true, keywords: 'scans ocr pdf' },

@@ -29,6 +29,21 @@ impl ImageInput {
     }
 }
 
+/// A whole file the model reads itself (a PDF for Claude); only Anthropic sends these.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DocumentInput {
+    /// `application/pdf`.
+    pub media_type: String,
+    pub data_base64: String,
+}
+
+impl DocumentInput {
+    pub fn pdf(bytes: &[u8]) -> Self {
+        use base64::Engine;
+        Self { media_type: "application/pdf".into(), data_base64: base64::engine::general_purpose::STANDARD.encode(bytes) }
+    }
+}
+
 /// A single message in a chat completion conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -37,6 +52,9 @@ pub struct Message {
     /// Images shown after the text (user messages, models that see images).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<ImageInput>,
+    /// Files shown before the text (PDFs for Claude when it reads them itself).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub documents: Vec<DocumentInput>,
 }
 
 impl Message {
@@ -45,6 +63,7 @@ impl Message {
             role: MessageRole::System,
             content: content.into(),
             images: Vec::new(),
+            documents: Vec::new(),
         }
     }
 
@@ -53,6 +72,7 @@ impl Message {
             role: MessageRole::User,
             content: content.into(),
             images: Vec::new(),
+            documents: Vec::new(),
         }
     }
 
@@ -61,6 +81,7 @@ impl Message {
             role: MessageRole::User,
             content: content.into(),
             images,
+            documents: Vec::new(),
         }
     }
 
@@ -69,6 +90,7 @@ impl Message {
             role: MessageRole::Assistant,
             content: content.into(),
             images: Vec::new(),
+            documents: Vec::new(),
         }
     }
 }

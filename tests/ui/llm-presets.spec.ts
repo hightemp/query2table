@@ -65,3 +65,33 @@ test('The custom address keeps the OpenAI-compatible server settings', async ({ 
 	await expect(page.getByRole('option', { name: 'local-model' })).toBeVisible();
 	expect((await calls(page, 'list_openai_models')).at(-1).args.provider).toBeNull();
 });
+
+test('Anthropic has its key, Claude models, the PDF switch and a cache-write rate', async ({ page }) => {
+	await page.goto('/settings');
+	await choose(provider(page), 'Anthropic (Claude)');
+	await expect(llm(page)).toContainText('Create one at console.anthropic.com/settings/keys.');
+	await llm(page).getByLabel('API key', { exact: true }).fill('ant-key');
+	const model = page.getByRole('combobox', { name: 'Model', exact: true });
+	await model.click();
+	await page.getByRole('option', { name: 'claude-sonnet-5-5' }).click();
+	expect((await calls(page, 'list_anthropic_models')).at(-1).args).toEqual({ apiKey: 'ant-key' });
+
+	const pdf = page.getByRole('switch', { name: 'Claude reads PDF files itself' });
+	await expect(pdf).toHaveAttribute('aria-checked', 'false');
+	await pdf.click();
+
+	await page.getByRole('checkbox', { name: 'Use custom rates for this model and endpoint' }).click();
+	await expect(llm(page)).toContainText('claude-sonnet-5-5 · Anthropic');
+	await expect(llm(page).getByLabel('Cache write USD / 1M tokens (optional)')).toBeVisible();
+	await page.getByRole('checkbox', { name: 'Use custom rates for this model and endpoint' }).click();
+
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(page.getByText('Changes saved', { exact: true })).toBeVisible();
+	const [saved] = await calls(page, 'update_settings');
+	expect(saved.args.values).toMatchObject({
+		llm_provider: 'anthropic',
+		anthropic_api_key: 'ant-key',
+		anthropic_model: 'claude-sonnet-5-5',
+		anthropic_native_pdf: 'true',
+	});
+});
