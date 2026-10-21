@@ -4287,7 +4287,7 @@ dependencies = [
 
 [[package]]
 name = "query2table"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "ammonia",
  "anyhow",
