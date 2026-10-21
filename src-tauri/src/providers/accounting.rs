@@ -3,7 +3,7 @@ use super::llm::types::LlmUsage;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PriceQuote {
     pub input_per_million: f64,
     pub output_per_million: f64,
@@ -92,6 +92,8 @@ pub trait UsageObserver: Send + Sync {
     fn begin(&self, request: RequestInfo) -> Result<u64, BudgetExceeded>;
     fn capture(&self, id: u64, usage: LlmUsage);
     fn finish(&self, id: u64, pricing: Option<PriceQuote>);
+    /// A page, PDF or picture of `bytes` was downloaded.
+    fn downloaded(&self, _bytes: u64) {}
 }
 #[derive(Debug, Clone, Copy, thiserror::Error)]
 #[error("Run spending limit reached. Increase the run's Max Cost to send more requests.")]

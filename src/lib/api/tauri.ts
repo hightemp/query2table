@@ -2,6 +2,10 @@ import { isAndroid } from '$lib/utils/platform';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
+	MonthlyBudget,
+	StorageUsage,
+	UsageReport,
+	UsageRequest,
 	SearchQueryInfo,
 	AttachmentFragment,
 	AttachmentInfo,
@@ -433,9 +437,9 @@ export function saveImage(url: string, fallbackUrl: string | null, path: string)
 	return invoke('save_image', { url, fallbackUrl, path });
 }
 
-/** Writes a picture made in the app (base64) to the chosen file and returns its path. */
-export function savePicture(path: string, data: string): Promise<string> {
-	return invoke('save_picture', { path, data });
+/** Writes a file made in the app (base64) to the chosen path and returns that path. */
+export function saveFileData(path: string, data: string): Promise<string> {
+	return invoke('save_file_data', { path, data });
 }
 
 export interface SaveImagesResult {
@@ -545,4 +549,36 @@ export async function onUpdateProgress(callback: (progress: UpdateProgress) => v
 export async function appVersion(): Promise<string> {
 	const { getVersion } = await import('@tauri-apps/api/app');
 	return getVersion();
+}
+
+/** Statistics of a period from the usage journal. */
+export function getUsage(request: UsageRequest): Promise<UsageReport> {
+	return invoke('get_usage', { request });
+}
+
+/** When the first recorded call happened (null before any): the start of "All time". */
+export function getUsageFirstAt(): Promise<number | null> {
+	return invoke('get_usage_first_at');
+}
+
+export function getStorageUsage(): Promise<StorageUsage> {
+	return invoke('get_storage_usage');
+}
+
+export function getMonthlyBudget(): Promise<MonthlyBudget> {
+	return invoke('get_monthly_budget');
+}
+
+/** Prices calls recorded without a price with today's rates; returns how many got one. */
+export function repriceUsage(): Promise<number> {
+	return invoke('reprice_usage');
+}
+
+export function clearUsage(): Promise<void> {
+	return invoke('clear_usage');
+}
+
+/** The monthly budget reached 80% or 100% after a run. */
+export function onUsageBudget(cb: (budget: MonthlyBudget) => void): Promise<UnlistenFn> {
+	return listen<MonthlyBudget>('usage:budget', (event) => cb(event.payload));
 }

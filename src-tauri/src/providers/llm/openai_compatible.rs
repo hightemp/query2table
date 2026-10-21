@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::endpoint::{
-    normalize_base_url, response_json, response_json_with_cost, transport_error,
+    json_body, normalize_base_url, response_json, sized_response_json, transport_error,
 };
 
 use super::types::*;
@@ -265,10 +265,8 @@ impl LlmProvider for OpenAiCompatibleProvider {
 
         debug!(provider = self.name, model = %request.model, json_mode = request.json_mode, "LLM chat_completion");
 
-        let mut http_request = self
-            .client
-            .post(format!("{}/chat/completions", self.base_url))
-            .json(&body);
+        let (mut http_request, sent) =
+            json_body(self.client.post(format!("{}/chat/completions", self.base_url)), &body)?;
         if !self.api_key.is_empty() {
             http_request = http_request.bearer_auth(&self.api_key);
         }
@@ -278,9 +276,13 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 .header("X-Title", "Query2Table");
         }
         let resp = http_request.send().await.map_err(transport_error)?;
-        let value =
-            response_json_with_cost(resp, &request.model, self.name == "openrouter").await?;
-        let counts = LlmUsage::from_json(&value, self.name == "openrouter");
+        let (value, received) =
+            sized_response_json(resp, &request.model, self.name == "openrouter").await?;
+        let counts = LlmUsage {
+            bytes_sent: Some(sent),
+            bytes_received: Some(received),
+            ..LlmUsage::from_json(&value, self.name == "openrouter")
+        };
         let chat_resp: ChatResponse = serde_json::from_value(value).map_err(|_| {
             LlmError::ParseError("The provider returned an invalid completion response.".into())
                 .with_usage(counts.clone())

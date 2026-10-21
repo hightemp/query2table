@@ -10,6 +10,8 @@ pub struct SerperProvider {
     client: Client,
     api_key: String,
     base_url: String,
+    /// Bytes of responses received, for the usage statistics.
+    received: std::sync::atomic::AtomicU64,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,10 +63,10 @@ impl SerperProvider {
             client,
             api_key: api_key.into(),
             base_url: "https://google.serper.dev".to_string(),
+            received: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
-    #[cfg(test)]
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
@@ -73,6 +75,10 @@ impl SerperProvider {
 
 #[async_trait]
 impl SearchProvider for SerperProvider {
+    fn received_bytes(&self) -> u64 {
+        self.received.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     async fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
         let url = format!("{}/search", self.base_url);
 
@@ -122,7 +128,7 @@ impl SearchProvider for SerperProvider {
             ));
         }
 
-        let serper_response: SerperResponse = response.json().await.map_err(|e| {
+        let serper_response: SerperResponse = super::types::counted_json(response, &self.received).await.map_err(|e| {
             SearchError::ParseError(format!("Failed to parse Serper response: {}", e))
         })?;
 
@@ -152,6 +158,10 @@ impl SearchProvider for SerperProvider {
 
 #[async_trait]
 impl ImageSearchProvider for SerperProvider {
+    fn received_bytes(&self) -> u64 {
+        self.received.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     async fn search_images(&self, query: SearchQuery) -> Result<Vec<ImageSearchResult>, SearchError> {
         let url = format!("{}/images", self.base_url);
 
@@ -201,7 +211,7 @@ impl ImageSearchProvider for SerperProvider {
             ));
         }
 
-        let serper_response: SerperImageResponse = response.json().await.map_err(|e| {
+        let serper_response: SerperImageResponse = super::types::counted_json(response, &self.received).await.map_err(|e| {
             SearchError::ParseError(format!("Failed to parse Serper image response: {}", e))
         })?;
 

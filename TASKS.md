@@ -2080,11 +2080,11 @@ Research answers draw Mermaid diagrams (flowcharts, sequences, timelines and the
 - [x] **DC6** Actions on a diagram or chart.
   - The "Diagram actions" button and right-click open the menu:
     - **Open full screen:** `DiagramViewer.svelte`, with zoom 50–400%, Fit, Ctrl+wheel and dragging to pan;
-    - **Save as SVG** and **Save as PNG:** the save dialog, then the `save_picture` command (base64, 50 MB cap, `utils/files.rs`, so Android's `content://` addresses work too);
+    - **Save as SVG** and **Save as PNG:** the save dialog, then the `save_file_data` command (base64, 50 MB cap, `utils/files.rs`, so Android's `content://` addresses work too);
     - **Copy source.**
   - PNG is drawn at 2× on the panel color. The file name comes from the title.
 - [x] **DC7** Tests.
-  - Rust: `tests/research_charts.rs` (shared examples, JSON error position, wording, fences, one fix past the step limit, a still-broken fix, a failed fix, good charts accepted at once), `the_prompt_describes_diagrams_and_charts`, `pictures_made_in_the_app_are_decoded_within_the_limit`.
+  - Rust: `tests/research_charts.rs` (shared examples, JSON error position, wording, fences, one fix past the step limit, a still-broken fix, a failed fix, good charts accepted at once), `the_prompt_describes_diagrams_and_charts`, `files_made_in_the_app_are_decoded_within_the_limit`.
   - vitest: `chart.test.ts` (shared examples, normalized chart, colors, options for every kind) and `diagrams.test.ts` (placeholders survive sanitizing, labels, file names, copied text keeps sources).
   - Playwright `tests/ui/research-diagrams.spec.ts`, on Chromium and WebKit:
     - Mermaid and every kind of chart drawn as SVG;
@@ -2094,3 +2094,112 @@ Research answers draw Mermaid diagrams (flowcharts, sequences, timelines and the
     - SVG/PNG saving, copying the source, and the full-screen view with zoom;
     - the theme switch recolors the charts;
     - phone width without page scroll.
+
+## Usage statistics
+
+A Statistics section shows what the app spent by month, year and all time:
+- money;
+- tokens;
+- calls to models;
+- searches (Brave, Serper);
+- data downloaded from the web, and sent to and received from models;
+- disk space in use.
+
+It also has a monthly budget with warnings.
+
+### Decisions (agreed with the user)
+
+- **Place:** a separate **Statistics** section in the sidebar, between History and Settings, and a tab on phones.
+- **Data:** a separate **usage journal**.
+  - Every call to a model, search and download is written with:
+    - its time;
+    - the run and its mode;
+    - provider and model;
+    - tokens;
+    - cost and its source (reported, estimated or unknown);
+    - bytes.
+  - The journal is exact by day and survives deleting runs.
+  - Existing runs are imported once from their saved summaries (`runs.stats.accounting`), dated by the run's start and without bytes.
+  - Calls outside runs (connection checks, model lists) are not counted.
+- **Data volume:**
+  - downloaded from the web: pages, PDFs, images, search responses;
+  - sent to and received from models: request and response bytes, pictures and PDFs included;
+  - disk in use now: database, attachments, kept answer images.
+- **Searches:** counted separately for **Brave and Serper**, with their cost from the per-1000 prices.
+- **Periods:** Month, Year and All time, with ← → arrows.
+  - The chart shows days in a month and months in a year or all time.
+  - Totals are compared with the previous period.
+  - Days follow the computer's time zone.
+- **Without a price:** calls whose model has no rate show as "+ N calls without a price", with a link to the rates. Their tokens are kept, so after a rate is set, **Recalculate** prices them as estimates.
+- **Retention:** the journal is kept forever. Calls older than a year are folded in place into daily totals per run, kind, provider and model. **Clear statistics** removes everything after a confirmation.
+- **Also on the page:**
+  - breakdown by provider and model, and by mode;
+  - the most expensive runs of the period, linking to them;
+  - CSV export by day and by model.
+- **Monthly budget:**
+  - The setting is in USD; 0 turns it off.
+  - The page shows the budget's progress.
+  - A system notification comes at 80% and at 100%, once a month for each threshold.
+  - After 100% the query page shows "This month's budget is exceeded". Runs are not blocked.
+
+### Tasks
+
+- [x] **US1** Journal storage (`storage/usage.rs`).
+  - One table, `usage_events`. A row stands for one or more calls: time, run id without a cascade, mode, kind `llm|search|download`, provider, model, calls, tokens (input/output/reasoning/cached/cache write), reported and estimated cost, calls without a price, bytes sent and received.
+  - `usage_runs` names the runs. The first name and start stay, a later question does not rename the run, and the trigger `usage_runs_keep_title` copies a run's last title when the run is deleted.
+  - On its first start (setting `usage_journal_since`) the journal imports existing runs from `stats.accounting`, model lines dated by the run's start. Research runs are imported per question from `research_turns.accounting`, because a run's summary holds only its last question.
+  - At every start, calls older than a year are folded in place into one row per local day, run, kind, provider and model.
+  - `clear_usage` removes everything.
+  - Tests: `tests/usage_journal.rs`.
+- [x] **US2** Recording (`orchestrator/usage_journal.rs`).
+  - Every pipeline starts a `UsageJournal` for its run. Its `BudgetTracker` writes each settled model and search call through a background writer that batches events, so runs never wait.
+  - The supervisor flushes the journal when a run ends.
+  - Bytes:
+    - model providers report the request and response body sizes in `LlmUsage` (`json_body`, `sized_response_json`);
+    - Brave and Serper count the bytes of their responses;
+    - downloads report their size through `UsageObserver::downloaded`: `HttpFetcher` pages and PDFs, research previews, viewed and kept pictures, and pictures the image ranker compares.
+  - Page sizes are the decompressed content, not the compressed transfer.
+  - Table runs no longer count fetches separately; the fetcher does. Research and Links runs now count downloads too.
+  - Tests: `tests/usage_recording.rs` and the journal check in `research_images.rs`.
+- [x] **US3** Statistics query.
+  - `get_usage` takes the period from the frontend: `[from, to)`, chart buckets and the start of the period before (`UsageRequest`). The frontend knows the local calendar and clock changes.
+  - `Repository::usage_report` returns:
+    - totals: cost (reported + estimated), calls without a price, tokens by kind, model calls, searches, downloads, bytes from the web and to/from models, runs;
+    - the previous period's totals;
+    - the series by bucket;
+    - breakdowns by provider and model (most expensive first), by search provider and by mode;
+    - the top 10 runs. A run is named by its current title; a deleted one keeps its last title, without a link.
+  - Money is kept to ten decimals.
+  - `get_usage_first_at` gives the start of "All time".
+  - Tests: `tests/usage_report.rs`.
+- [x] **US4** Disk in use (`get_storage_usage`): the database with its WAL file, the attachments folder, and the kept answer pictures (inside the database). The page links to History and opens the data folder.
+- [x] **US5** Recalculate (`reprice_usage`).
+  - Rows whose every call is without a price are priced with today's manual model rates (matched by provider and the model asked for, `requested_model`, at any address) and the per-1000 search prices.
+  - Rows mixing priced and unpriced calls are left as they are.
+- [x] **US6** Monthly budget.
+  - Setting `monthly_budget_usd` (Settings › Runs › Spending, default 0 = off).
+  - After every run the supervisor calls `EventPublisher::check_monthly_budget`. At 80% and 100% (`budget_alert`, remembered once a month in `usage_budget_warned`, local calendar) it sends a system notification (`budget_notification`, both languages) and the `usage:budget` event.
+  - The query page shows "This month's budget is exceeded" with a link to Statistics. Runs are not blocked.
+- [x] **US7** The `/usage` page (`src/routes/usage/+page.svelte`, `UsageChart.svelte`, `utils/usage.ts`).
+  - Sidebar item and phone tab "Statistics".
+  - Month / Year / All time, with ← → arrows (no future periods). All time goes by month, or by year past 36 months.
+  - Tiles with the change against the previous period: Cost (with calls without a price, Set rates and Recalculate), Tokens, Model calls, Searches (Brave / Serper), Downloaded from the web, Exchanged with models.
+  - The chart (Cost / Tokens / Searches / Data) uses the research chart renderer.
+  - Tables: by model, by mode with search providers, the most expensive runs.
+  - Monthly budget progress, Disk, Export, Clear statistics with a confirmation.
+  - Two tiles a row on phones.
+- [x] **US8** CSV export of the period by date or by model, through the save dialog and `save_file_data`, so Android works too. `save_picture` was renamed to `save_file_data`, since it now writes any file the app makes.
+- [x] **US9** Tests.
+  - Rust: `tests/usage_journal.rs`, `tests/usage_recording.rs`, `tests/usage_report.rs` (totals, series, previous period, breakdowns, top runs, bad periods, disk, recalculation, budget thresholds once a month, first call), `budget_warnings_speak_the_language`, and the journal check in `research_images.rs`.
+  - vitest: `usage.test.ts` (local periods, stepping, sizes, CSV).
+  - Playwright `tests/ui/usage.spec.ts`, on Chromium and WebKit:
+    - totals, changes, recalculation;
+    - chart and its metric;
+    - tables, the run link, a deleted run;
+    - disk;
+    - stepping periods, year, all time;
+    - the budget on the page and the query page;
+    - the budget setting;
+    - CSV by date and by model;
+    - clearing;
+    - phone width.

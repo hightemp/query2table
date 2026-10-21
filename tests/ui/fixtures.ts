@@ -85,8 +85,66 @@ export const test = base.extend({
 				height: 180,
 				relevance_score: 0.8,
 			}));
+			const usageTotals = (overrides: Record<string, number> = {}) => ({
+				cost_usd: 0,
+				reported_usd: 0,
+				estimated_usd: 0,
+				unpriced_calls: 0,
+				llm_calls: 0,
+				prompt_tokens: 0,
+				completion_tokens: 0,
+				reasoning_tokens: 0,
+				cached_tokens: 0,
+				cache_write_tokens: 0,
+				searches: 0,
+				downloads: 0,
+				web_bytes: 0,
+				model_bytes_sent: 0,
+				model_bytes_received: 0,
+				runs: 0,
+				...overrides,
+			});
+			const usage = {
+				totals: usageTotals({
+					cost_usd: 1.25,
+					reported_usd: 1,
+					estimated_usd: 0.25,
+					unpriced_calls: 2,
+					llm_calls: 10,
+					prompt_tokens: 10_000,
+					completion_tokens: 2_000,
+					cached_tokens: 3_000,
+					searches: 4,
+					downloads: 7,
+					web_bytes: 2 * 1024 * 1024,
+					model_bytes_sent: 1.5 * 1024 * 1024,
+					model_bytes_received: 512 * 1024,
+					runs: 3,
+				}),
+				previous: usageTotals({ cost_usd: 1, reported_usd: 1, llm_calls: 6, runs: 2 }),
+				point: usageTotals({ cost_usd: 0.1, reported_usd: 0.1, llm_calls: 1, prompt_tokens: 800, completion_tokens: 100, web_bytes: 50_000 }),
+				by_model: [
+					{ provider: 'openrouter', model: 'openai/gpt-4.1-mini', calls: 8, prompt_tokens: 8_000, completion_tokens: 1_500, cached_tokens: 3_000, cost_usd: 1, unpriced_calls: 0 },
+					{ provider: 'anthropic', model: 'claude-sonnet-5-5', calls: 2, prompt_tokens: 2_000, completion_tokens: 500, cached_tokens: 0, cost_usd: 0.25, unpriced_calls: 2 },
+				],
+				by_search: [
+					{ provider: 'brave', calls: 3, cost_usd: 0, bytes: 30_000 },
+					{ provider: 'serper', calls: 1, cost_usd: 0.001, bytes: 9_000 },
+				],
+				by_mode: [
+					{ run_type: 'research', runs: 1, llm_calls: 2, searches: 1, cost_usd: 0.25 },
+					{ run_type: 'table', runs: 2, llm_calls: 8, searches: 3, cost_usd: 1 },
+				],
+				top_runs: [
+					{ run_id: 'table', run_type: 'table', title: 'Robot channels', started_at: 1000, cost_usd: 1, llm_calls: 8, exists: true },
+					{ run_id: 'gone', run_type: 'research', title: 'Old idea', started_at: 900, cost_usd: 0.25, llm_calls: 2, exists: false },
+				],
+			};
 			const fixture = {
 				rows,
+				usage,
+				usageTotals,
+				budget: { limit_usd: 0, spent_usd: 1.25, month_start: 0 },
 				runs,
 				schema,
 				images,
@@ -289,8 +347,31 @@ export const test = base.extend({
 							return fixture.clipboard;
 						case 'plugin:dialog|save':
 							return '/tmp/query2table-fixture.csv';
-						case 'save_picture':
+						case 'save_file_data':
 							return args.path;
+						case 'get_usage':
+							return {
+								totals: fixture.usage.totals,
+								previous: fixture.usage.previous,
+								series: args.request.buckets.map((start: number) => ({ start, totals: fixture.usage.point })),
+								by_model: fixture.usage.by_model,
+								by_search: fixture.usage.by_search,
+								by_mode: fixture.usage.by_mode,
+								top_runs: fixture.usage.top_runs,
+							};
+						case 'get_usage_first_at':
+							return new Date(new Date().getFullYear() - 1, 0, 15).getTime() / 1000;
+						case 'get_storage_usage':
+							return { database_bytes: 5 * 1024 * 1024, attachments_bytes: 1024 * 1024, answer_images_bytes: 200 * 1024 };
+						case 'get_monthly_budget':
+							return fixture.budget;
+						case 'reprice_usage':
+							return fixture.usage.totals.unpriced_calls;
+						case 'clear_usage': {
+							const empty = fixture.usageTotals();
+							Object.assign(fixture.usage, { totals: empty, previous: empty, point: empty, by_model: [], by_search: [], by_mode: [], top_runs: [] });
+							return;
+						}
 						case 'get_run':
 							return fixture.runs.find((run: any) => run.id === args.runId) ?? null;
 						case 'list_history': {

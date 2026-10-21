@@ -1,7 +1,7 @@
 /** Saving drawn diagrams and charts as SVG or PNG files. */
 import { save } from '@tauri-apps/plugin-dialog';
 import { t } from '$lib/i18n';
-import { savePicture } from '$lib/api/tauri';
+import { saveFileData } from '$lib/api/tauri';
 import { toast } from '$lib/stores/toasts';
 import { errorText } from './errors';
 import { readablePath } from './platform';
@@ -62,7 +62,7 @@ export async function saveDiagram(markup: string, title: string, format: 'svg' |
 		});
 		if (!path) return;
 		const bytes = format === 'svg' ? new TextEncoder().encode(standaloneSvg(markup).svg) : await png(markup, background);
-		const written = await savePicture(path, base64(bytes));
+		const written = await saveFileData(path, base64(bytes));
 		toast(t('research.diagramSaved', { path: readablePath(written) ?? t('files.chosenFile') }), 'success');
 	} catch (error) {
 		toast(t('research.diagramSaveFailed', { error: errorText(error) }), 'error');

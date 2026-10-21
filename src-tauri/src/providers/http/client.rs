@@ -64,6 +64,8 @@ pub struct HttpFetcher {
     ua_index: std::sync::atomic::AtomicUsize,
     /// Built without the environment or user proxy (tests against local servers).
     no_proxy: bool,
+    /// The run's accounting, told the size of every download.
+    accounting: std::sync::OnceLock<std::sync::Arc<dyn crate::providers::accounting::UsageObserver>>,
 }
 
 fn client_builder(timeout: Duration) -> ClientBuilder {
@@ -89,6 +91,7 @@ impl HttpFetcher {
             max_body_bytes: 5 * 1024 * 1024, // 5 MB
             ua_index: std::sync::atomic::AtomicUsize::new(0),
             no_proxy: false,
+            accounting: std::sync::OnceLock::new(),
         }
     }
 
@@ -115,9 +118,21 @@ impl HttpFetcher {
             max_body_bytes: 5 * 1024 * 1024,
             ua_index: std::sync::atomic::AtomicUsize::new(0),
             no_proxy: true,
+            accounting: std::sync::OnceLock::new(),
         }
     }
 
+
+    /// Reports every download to the run's accounting.
+    pub fn with_accounting(self, observer: std::sync::Arc<dyn crate::providers::accounting::UsageObserver>) -> Self {
+        self.account_to(observer);
+        self
+    }
+
+    /// Reports downloads to the run's accounting from now on, unless it already does.
+    pub fn account_to(&self, observer: std::sync::Arc<dyn crate::providers::accounting::UsageObserver>) {
+        let _ = self.accounting.set(observer);
+    }
 
     /// Set max body size in bytes.
     pub fn with_max_body_bytes(mut self, max: u64) -> Self {
@@ -195,6 +210,10 @@ impl HttpFetcher {
                 size: raw_bytes.len() as u64,
                 max: self.max_body_bytes,
             });
+        }
+
+        if let Some(accounting) = self.accounting.get() {
+            accounting.downloaded(raw_bytes.len() as u64);
         }
 
         let (body, body_bytes) = if is_pdf {

@@ -474,3 +474,62 @@ export interface UpdateProgress {
 	downloaded: number;
 	total: number | null;
 }
+
+/** A statistics period: `[from, to)`, chart buckets (local days or months) and the period before. */
+export interface UsageRequest {
+	from: number;
+	to: number;
+	buckets: number[];
+	previous_from: number;
+}
+
+export interface UsageTotals {
+	cost_usd: number;
+	reported_usd: number;
+	estimated_usd: number;
+	unpriced_calls: number;
+	llm_calls: number;
+	prompt_tokens: number;
+	completion_tokens: number;
+	reasoning_tokens: number;
+	cached_tokens: number;
+	cache_write_tokens: number;
+	searches: number;
+	downloads: number;
+	web_bytes: number;
+	model_bytes_sent: number;
+	model_bytes_received: number;
+	runs: number;
+}
+
+export interface UsageReport {
+	totals: UsageTotals;
+	previous: UsageTotals;
+	series: { start: number; totals: UsageTotals }[];
+	by_model: {
+		provider: string;
+		model: string;
+		calls: number;
+		prompt_tokens: number;
+		completion_tokens: number;
+		cached_tokens: number;
+		cost_usd: number;
+		unpriced_calls: number;
+	}[];
+	by_search: { provider: string; calls: number; cost_usd: number; bytes: number }[];
+	by_mode: { run_type: string; runs: number; llm_calls: number; searches: number; cost_usd: number }[];
+	top_runs: { run_id: string; run_type: string; title: string; started_at: number; cost_usd: number; llm_calls: number; exists: boolean }[];
+}
+
+export interface StorageUsage {
+	database_bytes: number;
+	attachments_bytes: number;
+	answer_images_bytes: number;
+}
+
+export interface MonthlyBudget {
+	/** 0 when no budget is set. */
+	limit_usd: number;
+	spent_usd: number;
+	month_start: number;
+}

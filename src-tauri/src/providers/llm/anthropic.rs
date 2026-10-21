@@ -7,7 +7,7 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use tracing::debug;
 
-use super::endpoint::{normalize_base_url, response_json, transport_error};
+use super::endpoint::{json_body, normalize_base_url, response_json, sized_response_json, transport_error};
 use super::types::*;
 use crate::providers::http::apply_proxy;
 
@@ -197,17 +197,16 @@ impl LlmProvider for AnthropicProvider {
         reasoning_fields(&request.model, request.reasoning_effort, request.max_tokens, request.temperature, &mut body);
 
         debug!(model = %request.model, json_mode = request.json_mode, "Anthropic messages request");
-        let response = self
-            .client
-            .post(format!("{}/messages", self.base_url))
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", API_VERSION)
-            .json(&body)
-            .send()
-            .await
-            .map_err(transport_error)?;
-        let value = response_json(response, &request.model).await?;
-        let counts = usage(&value);
+        let (http_request, sent) = json_body(
+            self.client
+                .post(format!("{}/messages", self.base_url))
+                .header("x-api-key", &self.api_key)
+                .header("anthropic-version", API_VERSION),
+            &body,
+        )?;
+        let response = http_request.send().await.map_err(transport_error)?;
+        let (value, received) = sized_response_json(response, &request.model, false).await?;
+        let counts = LlmUsage { bytes_sent: Some(sent), bytes_received: Some(received), ..usage(&value) };
         let text: String = value
             .get("content")
             .and_then(Value::as_array)

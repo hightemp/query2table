@@ -40,6 +40,8 @@
 	import ResearchView from '$lib/components/run/ResearchView.svelte';
 	import ErrorNotice from '$lib/components/common/ErrorNotice.svelte';
 	import RunNotices from '$lib/components/run/RunNotices.svelte';
+	import { getMonthlyBudget, onUsageBudget } from '$lib/api/tauri';
+	import type { MonthlyBudget } from '$lib/types';
 	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	import Dialog from '$lib/components/common/Dialog.svelte';
 	import {
@@ -255,9 +257,14 @@
 			recentRuns = [];
 		}
 	}
+	/** This month's spending, for the notice once the monthly budget is used up. */
+	let monthlyBudget = $state<MonthlyBudget | null>(null);
 	onMount(() => {
 		void loadRecent();
 		applyDraft();
+		void getMonthlyBudget().then((budget) => (monthlyBudget = budget), () => {});
+		const unlisten = onUsageBudget((budget) => (monthlyBudget = budget));
+		return () => void unlisten.then((stop) => stop());
 	});
 	/** Edit and run from History: fill the form without starting. */
 	function applyDraft() {
@@ -374,6 +381,15 @@
 									</li>{/each}
 							</ul>
 						</div>
+					</div>
+				{/if}
+				{#if monthlyBudget && monthlyBudget.limit_usd > 0 && monthlyBudget.spent_usd >= monthlyBudget.limit_usd}
+					<div class="config-problems" role="alert">
+						<TriangleAlertIcon size={16} />
+						<p>
+							{t('usage.budgetExceeded', { spent: formatUsd(monthlyBudget.spent_usd), limit: formatUsd(monthlyBudget.limit_usd) })}
+							<a href="/usage">{t('nav.usage')}</a>
+						</p>
 					</div>
 				{/if}
 				<button

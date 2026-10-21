@@ -265,6 +265,13 @@ impl RunSupervisor {
     }
 
     async fn reconcile_terminal_rows(&self) {
+        // The statistics show the run's spending as soon as it ends.
+        if let Some(budget) = &self.budget {
+            budget.flush_journal().await;
+        }
+        if let Some(events) = &self.events {
+            events.check_monthly_budget(&self.repo).await;
+        }
         // A cancellation may arrive after the merge commits but before the pipeline returns.
         // Read canonical rows only after work is dropped and queued writes are flushed.
         let result = async {

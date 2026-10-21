@@ -90,7 +90,24 @@ Research answers draw ```` ```mermaid ```` diagrams and ```` ```chart ```` block
 On the frontend, `diagramPlaceholder` (`src/lib/utils/diagrams.ts`) turns the blocks into `figure.diagram` placeholders that keep the source as element text, because DOMPurify drops attributes holding `-->`. `Markdown.svelte` draws them through lazily imported modules:
 - `mermaidRender.ts`: Mermaid with `securityLevel: 'strict'`, SVG labels and the app theme's colors; the output is sanitized.
 - `chartRender.ts`: ECharts core with the SVG renderer, using `chartOption`/`chartColors` from `chart.ts`. Series take a fixed categorical palette validated for color-vision deficiencies; text and grid take theme tokens.
-Pictures are redrawn when the theme changes. A block that cannot be drawn keeps its source with a note. The figure menu offers full screen (`DiagramViewer.svelte`), Save as SVG/PNG (`diagramFiles.ts` → `save_picture`) and Copy source. Copies and Markdown exports keep the blocks as written.
+Pictures are redrawn when the theme changes. A block that cannot be drawn keeps its source with a note. The figure menu offers full screen (`DiagramViewer.svelte`), Save as SVG/PNG (`diagramFiles.ts` → `save_file_data`) and Copy source. Copies and Markdown exports keep the blocks as written.
+
+## Usage statistics
+Spending is kept in the usage journal (`storage/usage.rs`):
+- `usage_events` holds one row per call or group of calls: time, run, mode, kind `llm|search|download`, provider, model answered and asked for, tokens, reported and estimated cost, calls without a price, bytes. It has no cascade, so deleting runs keeps the spending.
+- `usage_runs` names the runs. The trigger `usage_runs_keep_title` keeps a deleted run's last title.
+- On its first start (setting `usage_journal_since`) the journal imports old runs from their saved summaries; research runs are imported per question. Calls older than a year are folded into daily rows at every start.
+
+How calls get recorded:
+- Every pipeline gives its `BudgetTracker` a `UsageJournal` (`orchestrator/usage_journal.rs`, a background writer). Each settled model or search call becomes an event, and the supervisor flushes the journal when the run ends.
+- Bytes: model providers fill `LlmUsage.bytes_sent/bytes_received` (`json_body`, `sized_response_json` in `providers/llm/endpoint.rs`); Brave and Serper count response bytes (`SearchProvider::received_bytes`). Downloads report through `UsageObserver::downloaded`: `HttpFetcher::with_accounting/account_to`, pictures (`Picture.downloaded`), and `LlmManager::downloaded` for the image ranker.
+- When adding a network call made during a run, report it the same way.
+
+The `/usage` page (`src/routes/usage/+page.svelte`, `utils/usage.ts`):
+- The frontend builds the periods (`usagePeriod`) in local time and sends their boundaries to `get_usage`.
+- The chart reuses `chartRender.ts`.
+- Other commands: `get_storage_usage`, `reprice_usage` (prices calls without a price with today's manual rates), `clear_usage`, `get_monthly_budget` and `get_usage_first_at`.
+- The monthly budget (`monthly_budget_usd`) is checked after each run (`budget_alert`: 80% and 100%, once a month), with a notification, the `usage:budget` event and a notice on the query page.
 
 ## UI controls
 Do not use the browser's own controls. Use `Select` (lists; search appears from 8 options), `Checkbox`, `Radio`, `NumberInput` and `Slider` from `src/lib/components/common/`, and `use:tooltip` from `src/lib/actions/tooltip.ts` instead of `title` (`{ text, whenTruncated: true }` for clipped text). `<details>`, scrollbars and number spinners are styled globally in `src/app.css`. Right-click on text fields and selected text opens the app's menu (`src/lib/utils/textMenu.ts`). In Playwright tests pick list options with `choose()` from `tests/ui/fixtures.ts`.

@@ -5,7 +5,7 @@ test('The language is chosen in Settings and applies at once', async ({ page }) 
 	await page.getByRole('spinbutton', { name: 'Temperature', exact: true }).fill('0.4');
 	await choose(page.getByLabel('Language', { exact: true }), 'Русский');
 	const nav = page.getByRole('navigation').first();
-	await expect(nav.getByRole('link')).toHaveText(['Запрос', 'История', 'Настройки']);
+	await expect(nav.getByRole('link')).toHaveText(['Запрос', 'История', 'Статистика', 'Настройки']);
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Настройки');
 	await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
 	// Unsaved edits survive the switch, now described in Russian.

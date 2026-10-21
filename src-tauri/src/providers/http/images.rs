@@ -48,6 +48,8 @@ pub struct Picture {
     pub bytes: Vec<u8>,
     pub width: u32,
     pub height: u32,
+    /// Size of the file downloaded for it, before downscaling.
+    pub downloaded: usize,
 }
 
 /// Downscales image bytes so the longer side is at most `side`. None when they are not a
@@ -63,7 +65,7 @@ pub fn shrink(bytes: &[u8], side: u32) -> Option<Picture> {
         image::DynamicImage::ImageRgb8(image.to_rgb8()).write_to(&mut out, image::ImageFormat::Jpeg).ok()?;
         "image/jpeg"
     };
-    Some(Picture { media_type, bytes: out.into_inner(), width: image.width(), height: image.height() })
+    Some(Picture { media_type, bytes: out.into_inner(), width: image.width(), height: image.height(), downloaded: bytes.len() })
 }
 
 /// The first of `urls` that downloads as a readable image, downscaled to `side`.

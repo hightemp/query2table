@@ -22,6 +22,7 @@ use super::files::RunFiles;
 
 use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
+use super::usage_journal::UsageJournal;
 use super::events::{EventPublisher, ProgressStats};
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
 
@@ -119,7 +120,8 @@ impl ResearchPipeline {
         events: Option<EventPublisher>,
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
-        let budget = BudgetTracker::new(config.max_budget_usd);
+        let budget = BudgetTracker::new(config.max_budget_usd)
+            .with_journal(UsageJournal::for_run(repo.clone(), &run_id, "research", &query));
         let (control, supervisor) =
             RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
         let supervisor = supervisor.with_budget(budget.clone());
@@ -230,7 +232,9 @@ impl ResearchPipeline {
 
         let rate_limiter = RateLimiter::new(std::time::Duration::from_millis(self.config.rate_limit_ms));
         let fetcher = Arc::new(
-            HttpFetcher::new(rate_limiter).with_max_body_bytes(self.config.max_page_size_bytes),
+            HttpFetcher::new(rate_limiter)
+                .with_max_body_bytes(self.config.max_page_size_bytes)
+                .with_accounting(self.budget.observer()),
         );
         let max_pdf_chars = if self.config.enable_content_truncation {
             Some(self.config.max_pdf_text_chars)
@@ -419,7 +423,7 @@ impl ResearchPipeline {
                                     self.record_step(step_index, "image_search", &query, None).await;
                                     let text = format!("Image results:\n{}", format_image_results(&results));
                                     if tools.view {
-                                        let (shown, pictures) = image_previews(&results, IMAGE_PREVIEWS.min(self.config.max_inline_images)).await;
+                                        let (shown, pictures) = image_previews(&results, IMAGE_PREVIEWS.min(self.config.max_inline_images), &self.budget).await;
                                         if shown.is_empty() {
                                             Message::user(text)
                                         } else {
@@ -448,6 +452,7 @@ impl ResearchPipeline {
                         self.log("INFO", "research", &format!("View image: {url}")).await;
                         match picture(&[&url], VIEW_SIDE, IMAGE_BYTES).await {
                             Ok(p) => {
+                                self.budget.downloaded(p.downloaded as u64);
                                 let known = seen.entry(url.clone()).or_insert(SeenImage { source_url: None, title: String::new(), thumbnail: None });
                                 let title = Some(known.title.clone()).filter(|t| !t.trim().is_empty()).unwrap_or_else(|| file_name(&url));
                                 self.record_step(step_index, "view_image", &title, Some(&url)).await;
@@ -615,6 +620,7 @@ impl ResearchPipeline {
         for ((url, found), result) in wanted.into_iter().zip(downloads) {
             match result {
                 Ok(p) => {
+                    self.budget.downloaded(p.downloaded as u64);
                     let row = ResearchImageRow {
                         run_id: self.run_id.clone(),
                         turn_index: self.turn_index,
@@ -730,7 +736,7 @@ fn format_image_results(results: &[crate::providers::search::types::ImageSearchR
 
 /// Small pictures of the first image results for a model that sees images: the result numbers
 /// that have one, and the pictures in the same order.
-async fn image_previews(results: &[crate::providers::search::types::ImageSearchResult], most: usize) -> (Vec<usize>, Vec<ImageInput>) {
+async fn image_previews(results: &[crate::providers::search::types::ImageSearchResult], most: usize, budget: &BudgetTracker) -> (Vec<usize>, Vec<ImageInput>) {
     let loaded = futures::future::join_all(
         results.iter().take(most).map(|r| async move { picture(&[&r.thumbnail_url, &r.image_url], PREVIEW_SIDE, IMAGE_BYTES).await }),
     )
@@ -739,6 +745,7 @@ async fn image_previews(results: &[crate::providers::search::types::ImageSearchR
     let mut pictures = Vec::new();
     for (i, p) in loaded.into_iter().enumerate() {
         if let Ok(p) = p {
+            budget.downloaded(p.downloaded as u64);
             numbers.push(i + 1);
             pictures.push(ImageInput::from_bytes(p.media_type, &p.bytes));
         }

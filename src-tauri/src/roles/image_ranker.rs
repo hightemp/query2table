@@ -152,7 +152,7 @@ impl ImageRanker {
         // Load the pictures first; the order of the batches follows the text ranking.
         let mut loaded: Vec<(RankedImageResult, Option<ImageInput>)> = Vec::new();
         for candidate in candidates {
-            let picture = Self::load_picture(&candidate.result).await;
+            let picture = Self::load_picture(&candidate.result, llm).await;
             loaded.push((candidate, picture));
         }
         let (with_picture, without): (Vec<_>, Vec<_>) = loaded.into_iter().partition(|(_, p)| p.is_some());
@@ -216,8 +216,9 @@ impl ImageRanker {
     }
 
     /// A small copy of a found picture (the thumbnail, or the full image) to show a model.
-    async fn load_picture(result: &ImageSearchResult) -> Option<ImageInput> {
+    async fn load_picture(result: &ImageSearchResult, llm: &LlmManager) -> Option<ImageInput> {
         let picture = crate::providers::http::images::picture(&[&result.thumbnail_url, &result.image_url], COMPARE_SIDE, 8 * 1024 * 1024).await.ok()?;
+        llm.downloaded(picture.downloaded as u64);
         Some(ImageInput::from_bytes(picture.media_type, &picture.bytes))
     }
 

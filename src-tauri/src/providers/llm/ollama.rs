@@ -3,7 +3,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
-use super::endpoint::{normalize_base_url, response_json, transport_error};
+use super::endpoint::{json_body, normalize_base_url, response_json, sized_response_json, transport_error};
 use super::types::*;
 use crate::providers::http::apply_proxy;
 
@@ -252,15 +252,12 @@ impl LlmProvider for OllamaProvider {
 
         let started = std::time::Instant::now();
 
-        let resp = self
-            .authenticate(self.client.post(format!("{}/api/chat", self.base_url)))
-            .json(&body)
-            .send()
-            .await
-            .map_err(transport_error)?;
+        let (http_request, sent) =
+            json_body(self.authenticate(self.client.post(format!("{}/api/chat", self.base_url))), &body)?;
+        let resp = http_request.send().await.map_err(transport_error)?;
 
-        let value = response_json(resp, &request.model).await?;
-        let counts = LlmUsage::from_json(&value, false);
+        let (value, received) = sized_response_json(resp, &request.model, false).await?;
+        let counts = LlmUsage { bytes_sent: Some(sent), bytes_received: Some(received), ..LlmUsage::from_json(&value, false) };
         let chat_resp: OllamaChatResponse = serde_json::from_value(value).map_err(|_| {
             LlmError::ParseError("Ollama returned an invalid completion response.".into())
                 .with_usage(counts.clone())

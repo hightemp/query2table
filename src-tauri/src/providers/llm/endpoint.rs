@@ -45,6 +45,22 @@ pub(super) async fn response_json_with_cost(
     model: &str,
     openrouter_cost: bool,
 ) -> Result<serde_json::Value, LlmError> {
+    sized_response_json(response, model, openrouter_cost).await.map(|(value, _)| value)
+}
+
+/// A JSON request body, sent as is; returns the request and the body's size.
+pub(super) fn json_body(request: reqwest::RequestBuilder, body: &impl serde::Serialize) -> Result<(reqwest::RequestBuilder, u64), LlmError> {
+    let bytes = serde_json::to_vec(body).map_err(|e| LlmError::ParseError(format!("Could not encode the request: {e}")))?;
+    let size = bytes.len() as u64;
+    Ok((request.header(reqwest::header::CONTENT_TYPE, "application/json").body(bytes), size))
+}
+
+/// The response JSON with the size of the body received.
+pub(super) async fn sized_response_json(
+    response: reqwest::Response,
+    model: &str,
+    openrouter_cost: bool,
+) -> Result<(serde_json::Value, u64), LlmError> {
     let status = response.status().as_u16();
     let retry_after_ms = response
         .headers()
@@ -65,7 +81,7 @@ pub(super) async fn response_json_with_cost(
             .unwrap_or_default();
         return Err(classify_error(status, envelope, model, retry_after_ms).with_usage(usage));
     }
-    parsed.map_err(|_| {
+    parsed.map(|value| (value, bytes.len() as u64)).map_err(|_| {
         LlmError::ParseError(
             "The provider returned invalid JSON instead of a completion response.".into(),
         )

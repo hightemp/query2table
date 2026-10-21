@@ -4,6 +4,7 @@
 	import {
 		SearchIcon,
 		HistoryIcon,
+		ChartColumnIcon,
 		SettingsIcon,
 		PanelLeftCloseIcon,
 		PanelLeftOpenIcon,
@@ -30,6 +31,7 @@
 	const nav: { href: string; label: MessageKey; icon: typeof SearchIcon }[] = [
 		{ href: '/', label: 'nav.query', icon: SearchIcon },
 		{ href: '/history', label: 'nav.history', icon: HistoryIcon },
+		{ href: '/usage', label: 'nav.usage', icon: ChartColumnIcon },
 		{ href: '/settings', label: 'nav.settings', icon: SettingsIcon },
 	];
 	const themes: { value: ThemePreference; label: MessageKey; icon: typeof SunIcon }[] = [

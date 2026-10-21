@@ -158,6 +158,9 @@ pub struct LlmUsage {
     pub model: Option<String>,
     pub remote_model: Option<String>,
     pub remote_host: Option<String>,
+    /// Size of the request body sent, and of the response body received.
+    pub bytes_sent: Option<u64>,
+    pub bytes_received: Option<u64>,
 }
 
 impl LlmUsage {
@@ -198,6 +201,7 @@ impl LlmUsage {
                 .get("remote_host")
                 .and_then(|v| v.as_str())
                 .map(str::to_owned),
+            ..Default::default()
         }
     }
     pub fn has_measurements(&self) -> bool {

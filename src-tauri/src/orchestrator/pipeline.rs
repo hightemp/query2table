@@ -23,6 +23,7 @@ use crate::roles::stopping_controller::{StoppingController, StopConfig, Pipeline
 
 use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
+use super::usage_journal::UsageJournal;
 use super::events::{EventPublisher, ProgressStats};
 use super::fetch_pool::{self, FetchJob, FetchResult};
 use super::extract_pool::{self, ExtractionJob, ExtractResult};
@@ -255,7 +256,8 @@ impl Pipeline {
         events: Option<EventPublisher>,
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
-        let budget = BudgetTracker::new(config.max_budget_usd);
+        let budget = BudgetTracker::new(config.max_budget_usd)
+            .with_journal(UsageJournal::for_run(repo.clone(), &run_id, "table", &query));
         let (control, supervisor) =
             RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
         let supervisor = supervisor.with_budget(budget.clone());
@@ -460,6 +462,7 @@ impl Pipeline {
                     .with_timeout(std::time::Duration::from_secs(self.config.fetch_timeout_secs)),
             )
         };
+        fetcher.account_to(self.budget.observer());
         let language = intent.language();
         self.fetch_and_extract(llm, confirmed_columns, all_queries, collected, pending_results, file_fragments, total_pages, fetcher, language)
             .await
@@ -685,7 +688,6 @@ impl Pipeline {
                 fetch_result = fetch_rx.recv(), if !fetch_done => {
                     match fetch_result {
                         Some(FetchResult::Success(doc)) => {
-                            self.budget.record_fetch_call();
                             pages_fetched += 1;
 
                             self.log("INFO", "fetcher", &format!("[{}/{}] Fetched: {}", pages_fetched, total_pages, &doc.document.url)).await;

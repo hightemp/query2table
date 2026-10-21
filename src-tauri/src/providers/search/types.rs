@@ -65,6 +65,21 @@ pub trait SearchProvider: Send + Sync {
 
     /// Check if the provider is accessible.
     async fn health_check(&self) -> Result<(), SearchError>;
+
+    /// Bytes of responses received so far, for the usage statistics.
+    fn received_bytes(&self) -> u64 {
+        0
+    }
+}
+
+/// Reads a JSON response body, adding its size to `received`.
+pub(crate) async fn counted_json<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+    received: &std::sync::atomic::AtomicU64,
+) -> Result<T, String> {
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    received.fetch_add(bytes.len() as u64, std::sync::atomic::Ordering::Relaxed);
+    serde_json::from_slice(&bytes).map_err(|e| e.to_string())
 }
 
 /// A single image search result.
@@ -83,6 +98,11 @@ pub struct ImageSearchResult {
 pub trait ImageSearchProvider: Send + Sync {
     /// Execute an image search and return results.
     async fn search_images(&self, query: SearchQuery) -> Result<Vec<ImageSearchResult>, SearchError>;
+
+    /// Bytes of responses received so far, for the usage statistics.
+    fn received_bytes(&self) -> u64 {
+        0
+    }
 }
 
 #[cfg(test)]

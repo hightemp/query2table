@@ -3,6 +3,7 @@ pub mod files;
 pub mod search_log;
 pub mod events;
 pub mod budget_tracker;
+pub mod usage_journal;
 pub mod fetch_pool;
 pub mod extract_pool;
 pub mod image_pipeline;

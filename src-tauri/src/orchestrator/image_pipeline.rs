@@ -13,6 +13,7 @@ use crate::providers::search::types::ImageSearchResult;
 
 use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
+use super::usage_journal::UsageJournal;
 use super::events::{EventPublisher, ProgressStats};
 use crate::roles::stopping_controller::{StoppingController, PipelineStats, StopReason};
 
@@ -49,7 +50,8 @@ impl ImagePipeline {
         events: Option<EventPublisher>,
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
-        let budget = BudgetTracker::new(config.max_budget_usd);
+        let budget = BudgetTracker::new(config.max_budget_usd)
+            .with_journal(UsageJournal::for_run(repo.clone(), &run_id, "images", &query));
         let (control, supervisor) =
             RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
         let supervisor = supervisor.with_budget(budget.clone());

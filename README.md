@@ -115,6 +115,7 @@ On Android, open the downloaded APK and allow installing apps from your browser 
 - **Research mode** — an agentic mode that answers open-ended questions in Markdown instead of a table: the LLM drives a tool-calling loop (search the web, fetch a page as Markdown, think, answer) for up to a fixed number of steps, streaming each step to a live timeline; reasoning (`think`) steps and any failures (`error` steps, shown in red) are surfaced so the process stays transparent, and the final sourced Markdown answer is rendered (sanitized) and exportable as `.md`; budget, cancellation, and stop conditions are respected throughout
 - **Formulas and pictures in research answers** — LaTeX formulas are drawn (MathJax, offline); the agent can search for images, look at them, and place fitting ones in its answer, kept with the run
 - **Diagrams and charts in research answers** — Mermaid diagrams and bar, line, area, pie, scatter, radar and heatmap charts, drawn offline in the app theme; saved as SVG or PNG, opened full screen
+- **Usage statistics** — money, tokens, model calls, Brave and Serper searches and data volume by month, year and all time, with breakdowns by model and mode, the most expensive runs, disk use, CSV export and a monthly budget with warnings
 - **Row-level sources** — every row links back to the pages it was extracted from
 - **Entity deduplication** — fuzzy matching + LLM-assisted disambiguation
 - **Configurable stop conditions** — target row count, max cost, max duration

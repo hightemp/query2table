@@ -2,6 +2,8 @@ use crate::providers::accounting::{
     BudgetExceeded, PriceQuote, RequestInfo, RequestKind, UsageObserver,
 };
 use crate::providers::llm::types::LlmUsage;
+use crate::storage::usage::UsageEvent;
+use super::usage_journal::UsageJournal;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -54,6 +56,8 @@ struct Ledger {
 #[derive(Debug, Clone)]
 pub struct BudgetTracker {
     inner: Arc<Mutex<Ledger>>,
+    /// Where finished calls are written for the statistics; none outside runs and in tests.
+    journal: Option<UsageJournal>,
 }
 impl BudgetTracker {
     pub fn new(max_budget_usd: f64) -> Self {
@@ -65,6 +69,29 @@ impl BudgetTracker {
         };
         Self {
             inner: Arc::new(Mutex::new(ledger)),
+            journal: None,
+        }
+    }
+    /// Writes every finished call to the run's usage journal.
+    pub fn with_journal(mut self, journal: UsageJournal) -> Self {
+        self.journal = Some(journal);
+        self
+    }
+    /// A page, PDF or picture of `bytes` was downloaded.
+    pub fn downloaded(&self, bytes: u64) {
+        UsageObserver::downloaded(self, bytes);
+    }
+    /// Waits until the calls finished so far are in the journal.
+    pub async fn flush_journal(&self) {
+        if let Some(journal) = &self.journal {
+            journal.flush().await;
+        }
+    }
+    fn journal(&self, events: Vec<UsageEvent>) {
+        if let Some(journal) = &self.journal {
+            for event in events {
+                journal.record(event);
+            }
         }
     }
     fn ledger(&self) -> MutexGuard<'_, Ledger> {
@@ -74,9 +101,6 @@ impl BudgetTracker {
     }
     pub fn observer(&self) -> Arc<dyn UsageObserver> {
         Arc::new(self.clone())
-    }
-    pub fn record_fetch_call(&self) {
-        self.ledger().totals.fetch_calls += 1;
     }
     pub fn snapshot(&self) -> BudgetSnapshot {
         let ledger = self.ledger();
@@ -115,11 +139,13 @@ impl BudgetTracker {
     }
     /// Worker aborts are asynchronous. Settle remaining attempts exactly once before terminal persistence.
     pub fn finalize_pending(&self) {
-        let mut ledger = self.ledger();
-        ledger.closed = true;
-        for (_, pending) in std::mem::take(&mut ledger.pending) {
-            settle(&mut ledger.totals, pending, None);
-        }
+        let events = {
+            let mut ledger = self.ledger();
+            ledger.closed = true;
+            let pending = std::mem::take(&mut ledger.pending);
+            pending.into_values().map(|pending| settle(&mut ledger.totals, pending, None)).collect()
+        };
+        self.journal(events);
     }
 }
 impl UsageObserver for BudgetTracker {
@@ -153,10 +179,20 @@ impl UsageObserver for BudgetTracker {
         }
     }
     fn finish(&self, id: u64, pricing: Option<PriceQuote>) {
-        let mut ledger = self.ledger();
-        if let Some(pending) = ledger.pending.remove(&id) {
-            settle(&mut ledger.totals, pending, pricing);
-        }
+        let event = {
+            let mut ledger = self.ledger();
+            ledger.pending.remove(&id).map(|pending| settle(&mut ledger.totals, pending, pricing))
+        };
+        self.journal(event.into_iter().collect());
+    }
+    fn downloaded(&self, bytes: u64) {
+        self.ledger().totals.fetch_calls += 1;
+        self.journal(vec![UsageEvent {
+            kind: "download".into(),
+            calls: 1,
+            bytes_received: i64::try_from(bytes).unwrap_or(i64::MAX),
+            ..Default::default()
+        }]);
     }
 }
 // A decimal USD total can land a few floating-point ULPs below its cap.
@@ -174,7 +210,8 @@ fn add_money(left: f64, right: f64) -> f64 {
     }
 }
 
-fn settle(total: &mut BudgetSnapshot, pending: Pending, pricing: Option<PriceQuote>) {
+/// Adds a finished call to the totals; returns it as a journal event.
+fn settle(total: &mut BudgetSnapshot, pending: Pending, pricing: Option<PriceQuote>) -> UsageEvent {
     let usage = pending.usage;
     let actual_model = usage
         .model
@@ -254,6 +291,30 @@ fn settle(total: &mut BudgetSnapshot, pending: Pending, pricing: Option<PriceQuo
         unpriced = total.unpriced_calls,
         "[FIX:cost] Accounted one provider attempt"
     );
+    let count = |value: Option<u32>| i64::from(value.unwrap_or(0));
+    let size = |value: Option<u64>| value.and_then(|v| i64::try_from(v).ok()).unwrap_or(0);
+    UsageEvent {
+        kind: match pending.request.kind {
+            RequestKind::Llm => "llm",
+            RequestKind::Search => "search",
+        }
+        .into(),
+        provider: line.provider.clone(),
+        model: line.model.clone(),
+        requested_model: line.requested_model.clone(),
+        calls: 1,
+        prompt_tokens: count(usage.prompt_tokens),
+        completion_tokens: count(usage.completion_tokens),
+        reasoning_tokens: count(usage.reasoning_tokens),
+        cached_tokens: count(usage.cached_prompt_tokens),
+        cache_write_tokens: count(usage.cache_write_tokens),
+        reported_usd: reported.unwrap_or(0.0),
+        estimated_usd: estimate.unwrap_or(0.0),
+        unpriced_calls: i64::from(reported.is_none() && estimate.is_none()),
+        bytes_sent: size(usage.bytes_sent),
+        bytes_received: size(usage.bytes_received),
+        ..Default::default()
+    }
 }
 
 #[cfg(test)]

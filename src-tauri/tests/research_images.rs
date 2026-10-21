@@ -196,6 +196,15 @@ async fn the_agent_finds_looks_at_and_keeps_images() {
     let requested: Vec<String> = server.received_requests().await.unwrap().iter().map(|r| r.url.path().to_string()).collect();
     assert!(!requested.contains(&"/img/invented.png".to_string()));
 
+    // The usage journal has every model call and every download with its size: two previews,
+    // the viewed picture, the page, and the three kept pictures.
+    let usage = repo.usage_events(0, i64::MAX).await.unwrap();
+    assert!(usage.iter().all(|e| e.run_id.as_deref() == Some("r1") && e.run_type == "research"));
+    assert_eq!(usage.iter().filter(|e| e.kind == "llm").count(), sent.len());
+    let downloads: Vec<i64> = usage.iter().filter(|e| e.kind == "download").map(|e| e.bytes_received).collect();
+    assert_eq!(downloads.len(), 7, "{downloads:?}");
+    assert!(downloads.iter().all(|bytes| *bytes > 0), "{downloads:?}");
+
     // Deleting the run removes its pictures.
     repo.delete_run("r1").await.unwrap();
     assert!(repo.get_research_images("r1").await.unwrap().is_empty());

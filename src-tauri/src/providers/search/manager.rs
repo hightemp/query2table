@@ -1,6 +1,7 @@
 use crate::providers::accounting::{
     PriceQuote, RequestInfo, RequestKind, UsageGuard, UsageObserver,
 };
+use crate::providers::llm::LlmUsage;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, warn};
@@ -131,8 +132,10 @@ impl SearchManager {
         &self,
         provider: &str,
         mode: &str,
+        received: impl Fn() -> u64,
         operation: impl std::future::Future<Output = Result<T, SearchError>>,
     ) -> Result<T, SearchError> {
+        let before = received();
         let guard = UsageGuard::begin(
             self.accounting.clone(),
             RequestInfo {
@@ -143,6 +146,7 @@ impl SearchManager {
         )
         .map_err(|_| SearchError::BudgetExceeded)?;
         let result = operation.await;
+        guard.capture(LlmUsage { bytes_received: Some(received().saturating_sub(before)), ..Default::default() });
         let rate = match provider {
             "brave" => self.config.brave_price_per_1000,
             "serper" => self.config.serper_price_per_1000,
@@ -203,6 +207,7 @@ impl SearchManager {
                     .accounted_search(
                         primary.provider_name(),
                         "web search",
+                        || primary.received_bytes(),
                         primary.search(search_query),
                     )
                     .await
@@ -236,6 +241,7 @@ impl SearchManager {
                     self.accounted_search(
                         fallback.provider_name(),
                         "web search",
+                        || fallback.received_bytes(),
                         fallback.search(fallback_query),
                     )
                     .await
@@ -300,6 +306,7 @@ impl SearchManager {
                     .accounted_search(
                         self.primary_name(),
                         "image search",
+                        || image_primary.received_bytes(),
                         image_primary.search_images(search_query),
                     )
                     .await
@@ -335,6 +342,7 @@ impl SearchManager {
                             "brave"
                         },
                         "image search",
+                        || fallback.received_bytes(),
                         fallback.search_images(fallback_query),
                     )
                     .await

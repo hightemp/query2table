@@ -109,7 +109,7 @@ test('A diagram is saved as SVG or PNG, its source copied, and opened full scree
 	await actions.click();
 	await page.getByRole('menuitem', { name: 'Save as SVG' }).click();
 	await expect(page.getByText(/^Saved /)).toBeVisible();
-	let [saved] = await calls(page, 'save_picture');
+	let [saved] = await calls(page, 'save_file_data');
 	expect(saved.args.path).toBe('/tmp/query2table-fixture.csv');
 	expect(atob(saved.args.data)).toMatch(/^<svg[\s\S]*Bar sales[\s\S]*<\/svg>$/);
 	const [dialog] = await calls(page, 'plugin:dialog|save');
@@ -117,8 +117,8 @@ test('A diagram is saved as SVG or PNG, its source copied, and opened full scree
 
 	await actions.click();
 	await page.getByRole('menuitem', { name: 'Save as PNG' }).click();
-	await expect.poll(async () => (await calls(page, 'save_picture')).length).toBe(2);
-	saved = (await calls(page, 'save_picture'))[1];
+	await expect.poll(async () => (await calls(page, 'save_file_data')).length).toBe(2);
+	saved = (await calls(page, 'save_file_data'))[1];
 	expect(atob(saved.args.data).slice(1, 4)).toBe('PNG');
 
 	// Right-click opens the same menu.

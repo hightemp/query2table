@@ -10,6 +10,8 @@ pub struct BraveSearchProvider {
     client: Client,
     api_key: String,
     base_url: String,
+    /// Bytes of responses received, for the usage statistics.
+    received: std::sync::atomic::AtomicU64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,10 +81,10 @@ impl BraveSearchProvider {
             client,
             api_key: api_key.into(),
             base_url: "https://api.search.brave.com/res/v1".to_string(),
+            received: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
-    #[cfg(test)]
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
@@ -91,6 +93,10 @@ impl BraveSearchProvider {
 
 #[async_trait]
 impl SearchProvider for BraveSearchProvider {
+    fn received_bytes(&self) -> u64 {
+        self.received.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     async fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
         let url = format!("{}/web/search", self.base_url);
         let count = Self::result_count(query.num_results, Self::MAX_WEB_RESULTS, "web");
@@ -144,7 +150,7 @@ impl SearchProvider for BraveSearchProvider {
             ));
         }
 
-        let brave_response: BraveResponse = response.json().await.map_err(|e| {
+        let brave_response: BraveResponse = super::types::counted_json(response, &self.received).await.map_err(|e| {
             SearchError::ParseError(format!("Failed to parse Brave response: {}", e))
         })?;
 
@@ -175,6 +181,10 @@ impl SearchProvider for BraveSearchProvider {
 
 #[async_trait]
 impl ImageSearchProvider for BraveSearchProvider {
+    fn received_bytes(&self) -> u64 {
+        self.received.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     async fn search_images(&self, query: SearchQuery) -> Result<Vec<ImageSearchResult>, SearchError> {
         let url = format!("{}/images/search", self.base_url);
         let count = Self::result_count(query.num_results, Self::MAX_IMAGE_RESULTS, "images");
@@ -228,7 +238,7 @@ impl ImageSearchProvider for BraveSearchProvider {
             ));
         }
 
-        let brave_response: BraveImageResponse = response.json().await.map_err(|e| {
+        let brave_response: BraveImageResponse = super::types::counted_json(response, &self.received).await.map_err(|e| {
             SearchError::ParseError(format!("Failed to parse Brave image response: {}", e))
         })?;
 

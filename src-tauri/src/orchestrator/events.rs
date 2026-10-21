@@ -89,6 +89,23 @@ impl EventPublisher {
         }
     }
 
+    /// After a run: warns once a month when spending reaches 80% and 100% of the monthly budget.
+    pub async fn check_monthly_budget(&self, repo: &crate::storage::repository::Repository) {
+        match repo.budget_alert(&chrono::Local::now()).await {
+            Ok(Some((level, budget))) => {
+                if let Err(e) = self.app.emit("usage:budget", &budget) {
+                    tracing::error!(error = %e, "Failed to emit the budget warning");
+                }
+                if self.notifications_enabled {
+                    let (title, body) = crate::utils::i18n::budget_notification(level, budget.spent_usd, budget.limit_usd, self.lang);
+                    self.send_notification(&title, &body);
+                }
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!(error = %e, "Could not check the monthly budget"),
+        }
+    }
+
     fn main_window_focused(&self) -> bool {
         self.app
             .get_webview_window("main")

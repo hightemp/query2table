@@ -15,6 +15,7 @@ use crate::roles::search_planner::PlannedSearch;
 
 use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
+use super::usage_journal::UsageJournal;
 use super::events::{EventPublisher, ProgressStats};
 use super::fetch_pool::{self, FetchJob, FetchResult};
 use super::pipeline::{PipelineCommand, PipelineConfig, PipelineState};
@@ -48,7 +49,8 @@ impl LinkPipeline {
         events: Option<EventPublisher>,
     ) -> (Self, mpsc::Sender<PipelineCommand>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(16);
-        let budget = BudgetTracker::new(config.max_budget_usd);
+        let budget = BudgetTracker::new(config.max_budget_usd)
+            .with_journal(UsageJournal::for_run(repo.clone(), &run_id, "links", &query));
         let (control, supervisor) =
             RunControl::new(run_id.clone(), repo.clone(), events.clone(), cmd_rx);
         let supervisor = supervisor.with_budget(budget.clone());
@@ -215,7 +217,8 @@ impl LinkPipeline {
         let fetcher = Arc::new(
             HttpFetcher::new(rate_limiter)
                 .with_max_body_bytes(self.config.max_page_size_bytes)
-                .with_timeout(std::time::Duration::from_secs(self.config.fetch_timeout_secs)),
+                .with_timeout(std::time::Duration::from_secs(self.config.fetch_timeout_secs))
+                .with_accounting(self.budget.observer()),
         );
         let max_pdf_chars = if self.config.enable_content_truncation {
             Some(self.config.max_pdf_text_chars)

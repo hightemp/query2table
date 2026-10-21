@@ -453,6 +453,7 @@ impl Database {
             ("llm_reasoning_effort", "auto"),
             ("llm_pricing_overrides", "{}"),
             ("brave_price_per_1000", "0"),
+            ("monthly_budget_usd", "0"),
             ("serper_price_per_1000", "0"),
             ("ollama_url", "http://localhost:11434"),
             ("ollama_model", "llama3"),
@@ -522,6 +523,9 @@ impl Database {
             tracing::debug!(changed, "[FIX:search-pricing] Migrated empty search defaults to zero");
         }
         tx.commit().await?;
+
+        // The usage journal; on its first start it imports the runs made before it.
+        super::usage::migrate(&self.pool).await?;
 
         Ok(())
     }

@@ -60,7 +60,7 @@ function presetFields(group: 'Connection' | 'Generation'): FieldDef[] {
 export const SECTIONS: SectionDef[] = [
 	{ id: 'llm', groups: ['Connection', 'Generation', 'Images', 'Pricing'] },
 	{ id: 'search', groups: ['Provider', 'Pricing'] },
-	{ id: 'runs', groups: ['Fetching', 'Quality', 'Content', 'Research'] },
+	{ id: 'runs', groups: ['Spending', 'Fetching', 'Quality', 'Content', 'Research'] },
 	{ id: 'network', groups: ['Proxies'] },
 	{ id: 'app', groups: ['Appearance', 'Notifications', 'Updates', 'Files'] },
 ];
@@ -132,6 +132,7 @@ export const FIELDS: FieldDef[] = [
 	{ key: 'brave_price_per_1000', section: 'search', group: 'Pricing', kind: 'number', default: '0', min: 0, step: 0.01, unit: 'USD' },
 	{ key: 'serper_price_per_1000', section: 'search', group: 'Pricing', kind: 'number', default: '0', min: 0, step: 0.01, unit: 'USD' },
 	// Runs
+	{ key: 'monthly_budget_usd', section: 'runs', group: 'Spending', kind: 'number', default: '0', min: 0, step: 1, unit: 'USD', keywords: 'budget limit month cost money spending statistics' },
 	{ key: 'max_parallel_fetches', section: 'runs', group: 'Fetching', kind: 'range', default: '8', min: 1, max: 20, step: 1 },
 	{ key: 'max_pages_per_query', section: 'runs', group: 'Fetching', kind: 'range', default: '10', min: 1, max: 50, step: 1 },
 	{ key: 'fetch_timeout_seconds', section: 'runs', group: 'Fetching', kind: 'range', default: '15', min: 5, max: 120, step: 1, unit: 's', advanced: true },

@@ -91,20 +91,20 @@ pub async fn save_image(
     write_image_at(&content_type, bytes, PathBuf::from(path)).await
 }
 
-/// Bytes of a picture the app made (a saved diagram or chart), sent as base64.
-fn picture_data(data: &str) -> Result<Vec<u8>, String> {
+/// Bytes of a file the app made (a diagram, a chart, statistics), sent as base64.
+fn file_data(data: &str) -> Result<Vec<u8>, String> {
     use base64::Engine;
     if data.len() / 4 * 3 > SAVE_LIMIT {
-        return Err("The picture is too large to save.".into());
+        return Err("The file is too large to save.".into());
     }
-    base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|e| format!("Invalid picture data: {e}"))
+    base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|e| format!("Invalid file data: {e}"))
 }
 
-/// Writes a picture made in the app to the file picked in the save dialog.
+/// Writes a file made in the app to the path picked in the save dialog.
 #[tauri::command]
-pub async fn save_picture(app: tauri::AppHandle, path: String, data: String) -> Result<String, String> {
-    let bytes = picture_data(&data)?;
-    crate::utils::files::write(&app, &path, &bytes).map_err(|e| format!("Could not write the picture: {e}"))?;
+pub async fn save_file_data(app: tauri::AppHandle, path: String, data: String) -> Result<String, String> {
+    let bytes = file_data(&data)?;
+    crate::utils::files::write(&app, &path, &bytes).map_err(|e| format!("Could not write the file: {e}"))?;
     Ok(path)
 }
 
@@ -187,11 +187,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pictures_made_in_the_app_are_decoded_within_the_limit() {
-        assert_eq!(picture_data("PHN2Zz48L3N2Zz4=").unwrap(), b"<svg></svg>");
-        assert!(picture_data("not base64!").unwrap_err().contains("picture data"));
+    fn files_made_in_the_app_are_decoded_within_the_limit() {
+        assert_eq!(file_data("PHN2Zz48L3N2Zz4=").unwrap(), b"<svg></svg>");
+        assert!(file_data("not base64!").unwrap_err().contains("file data"));
         let large = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, vec![0u8; SAVE_LIMIT + 1]);
-        assert!(picture_data(&large).unwrap_err().contains("too large"));
+        assert!(file_data(&large).unwrap_err().contains("too large"));
     }
 
     #[test]

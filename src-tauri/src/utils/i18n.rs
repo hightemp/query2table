@@ -36,6 +36,21 @@ pub fn run_notification(status: &str, lang: Lang) -> Option<(&'static str, &'sta
     }
 }
 
+/// The monthly budget warning at 80 or 100 percent.
+pub fn budget_notification(level: u8, spent: f64, limit: f64, lang: Lang) -> (String, String) {
+    let reached = level >= 100;
+    match lang {
+        Lang::En => (
+            if reached { "Monthly budget reached".to_string() } else { format!("Monthly budget at {level}%") },
+            format!("Spent ${spent:.2} of ${limit:.2} this month.{}", if reached { " Runs are not stopped." } else { "" }),
+        ),
+        Lang::Ru => (
+            if reached { "Месячный бюджет исчерпан".to_string() } else { format!("Месячный бюджет: {level}%") },
+            format!("Потрачено ${spent:.2} из ${limit:.2} в этом месяце.{}", if reached { " Запуски не останавливаются." } else { "" }),
+        ),
+    }
+}
+
 /// Labels of the tray menu: (show window, quit).
 pub fn tray_labels(lang: Lang) -> (&'static str, &'static str) {
     match lang {
@@ -56,6 +71,20 @@ mod tests {
         assert_eq!(resolve_language(None, Some("ru")), Lang::Ru);
         assert_eq!(resolve_language(Some("system"), Some("de_DE.UTF-8")), Lang::En);
         assert_eq!(resolve_language(Some("system"), None), Lang::En);
+    }
+
+    #[test]
+    fn budget_warnings_speak_the_language() {
+        assert_eq!(
+            budget_notification(80, 0.85, 1.0, Lang::En),
+            ("Monthly budget at 80%".to_string(), "Spent $0.85 of $1.00 this month.".to_string())
+        );
+        assert_eq!(
+            budget_notification(100, 12.346, 10.0, Lang::Ru),
+            ("Месячный бюджет исчерпан".to_string(), "Потрачено $12.35 из $10.00 в этом месяце. Запуски не останавливаются.".to_string())
+        );
+        assert_eq!(budget_notification(80, 8.0, 10.0, Lang::Ru).0, "Месячный бюджет: 80%");
+        assert_eq!(budget_notification(100, 1.0, 1.0, Lang::En).0, "Monthly budget reached");
     }
 
     #[test]

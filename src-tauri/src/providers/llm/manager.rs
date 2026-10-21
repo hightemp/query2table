@@ -235,6 +235,13 @@ impl LlmManager {
         }
     }
 
+    /// Tells the run's accounting about a download made for the model (a picture to compare).
+    pub fn downloaded(&self, bytes: u64) {
+        if let Some(accounting) = &self.accounting {
+            accounting.downloaded(bytes);
+        }
+    }
+
     pub fn with_accounting(mut self, observer: Arc<dyn UsageObserver>) -> Self {
         self.accounting = Some(observer);
         self
