@@ -1151,7 +1151,7 @@ export const ru: Record<MessageKey, Message> = {
 	"usage.period.year": "Год",
 	"usage.previous": "Предыдущий период",
 	"usage.reprice": "Пересчитать",
-	"usage.repriceNone": "Ни один вызов не удалось оценить. Задайте тарифы в Настройках › Модель › Цены.",
+	"usage.repriceNone": "Ни один вызов не удалось оценить. Задайте тарифы в Настройках › LLM.",
 	"usage.repriced": { one: "Оценён {count} вызов", few: "Оценено {count} вызова", many: "Оценено {count} вызовов", other: "Оценено {count} вызова" },
 	"usage.runs": { one: "в {count} запуске", few: "в {count} запусках", many: "в {count} запусках", other: "в {count} запусках" },
 	"usage.saveFailed": "Не удалось сохранить статистику: {error}",

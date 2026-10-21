@@ -1149,7 +1149,7 @@ export const en = {
 	"usage.period.year": "Year",
 	"usage.previous": "Previous period",
 	"usage.reprice": "Recalculate",
-	"usage.repriceNone": "No calls could be priced. Set rates in Settings › Model › Pricing.",
+	"usage.repriceNone": "No calls could be priced. Set rates in Settings › LLM.",
 	"usage.repriced": { one: "Priced {count} call", other: "Priced {count} calls" },
 	"usage.runs": { one: "in {count} run", other: "in {count} runs" },
 	"usage.saveFailed": "Could not save the statistics: {error}",

@@ -21,7 +21,7 @@
 		MonitorIcon,
 	} from '@lucide/svelte';
 	import { settings } from '$lib/stores/settings';
-	import { language, setLanguage, t, type LanguagePreference, type MessageKey } from '$lib/i18n';
+	import { language, LOCALES, setLanguage, t, type LanguagePreference, type MessageKey } from '$lib/i18n';
 	import {
 		darkTheme,
 		lightTheme,
@@ -718,8 +718,7 @@
 											onchange={(next) => changeLanguage(next as LanguagePreference)}
 											options={[
 												{ value: 'system', label: t('settings.languageSystem') },
-												{ value: 'en', label: 'English' },
-												{ value: 'ru', label: 'Русский' },
+												...LOCALES.map((locale) => ({ value: locale.code, label: locale.name })),
 											]}
 										/>
 									</div>

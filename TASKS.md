@@ -2203,3 +2203,49 @@ It also has a monthly budget with warnings.
     - CSV by date and by model;
     - clearing;
     - phone width.
+
+## Interface and README translations
+
+The app and the README speak the basic European and Asian languages besides English and Russian.
+
+### Decisions (agreed with the user)
+
+- **Languages (11 new):**
+  - German, French, Spanish, Italian, Portuguese (Brazil), Polish, Ukrainian, Turkish;
+  - Chinese (Simplified), Japanese, Korean.
+- **README:**
+  - `README.md` stays English.
+  - The translations, Russian included, go to `docs/readme/README.<lang>.md`.
+  - Every README starts with a line of links to all languages.
+- **Tone:** as software in each language usually addresses the user:
+  - Sie, vous, tú, the Italian imperative with "tu", Pan/Pani avoided by impersonal Polish forms, ви, siz;
+  - polite forms in Japanese and Korean.
+- **Who translates:** Claude, one agent per language, with a shared glossary. Translations are not reviewed by native speakers. Automatic checks cover:
+  - keys and placeholders;
+  - the plural forms each language needs;
+  - lines left in English;
+  - text overflowing controls.
+
+### Tasks
+
+- [x] **L1** Language registry: `src/lib/i18n/locales.ts` (code, own name, Intl tag).
+  - English and Russian are bundled; the other catalogs load through `import.meta.glob` when chosen (`setLocale` returns a promise, and a later choice wins).
+  - `preloadLanguage` in `src/routes/+layout.ts` loads the cached language before the first render.
+  - The system language is matched by its main part.
+  - Settings list all languages by their own names.
+  - Numbers, dates and plural rules use the language's Intl tag.
+- [x] **L2** Backend languages: `Lang` has all 13, with one `Texts` per language for run notifications, budget warnings and the tray. The system locale is matched by its language part.
+- [x] **L3** Catalogs `de, fr, es, it, pt, pl, uk, tr, zh, ja, ko` (1169 messages each), translated by one agent per language with its own glossary.
+  - Tone as agreed. Each language's typography: no-break spaces before units and French punctuation, „“ « » 「」, full-width CJK punctuation.
+  - `usage.repriceNone` now points to Settings › LLM in every language, since the section was never called "Model".
+- [x] **L4** README translations `docs/readme/README.<code>.md` (Russian included).
+  - The line of languages is in every README.
+  - Repository paths are `../../`, and in-page links go to the translated headings.
+  - Code blocks and their comments stay as in English.
+- [x] **L5** Tests.
+  - vitest `i18n.test.ts` per catalog: keys and placeholders, plural categories, no empty lines, at most 8 multi-word lines left in English. Also the list of languages, a catalog for each, and system matching.
+  - `language.test.ts`: on-demand loading, preloading.
+  - `readme.test.ts`: the line of languages and links that resolve, with `import.meta.glob`, not Node APIs.
+  - Rust `every_interface_language_is_known_to_the_backend`, `every_language_has_its_notifications_and_tray`.
+  - Playwright `tests/ui/locales.spec.ts`: all 13 languages on the query, history, statistics and settings pages at 1280 and 390 px, with no page scroll and no control whose text does not fit. It found the Ukrainian mode button on phones; the modes now go two a row there.
+  - New catalogs need `vitest --fsModuleCache=false` (or a cleared `node_modules/.vitest-cache`) the first time, because vitest caches the list of catalog files.

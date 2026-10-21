@@ -59,8 +59,25 @@ query2table/
 
 ## Interface language
 All user-visible frontend text goes through `t('key', params)` from `$lib/i18n`; never hard-code UI strings.
-Add every new key to both `src/lib/i18n/en.ts` and `ru.ts` (keys are sorted; plural messages use `{ one, few, many, other }` with a numeric `count` param). `src/tests/i18n.test.ts` checks that both catalogs have the same keys and placeholders.
-The language is the `ui_language` setting (`system`, `en`, `ru`); the backend uses it for notifications and the tray menu (`src-tauri/src/utils/i18n.rs`). Technical details (raw provider errors, logs) and model answers are not translated.
+
+Languages:
+- The interface languages are listed in `src/lib/i18n/locales.ts` (code, own name, Intl tag): en, ru, de, fr, es, it, pt (Brazil), pl, uk, tr, zh (Simplified), ja, ko.
+- `en.ts` is the reference catalog. Every other language has `src/lib/i18n/<code>.ts` with the same keys, in the same order.
+- English and Russian are bundled. The other catalogs load on demand (`setLocale` returns a promise), and the cached choice loads before the first render (`preloadLanguage` in `src/routes/+layout.ts`).
+
+Adding a key:
+- Add every new key to **all** catalogs.
+- Plural messages use the categories of `Intl.PluralRules` for the language: one/other (de, tr), one/many/other (fr, es, it, pt), one/few/many/other (ru, pl, uk), other (zh, ja, ko).
+- `src/tests/i18n.test.ts` checks every catalog: keys, placeholders, plural categories, and lines left in English.
+- `tests/ui/locales.spec.ts` checks that every language fits the main pages at desktop and phone width.
+
+The language is the `ui_language` setting (`system` or a code). The system language is matched by its main part, so `pt-PT` gives pt and `zh-TW` gives zh.
+
+The backend has its own texts in `src-tauri/src/utils/i18n.rs` (`Lang`, one `Texts` per language) for notifications, budget warnings and the tray menu.
+
+Technical details (raw provider errors, logs) and model answers are not translated.
+
+README translations live in `docs/readme/README.<code>.md`. Every README starts with the line of languages, and `src/tests/readme.test.ts` checks that it is there and that the relative links resolve. Change the English README together with its translations.
 
 ## Themes
 Colors come only from the `--app-*` tokens. Themes live in `src/lib/themes.ts` and as `:root[data-theme='<id>']` blocks in `src/app.css`; `src/tests/themes.test.ts` checks that both match and that text keeps 4.5:1 contrast. Dark themes also get the `.dark` class. Font sizes must use the `--app-text-*` tokens so the interface size (`data-scale`) applies.

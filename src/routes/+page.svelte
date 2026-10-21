@@ -739,6 +739,14 @@
 		background: var(--app-bg);
 		color: var(--app-muted);
 	}
+	/* Two modes a row on phones, so longer names (Ukrainian, German…) fit. */
+	@media (max-width: 640px) {
+		.mode-btn {
+			flex-basis: 40%;
+			padding: 10px 8px;
+			gap: 6px;
+		}
+	}
 	.mode-btn:hover:not(.active) {
 		color: var(--app-text);
 		background: var(--app-subtle);
