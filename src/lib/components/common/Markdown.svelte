@@ -11,6 +11,15 @@
 	import { showAttachment } from '$lib/stores/attachmentPreview';
 	import { markdown } from '$lib/utils/math';
 	import { displayHost } from '$lib/utils/hosts';
+	import { diagramLabel, diagramPlaceholder, diagramSource } from '$lib/utils/diagrams';
+	import { chartColors, parseChart } from '$lib/utils/chart';
+	import { appliedTheme } from '$lib/stores/ui';
+	import { themeById } from '$lib/themes';
+	import { copyWithToast } from '$lib/utils/linkMenu';
+	import { menuPointFor } from './ContextMenu.svelte';
+	import { CodeIcon, FileImageIcon, ImageIcon, Maximize2Icon } from '@lucide/svelte';
+	import { tooltip } from '$lib/actions/tooltip';
+	import DiagramViewer from './DiagramViewer.svelte';
 	import type { ResearchImage } from '$lib/types';
 	let {
 		content,
@@ -42,6 +51,10 @@
 			const caption = escapeHtml(text.trim());
 			if (!/^https?:\/\//i.test(href)) return caption;
 			return `<span class="answer-image" data-image="${escapeHtml(href)}" data-caption="${caption}"><span class="answer-image-caption">${caption}</span></span>`;
+		};
+		// Mermaid and chart blocks become placeholders showing their source; drawn below.
+		renderer.code = function (token) {
+			return diagramPlaceholder(token.lang, token.text) ?? Renderer.prototype.code.call(this, token);
 		};
 		renderer.heading = function ({ tokens, depth }) {
 			const id = `${prefix}-${slug(plainInline(tokens).trim())}`;
@@ -157,7 +170,115 @@
 		};
 	});
 
+	// Diagrams and charts: drawn once their library loads (on first use), again when the theme
+	// changes; a block that cannot be drawn keeps its source with a note.
+	interface Drawn {
+		title: string;
+		source: string;
+		svg: () => string;
+	}
+	const drawnDiagrams = new WeakMap<HTMLElement, Drawn>();
+	// Lucide's "ellipsis" icon for the actions button made outside Svelte.
+	const ELLIPSIS =
+		'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>';
+	let viewing = $state<{ title: string; svg: string } | null>(null);
+
+	$effect(() => {
+		void html;
+		const themeId = $appliedTheme;
+		const figures = [...root.querySelectorAll<HTMLElement>('figure.diagram[data-diagram]')];
+		if (!figures.length) return;
+		let current = true;
+		const disposers: (() => void)[] = [];
+		for (const figure of figures) {
+			const source = diagramSource(figure);
+			const fail = (message: string) => {
+				if (!current) return;
+				figure.querySelector('.diagram-view')?.remove();
+				figure.classList.add('diagram-error');
+				figure.removeAttribute('role');
+				figure.removeAttribute('aria-label');
+				let note = figure.querySelector<HTMLElement>('.diagram-note');
+				if (!note) {
+					note = document.createElement('figcaption');
+					note.className = 'diagram-note';
+					figure.prepend(note);
+				}
+				note.textContent = message;
+			};
+			const view = (label: string) => {
+				figure.querySelector('.diagram-view')?.remove();
+				const element = document.createElement('div');
+				element.className = 'diagram-view';
+				figure.prepend(element);
+				figure.classList.remove('diagram-error');
+				figure.querySelector('.diagram-note')?.remove();
+				figure.setAttribute('role', 'img');
+				figure.setAttribute('aria-label', label);
+				if (!figure.querySelector('.diagram-actions')) {
+					const button = document.createElement('button');
+					button.type = 'button';
+					button.className = 'diagram-actions';
+					button.setAttribute('aria-label', t('research.diagramActions'));
+					button.innerHTML = ELLIPSIS;
+					tooltip(button, { text: t('research.diagramActions') });
+					figure.append(button);
+				}
+				return element;
+			};
+			if (figure.dataset.diagram === 'chart') {
+				const parsed = parseChart(source);
+				if ('error' in parsed) {
+					fail(`${t('research.diagramFailed')}: ${parsed.error}`);
+					continue;
+				}
+				import('$lib/utils/chartRender').then(({ drawChart }) => {
+					if (!current) return;
+					const chart = view(diagramLabel(source, parsed.chart));
+					const drawn = drawChart(chart, parsed.chart, chartColors(themeId));
+					disposers.push(drawn.dispose);
+					drawnDiagrams.set(figure, { title: parsed.chart.title, source, svg: drawn.svg });
+				}, () => fail(t('research.diagramFailed')));
+			} else {
+				import('$lib/utils/mermaidRender')
+					.then(({ drawMermaid }) => drawMermaid(source, themeId))
+					.then(
+						(svg) => {
+							if (!current) return;
+							view(diagramLabel(source)).innerHTML = svg;
+							drawnDiagrams.set(figure, { title: '', source, svg: () => svg });
+						},
+						() => fail(t('research.diagramFailed'))
+					);
+			}
+		}
+		return () => {
+			current = false;
+			for (const dispose of disposers) dispose();
+		};
+	});
+
+	function diagramMenu(figure: HTMLElement, point: { x: number; y: number }) {
+		const drawn = drawnDiagrams.get(figure);
+		if (!drawn) return;
+		const title = drawn.title || t('research.diagram');
+		const background = (themeById($appliedTheme) ?? themeById('default-light')!).colors['--app-panel'];
+		const save = (format: 'svg' | 'png') => import('$lib/utils/diagramFiles').then(({ saveDiagram }) => saveDiagram(drawn.svg(), drawn.title, format, background));
+		showContextMenu(point, t('research.diagramActions'), [
+			{ label: t('research.diagramFullScreen'), icon: Maximize2Icon, action: () => void (viewing = { title, svg: drawn.svg() }) },
+			{ label: t('research.diagramSaveSvg'), icon: FileImageIcon, separator: true, action: () => save('svg') },
+			{ label: t('research.diagramSavePng'), icon: ImageIcon, action: () => save('png') },
+			{ label: t('research.diagramCopySource'), icon: CodeIcon, separator: true, action: () => copyWithToast(drawn.source, t('research.diagramSourceCopied')) },
+		]);
+	}
+
 	async function open(event: MouseEvent) {
+		const actions = (event.target as Element)?.closest<HTMLElement>('.diagram-actions');
+		const figure = actions?.closest<HTMLElement>('figure.diagram');
+		if (actions && figure) {
+			diagramMenu(figure, menuPointFor(actions));
+			return;
+		}
 		const picture = (event.target as Element)?.closest<HTMLElement>('.answer-image-open');
 		if (picture?.dataset.open) {
 			onimage?.(picture.dataset.open);
@@ -189,6 +310,12 @@
 	class="markdown"
 	onclick={open}
 	oncontextmenu={(event) => {
+		const figure = (event.target as Element)?.closest<HTMLElement>('figure.diagram');
+		if (figure && drawnDiagrams.has(figure)) {
+			event.preventDefault();
+			diagramMenu(figure, { x: event.clientX, y: event.clientY });
+			return;
+		}
 		const anchor = (event.target as Element)?.closest('a');
 		const url = webUrl(anchor?.getAttribute('href') ?? '');
 		if (!anchor || !url) return;
@@ -199,6 +326,9 @@
 >
 	{@html html}
 </div>
+{#if viewing}
+	<DiagramViewer title={viewing.title} svg={viewing.svg} onclose={() => (viewing = null)} />
+{/if}
 
 <style>
 	.markdown {
@@ -355,6 +485,61 @@
 		font-size: 0.9em;
 		text-decoration: wavy underline var(--app-danger);
 		text-underline-offset: 3px;
+	}
+	.markdown :global(.diagram) {
+		position: relative;
+		margin: 16px 0;
+		max-width: 100%;
+	}
+	.markdown :global(.diagram[role='img']) {
+		padding: 12px 40px 12px 12px;
+		background: var(--app-panel);
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius);
+	}
+	/* The source shows until the picture is drawn, and stays when it cannot be. */
+	.markdown :global(.diagram[role='img'] .diagram-source) {
+		display: none;
+	}
+	.markdown :global(.diagram-view) {
+		width: 100%;
+		overflow-x: auto;
+		overflow-wrap: normal;
+	}
+	.markdown :global(.diagram-view > svg) {
+		display: block;
+		max-width: 100%;
+		height: auto;
+		margin: 0 auto;
+	}
+	.markdown :global(.diagram-actions) {
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		color: var(--app-muted);
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: var(--app-radius-sm);
+		cursor: pointer;
+	}
+	.markdown :global(.diagram-actions:hover),
+	.markdown :global(.diagram-actions:focus-visible) {
+		color: var(--app-text);
+		background: var(--app-subtle);
+		border-color: var(--app-border);
+	}
+	.markdown :global(.diagram-error .diagram-actions) {
+		display: none;
+	}
+	.markdown :global(.diagram-note) {
+		margin-bottom: 6px;
+		color: var(--app-danger);
+		font-size: var(--app-text-sm);
 	}
 	.markdown :global(hr) {
 		border: 0;

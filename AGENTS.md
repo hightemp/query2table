@@ -85,6 +85,13 @@ The research agent has `image_search` and, for models that see images, `view_ima
 ## Math formulas
 Research answers render LaTeX. Parse Markdown with `markdown` from `src/lib/utils/math.ts` (a `Marked` instance with the formula extension), not the global `marked`: it yields `math` tokens for `\(…\)`, `\[…\]`, `$$…$$` and `$…$` (pandoc's rule, so prices stay text) and renders them as `.math[data-tex]` placeholders. `Markdown.svelte` draws them with MathJax 4 from `src/lib/utils/mathRender.ts`, loaded on demand; the font's glyph files come from the bundle through `import.meta.glob`. Copies and exports keep the LaTeX source.
 
+## Diagrams and charts
+Research answers draw ```` ```mermaid ```` diagrams and ```` ```chart ```` blocks: one JSON object, drawn with ECharts. The chart scheme is checked by `roles/chart.rs` (`check`, `problems`) and mirrored by `src/lib/utils/chart.ts` (`parseChart`). Both apply the same checks with the same messages and are held together by the shared examples in `src-tauri/tests/fixtures/charts.json`; change both and the examples together. The research pipeline sends an answer with broken charts back to the agent once (`checked_answer`). The prompt rule and its `CHART_EXAMPLE` are in `roles/research_agent.rs`.
+On the frontend, `diagramPlaceholder` (`src/lib/utils/diagrams.ts`) turns the blocks into `figure.diagram` placeholders that keep the source as element text, because DOMPurify drops attributes holding `-->`. `Markdown.svelte` draws them through lazily imported modules:
+- `mermaidRender.ts`: Mermaid with `securityLevel: 'strict'`, SVG labels and the app theme's colors; the output is sanitized.
+- `chartRender.ts`: ECharts core with the SVG renderer, using `chartOption`/`chartColors` from `chart.ts`. Series take a fixed categorical palette validated for color-vision deficiencies; text and grid take theme tokens.
+Pictures are redrawn when the theme changes. A block that cannot be drawn keeps its source with a note. The figure menu offers full screen (`DiagramViewer.svelte`), Save as SVG/PNG (`diagramFiles.ts` → `save_picture`) and Copy source. Copies and Markdown exports keep the blocks as written.
+
 ## UI controls
 Do not use the browser's own controls. Use `Select` (lists; search appears from 8 options), `Checkbox`, `Radio`, `NumberInput` and `Slider` from `src/lib/components/common/`, and `use:tooltip` from `src/lib/actions/tooltip.ts` instead of `title` (`{ text, whenTruncated: true }` for clipped text). `<details>`, scrollbars and number spinners are styled globally in `src/app.css`. Right-click on text fields and selected text opens the app's menu (`src/lib/utils/textMenu.ts`). In Playwright tests pick list options with `choose()` from `tests/ui/fixtures.ts`.
 

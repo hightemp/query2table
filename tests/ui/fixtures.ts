@@ -289,6 +289,8 @@ export const test = base.extend({
 							return fixture.clipboard;
 						case 'plugin:dialog|save':
 							return '/tmp/query2table-fixture.csv';
+						case 'save_picture':
+							return args.path;
 						case 'get_run':
 							return fixture.runs.find((run: any) => run.id === args.runId) ?? null;
 						case 'list_history': {

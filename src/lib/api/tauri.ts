@@ -433,6 +433,11 @@ export function saveImage(url: string, fallbackUrl: string | null, path: string)
 	return invoke('save_image', { url, fallbackUrl, path });
 }
 
+/** Writes a picture made in the app (base64) to the chosen file and returns its path. */
+export function savePicture(path: string, data: string): Promise<string> {
+	return invoke('save_picture', { path, data });
+}
+
 export interface SaveImagesResult {
 	saved: string[];
 	failed: [string, string][];

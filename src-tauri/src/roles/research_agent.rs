@@ -36,6 +36,8 @@ pub struct PriorTurn {
 /// Default upper bound for the conversation history passed to the agent, in characters.
 pub const CONTEXT_CHAR_LIMIT: usize = 12_000;
 const MAX_FOLLOW_UPS: usize = 3;
+/// The ```chart example of the prompt (a valid chart, checked by a test).
+const CHART_EXAMPLE: &str = r#"{"type": "line", "title": "Smartphone sales", "x": ["2022", "2023", "2024"], "series": [{"name": "Apple", "data": [226, 235, 232]}, {"name": "Samsung", "data": [262, 226, 223]}], "unit": "M units"}"#;
 
 /// The research agent decides the next tool call given the conversation so far.
 pub struct ResearchAgent;
@@ -120,6 +122,16 @@ impl ResearchAgent {
         if !tools.web {
             rules.push("Answer from only the attached files. If they do not contain the answer, say so.".into());
         }
+        rules.push(format!(
+            r#"Draw diagrams and charts only when a picture says more than text: processes, structures, timelines, comparisons of numbers, trends.
+  Diagrams: a ```mermaid block (flowchart, sequenceDiagram, timeline, mindmap, classDiagram, stateDiagram-v2, erDiagram, gantt, quadrantChart). Keep labels short and quote those with spaces or punctuation: A["Step one"]. No styles, classDef, click or HTML.
+  Charts: a ```chart block with one JSON object: "type" (one of {types}), "title", "x" (labels), "series" ([{{"name": ..., "data": [...]}}], one number per label, null for a gap), optional "unit", "x_title", "y_title", "stacked", "horizontal" (bars). Bars with a line: give the line series "type": "line" and "axis": "right", with "unit_right". pie and donut: one series of non-negative numbers. scatter: "data" of [x, y] pairs, no "x". radar: at least 3 labels. heatmap: "y" with row labels and one series whose "data" is rows of numbers. Use numbers from your sources. Example:
+  ```chart
+  {CHART_EXAMPLE}
+  ```
+  These blocks are inside the JSON string too: escape their quotes as \" and line breaks as \n."#,
+            types = super::chart::TYPES.join(", ")
+        ));
         let rules = rules.iter().map(|r| format!("- {r}")).collect::<Vec<_>>().join("\n");
         format!(
             r#"You are an autonomous {role}. Your goal is to answer the user's
@@ -605,6 +617,21 @@ mod tests {
         assert!(prompt.contains(r"formulas in LaTeX: \(...\) inside a sentence"));
         assert!(prompt.contains("$$...$$ on lines"));
         assert!(prompt.contains(r#""\\frac{a}{b}""#));
+    }
+
+    #[test]
+    fn the_prompt_describes_diagrams_and_charts() {
+        for tools in [Tools { web: true, files: false, images: true, view: true }, Tools { web: false, files: true, images: false, view: false }] {
+            let prompt = ResearchAgent::system_prompt_with(16, tools);
+            assert!(prompt.contains("```mermaid"), "{prompt}");
+            assert!(prompt.contains("```chart"));
+            assert!(prompt.contains(&crate::roles::chart::TYPES.join(", ")));
+            assert!(prompt.contains(CHART_EXAMPLE));
+            assert!(prompt.contains("only when"));
+            assert!(prompt.contains(r#"escape their quotes as \" and line breaks as \n"#), "the blocks sit inside a JSON string");
+        }
+        // The example the model copies is a valid chart.
+        crate::roles::chart::check(CHART_EXAMPLE).unwrap();
     }
 
     #[test]

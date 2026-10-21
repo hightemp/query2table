@@ -91,6 +91,23 @@ pub async fn save_image(
     write_image_at(&content_type, bytes, PathBuf::from(path)).await
 }
 
+/// Bytes of a picture the app made (a saved diagram or chart), sent as base64.
+fn picture_data(data: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    if data.len() / 4 * 3 > SAVE_LIMIT {
+        return Err("The picture is too large to save.".into());
+    }
+    base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|e| format!("Invalid picture data: {e}"))
+}
+
+/// Writes a picture made in the app to the file picked in the save dialog.
+#[tauri::command]
+pub async fn save_picture(app: tauri::AppHandle, path: String, data: String) -> Result<String, String> {
+    let bytes = picture_data(&data)?;
+    crate::utils::files::write(&app, &path, &bytes).map_err(|e| format!("Could not write the picture: {e}"))?;
+    Ok(path)
+}
+
 /// Writes a downloaded image to `path`, adding the extension of its type when the path has none.
 async fn write_image_at(content_type: &str, bytes: Vec<u8>, mut path: PathBuf) -> Result<String, String> {
     if path.extension().is_none() {
@@ -168,6 +185,14 @@ async fn save_images_in(items: Vec<ImageDownload>, dir: PathBuf) -> Result<SaveI
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pictures_made_in_the_app_are_decoded_within_the_limit() {
+        assert_eq!(picture_data("PHN2Zz48L3N2Zz4=").unwrap(), b"<svg></svg>");
+        assert!(picture_data("not base64!").unwrap_err().contains("picture data"));
+        let large = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, vec![0u8; SAVE_LIMIT + 1]);
+        assert!(picture_data(&large).unwrap_err().contains("too large"));
+    }
 
     #[test]
     fn file_names_are_safe_and_never_overwrite() {

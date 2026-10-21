@@ -13,6 +13,7 @@ use crate::providers::llm::types::{ImageInput, Message};
 use crate::providers::search::manager::SearchManager;
 use crate::storage::repository::Repository;
 
+use crate::roles::chart;
 use crate::roles::pdf_parser::PdfParser;
 use crate::roles::research_agent::{markdown_images, AgentAction, PriorTurn, ResearchAgent, Tools};
 use crate::storage::repository::ResearchImageRow;
@@ -474,6 +475,7 @@ impl ResearchPipeline {
                 }
                 AgentAction::Answer { markdown, follow_ups } => {
                     self.log("INFO", "research", "Agent produced final answer").await;
+                    let (markdown, follow_ups) = self.checked_answer(&llm, &mut messages, markdown, follow_ups).await;
                     self.keep_answer_images(&markdown, &seen).await;
                     self.store_answer(&markdown, &follow_ups).await;
                     answered = true;
@@ -500,6 +502,7 @@ impl ResearchPipeline {
             ));
             match ResearchAgent::decide_next_step(&llm, messages.clone()).await {
                 Ok((AgentAction::Answer { markdown, follow_ups }, _p, _c)) => {
+                    let (markdown, follow_ups) = self.checked_answer(&llm, &mut messages, markdown, follow_ups).await;
                     self.keep_answer_images(&markdown, &seen).await;
                     self.store_answer(&markdown, &follow_ups).await;
                 }
@@ -539,6 +542,42 @@ impl ResearchPipeline {
             self.log(level, "files", &message).await;
         }
         files
+    }
+
+    /// The answer, with its broken ```chart blocks sent back to the agent once to be fixed (even
+    /// past the step limit). A fix that is still broken is kept; a failed one keeps the answer.
+    async fn checked_answer(
+        &self,
+        llm: &LlmManager,
+        messages: &mut Vec<Message>,
+        markdown: String,
+        follow_ups: Vec<String>,
+    ) -> (String, Vec<String>) {
+        let problems = chart::problems(&markdown);
+        if problems.is_empty() {
+            return (markdown, follow_ups);
+        }
+        let list = problems.iter().map(|p| format!("- {p}")).collect::<Vec<_>>().join("\n");
+        self.log("INFO", "research", &format!("Asking the agent to fix its charts:\n{list}")).await;
+        messages.push(Message::assistant(
+            serde_json::json!({ "action": "answer", "markdown": markdown, "follow_ups": follow_ups }).to_string(),
+        ));
+        messages.push(Message::user(format!(
+            "Some ```chart blocks in your answer cannot be drawn:\n{list}\nFix these blocks and answer again: call \"answer\" with the whole corrected answer."
+        )));
+        match ResearchAgent::decide_next_step(llm, messages.clone()).await {
+            Ok((AgentAction::Answer { markdown: fixed, follow_ups: fixed_follow_ups }, _, _)) => {
+                let left = chart::problems(&fixed);
+                if !left.is_empty() {
+                    self.log("WARN", "research", &format!("Charts still broken after the fix: {}", left.join("; "))).await;
+                }
+                (fixed, if fixed_follow_ups.is_empty() { follow_ups } else { fixed_follow_ups })
+            }
+            _ => {
+                self.log("WARN", "research", "The agent did not fix its charts; keeping the answer as written").await;
+                (markdown, follow_ups)
+            }
+        }
     }
 
     /// Downloads the web images the answer shows and keeps them with the run, so the answer

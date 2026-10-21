@@ -196,6 +196,7 @@ pub fn run() {
             commands::images::proxy_image,
             commands::images::save_image,
             commands::images::save_images,
+            commands::images::save_picture,
             commands::export::export_run,
             commands::export::export_runs,
             commands::settings::update_settings,

@@ -2004,3 +2004,93 @@ More model providers without a separate client for each: the cloud and local ser
 - [x] **MP4** PDF switch for Anthropic: attached PDFs go as `document` blocks; off by default.
 - [x] **MP5** Tests of the presets: Rust `tests/llm_presets.rs` (settings resolved per preset, key required for cloud presets, key header and name, unsupported options left out, `max_completion_tokens` and fixed temperature for OpenAI reasoning models, local presets free, cloud presets unknown until a manual rate, rates scoped to the preset, no image question to preset catalogs, Gemini ids without `models/`, connection check naming the preset, DeepSeek cache hits) and `presets.rs` (lists match the frontend); vitest `llm-providers.test.ts` (provider list, settings keys, addresses, labels, readiness, where files go, picker); Playwright `llm-presets.spec.ts` (preset fields, key and model kept when switching, catalog request, rate scope, local address, readiness, custom address). "Custom address" keeps the existing `openai_*` settings, so nothing migrates.
 - [x] **MP6** Tests of the Anthropic client: Rust `tests/anthropic.rs` (key and version headers, system prompt with the JSON rule, top-level cache control, thinking blocks and JSON fences left out, usage with cache reads and writes, thinking and temperature by model generation, documents and images before the text, auth/rate-limit/overloaded errors and cut-off answers, model list, settings and key check, vision, manual rates with cache prices) and unit tests in `anthropic.rs`; `tests/research_files.rs` (PDFs sent whole with the switch while other files keep fragments, text without it, scans not transcribed first); vitest `llm-providers.test.ts` (Anthropic settings, readiness, files, model list); Playwright `llm-presets.spec.ts` (key, Claude models, PDF switch, cache-write rate, saved values). Not checked against the real API (no key).
+
+## Diagrams and charts in research answers
+
+Research answers draw Mermaid diagrams (flowcharts, sequences, timelines and the like) and charts (bars, lines, pies and the other usual kinds) where they help.
+
+### Decisions (agreed with the user)
+
+- **Diagrams:** ` ```mermaid ` blocks, drawn with Mermaid, which is bundled and loaded on first use, so it also works offline and on Android.
+- **Charts:** ` ```chart ` blocks with our own small JSON scheme, drawn with **ECharts**. ECharts is imported tree-shaken with the SVG renderer and loaded on first use. Colors come from the app theme, not from the model.
+  - The scheme has a type, a title, X labels, series and units.
+  - Kinds of chart:
+    - bars, vertical or horizontal, optionally stacked;
+    - line and area;
+    - pie and donut;
+    - scatter;
+    - bars with a line on a second axis;
+    - radar;
+    - heatmap.
+- **Always on:** there is no setting. The research prompt always describes both blocks and asks the model to use them only when a picture says more than text.
+- **Data:** there are no special rules for chart numbers. Sources are cited in the text as usual.
+- **Broken blocks:**
+  - Before an answer is accepted, the backend checks every ` ```chart ` block against the scheme. On an error, the agent gets the error text and fixes the answer once. If it is still broken, the answer is kept.
+  - Mermaid can only be checked by drawing, so a block that fails to draw shows its source with a note, like a broken formula.
+- **Copies and exports:**
+  - Copying an answer and the Markdown export keep the source blocks. GitHub and Obsidian draw ` ```mermaid `; ` ```chart ` stays JSON.
+  - Each diagram and chart has a menu with "Save as SVG", "Save as PNG" and "Copy source". Files go through the save dialog on every platform, Android included.
+  - Diagrams and charts also open full screen with zoom.
+
+### Tasks
+
+- [x] **DC1** Chart scheme.
+  - Rust: `roles/chart.rs` (`check`) and its frontend mirror `src/lib/utils/chart.ts` (`parseChart`, which also returns the normalized chart). Both apply the checks in the same order with the same messages:
+    - the type is known;
+    - text fields and flags have the right kind;
+    - 1–12 series;
+    - labels in `x` (text or numbers, at most 200), and in `y` for heatmaps;
+    - each series has as many values as there are labels; numbers, with `null` for a gap (no gaps in pies);
+    - pie slices are not negative;
+    - scatter data are `[x, y]` pairs (at most 2000);
+    - a heatmap is a Y × X matrix (at most 2500 cells);
+    - a radar has at least 3 labels;
+    - series `type`/`axis` only in bar and line charts.
+  - Unknown fields are ignored. Errors name the series ("series \"RU\" has 2 values for 3 labels").
+  - The shared valid and broken examples are `src-tauri/tests/fixtures/charts.json`, checked by `tests/research_charts.rs` and `src/tests/chart.test.ts`.
+- [x] **DC2** Answer check in the research pipeline.
+  - `chart::problems` finds top-level ```` ```chart ```` / `~~~chart` fences (blocks inside other code blocks and indented code are not checked) and lists "Chart N: problem".
+  - `ResearchPipeline::checked_answer` sends broken charts back once ("…cannot be drawn: … Fix these blocks and answer again"), also for the answer forced at the step limit.
+  - A fix that is still broken is kept with a WARN log. A failed fix (another action or an error) keeps the first answer.
+- [x] **DC3** Research prompt.
+  - One rule, always present, covers both blocks:
+    - Mermaid: the kinds, quoted labels, no styles/`classDef`/`click`/HTML;
+    - chart: the scheme with an example (`CHART_EXAMPLE`, itself checked by a test);
+    - use only when a picture says more than text;
+    - quotes and line breaks escaped in the JSON string.
+  - Test: `the_prompt_describes_diagrams_and_charts`.
+- [x] **DC4** Mermaid in `Markdown.svelte`.
+  - A ```` ```mermaid ```` block becomes a placeholder showing its source (`diagramPlaceholder` in `src/lib/utils/diagrams.ts`). The source is element text, since DOMPurify drops attributes holding `-->`.
+  - `mermaidRender.ts` is loaded with `import()`. Settings: `securityLevel: 'strict'`, SVG text labels, the `base` theme with variables from the app theme. The SVG is sanitized with DOMPurify.
+  - Diagrams are redrawn when the theme changes. A diagram that does not parse keeps its source under "Could not draw this diagram".
+  - The figure is `role="img"`, labelled with the diagram kind and its node labels.
+- [x] **DC5** Charts in `Markdown.svelte`.
+  - `chartRender.ts` (ECharts 6 core, tree-shaken, SVG renderer, no animation) is loaded with `import()`.
+  - `chartOption` builds the options:
+    - the categorical palette validated for color-vision deficiencies (light and dark steps by theme mode) and a one-hue ramp for heatmaps;
+    - text and grid colors from the theme;
+    - units on the axes and in tooltips;
+    - a legend for several series and for pies;
+    - axis titles kept inside the picture;
+    - heatmap rows top to bottom;
+    - rounded bar ends;
+    - 2px lines.
+  - The height follows the kind. Charts follow the width through `ResizeObserver` and are redrawn when the theme changes.
+  - The figure label is the title, kind and series names. A broken block keeps its source with the error.
+- [x] **DC6** Actions on a diagram or chart.
+  - The "Diagram actions" button and right-click open the menu:
+    - **Open full screen:** `DiagramViewer.svelte`, with zoom 50–400%, Fit, Ctrl+wheel and dragging to pan;
+    - **Save as SVG** and **Save as PNG:** the save dialog, then the `save_picture` command (base64, 50 MB cap, `utils/files.rs`, so Android's `content://` addresses work too);
+    - **Copy source.**
+  - PNG is drawn at 2× on the panel color. The file name comes from the title.
+- [x] **DC7** Tests.
+  - Rust: `tests/research_charts.rs` (shared examples, JSON error position, wording, fences, one fix past the step limit, a still-broken fix, a failed fix, good charts accepted at once), `the_prompt_describes_diagrams_and_charts`, `pictures_made_in_the_app_are_decoded_within_the_limit`.
+  - vitest: `chart.test.ts` (shared examples, normalized chart, colors, options for every kind) and `diagrams.test.ts` (placeholders survive sanitizing, labels, file names, copied text keeps sources).
+  - Playwright `tests/ui/research-diagrams.spec.ts`, on Chromium and WebKit:
+    - Mermaid and every kind of chart drawn as SVG;
+    - broken blocks show their source;
+    - names from the answer stay text;
+    - copies keep the sources;
+    - SVG/PNG saving, copying the source, and the full-screen view with zoom;
+    - the theme switch recolors the charts;
+    - phone width without page scroll.
