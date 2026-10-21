@@ -118,6 +118,7 @@ Su Android, apri l’APK scaricato e, quando richiesto, consenti l’installazio
 - **Formule e immagini nelle risposte della ricerca**: le formule LaTeX vengono disegnate (MathJax, offline); l’agente può cercare immagini, osservarle e inserire quelle adatte nella risposta, conservate con l’esecuzione
 - **Diagrammi e grafici nelle risposte della ricerca**: diagrammi Mermaid e grafici a barre, a linee, ad area, a torta, a dispersione, radar e mappe di calore, disegnati offline nel tema dell’app; si salvano come SVG o PNG e si aprono a schermo intero
 - **Statistiche di utilizzo**: denaro, token, chiamate ai modelli, ricerche Brave e Serper e volume di dati per mese, anno e da sempre, con ripartizioni per modello e modalità, le esecuzioni più costose, lo spazio su disco, l’esportazione CSV e un budget mensile con avvisi
+- **13 lingue dell’interfaccia**: inglese, russo, tedesco, francese, spagnolo, italiano, portoghese (Brasile), polacco, ucraino, turco, cinese (semplificato), giapponese e coreano; per impostazione predefinita si usa la lingua del sistema
 - **Fonti per ogni riga**: ogni riga rimanda alle pagine da cui è stata estratta
 - **Rimozione dei duplicati delle entità**: confronto approssimato + disambiguazione assistita dall’LLM
 - **Condizioni di arresto configurabili**: numero di righe obiettivo, costo massimo, durata massima

@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.11.0 — 2026-10-21
+
+More model providers, diagrams and charts in research answers, a Statistics section, and the interface in 13 languages.
+
+### Model providers
+
+- New providers: Anthropic Claude, DeepSeek, Groq, Mistral, Gemini, xAI, OpenAI, LM Studio and llama.cpp, each with its own key and model in Settings → LLM. Any other OpenAI-compatible server is **Custom address**.
+- Claude caches the growing prompt, so long research runs cost less, and its thinking follows the model generation.
+- **Claude reads PDF files itself**: research sends attached PDFs to Claude whole, so it sees tables, charts and scans as they are.
+- Local servers (LM Studio, llama.cpp, models the local Ollama runs) cost $0. Cloud presets show costs once you set their rates in Settings → LLM.
+
+### Diagrams and charts in research answers
+
+- Answers draw Mermaid diagrams and charts: bars, lines, areas, pies and donuts, scatter, radar, heatmaps, and bars with a line.
+- Pictures follow the app theme and work offline. A chart the agent wrote wrong goes back to it once to be fixed; one that still cannot be drawn shows its source.
+- Every diagram opens full screen, saves as SVG or PNG, and copies its source. Copies and Markdown exports keep the blocks as written.
+
+### Statistics
+
+- A new **Statistics** section shows money, tokens, model calls, Brave and Serper searches, and data sent, received and downloaded, by month, year and all time, compared with the period before.
+- Breakdowns by model, provider and mode, the most expensive runs, disk use, and CSV export.
+- Spending is kept even when runs are deleted. Runs made before this version are imported once from their saved totals.
+- Calls made without a price can be recalculated after you set rates.
+- **Monthly budget** (Settings → Runs → Spending) warns at 80% and 100% once a month with a notification and a notice on the query page; runs are not stopped.
+
+### Languages
+
+- The interface is now also in German, French, Spanish, Italian, Portuguese (Brazil), Polish, Ukrainian, Turkish, Chinese (Simplified), Japanese and Korean; notifications and the tray menu too. Pick one in Settings → Application → Appearance, or keep the system language.
+- The README is translated into the same languages.
+- On phones, the mode buttons on the query page go two per row so longer names fit.
+
 ## 0.10.0 — 2026-10-18
 
 Research answers get formulas and pictures, and the app can now update itself.

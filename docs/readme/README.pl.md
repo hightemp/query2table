@@ -118,6 +118,7 @@ Na Androidzie otwórz pobrany plik APK i, gdy pojawi się prośba, zezwól na in
 - **Wzory i obrazy w odpowiedziach badania** — wzory LaTeX są rysowane (MathJax, offline); agent może wyszukiwać obrazy, oglądać je i umieszczać pasujące w odpowiedzi, a są one przechowywane razem z przebiegiem
 - **Diagramy i wykresy w odpowiedziach badania** — diagramy Mermaid oraz wykresy słupkowe, liniowe, warstwowe, kołowe, punktowe, radarowe i mapy ciepła, rysowane offline w motywie aplikacji; można je zapisać jako SVG lub PNG i otworzyć na pełnym ekranie
 - **Statystyki użycia** — pieniądze, tokeny, wywołania modeli, wyszukiwania Brave i Serper oraz ilość danych według miesięcy, lat i za cały okres, z podziałem na modele i tryby, najdroższymi przebiegami, zajętością dysku, eksportem CSV i budżetem miesięcznym z ostrzeżeniami
+- **13 języków interfejsu** — angielski, rosyjski, niemiecki, francuski, hiszpański, włoski, portugalski (Brazylia), polski, ukraiński, turecki, chiński (uproszczony), japoński i koreański; domyślnie używany jest język systemu
 - **Źródła dla każdego wiersza** — każdy wiersz zawiera linki do stron, z których został wyodrębniony
 - **Usuwanie duplikatów obiektów** — dopasowanie przybliżone + rozstrzyganie niejednoznaczności z pomocą LLM
 - **Konfigurowalne warunki zatrzymania** — docelowa liczba wierszy, maksymalny koszt, maksymalny czas

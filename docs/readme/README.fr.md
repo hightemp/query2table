@@ -118,6 +118,7 @@ Sur Android, ouvrez l’APK téléchargé et, lorsque c’est demandé, autorise
 - **Formules et images dans les réponses de recherche** — les formules LaTeX sont dessinées (MathJax, hors ligne) ; l’agent peut chercher des images, les examiner et placer celles qui conviennent dans sa réponse, conservées avec l’exécution
 - **Diagrammes et graphiques dans les réponses de recherche** — diagrammes Mermaid et graphiques en barres, en courbes, en aires, en secteurs, nuages de points, radars et cartes de chaleur, dessinés hors ligne dans le thème de l’application ; enregistrables en SVG ou PNG, affichables en plein écran
 - **Statistiques d’utilisation** — dépenses, jetons, appels aux modèles, recherches Brave et Serper et volume de données par mois, par an et depuis le début, avec une répartition par modèle et par mode, les exécutions les plus coûteuses, l’espace disque utilisé, l’export CSV et un budget mensuel avec avertissements
+- **13 langues d’interface** — anglais, russe, allemand, français, espagnol, italien, portugais (Brésil), polonais, ukrainien, turc, chinois (simplifié), japonais et coréen ; la langue du système est choisie par défaut
 - **Sources par ligne** — chaque ligne renvoie aux pages dont elle a été extraite
 - **Dédoublonnage des entités** — correspondance approximative + désambiguïsation assistée par LLM
 - **Conditions d’arrêt configurables** — nombre de lignes visé, coût maximal, durée maximale

@@ -118,6 +118,7 @@ On Android, open the downloaded APK and allow installing apps from your browser 
 - **Formulas and pictures in research answers** — LaTeX formulas are drawn (MathJax, offline); the agent can search for images, look at them, and place fitting ones in its answer, kept with the run
 - **Diagrams and charts in research answers** — Mermaid diagrams and bar, line, area, pie, scatter, radar and heatmap charts, drawn offline in the app theme; saved as SVG or PNG, opened full screen
 - **Usage statistics** — money, tokens, model calls, Brave and Serper searches and data volume by month, year and all time, with breakdowns by model and mode, the most expensive runs, disk use, CSV export and a monthly budget with warnings
+- **13 interface languages** — English, Russian, German, French, Spanish, Italian, Portuguese (Brazil), Polish, Ukrainian, Turkish, Chinese (Simplified), Japanese and Korean; the system language is picked by default
 - **Row-level sources** — every row links back to the pages it was extracted from
 - **Entity deduplication** — fuzzy matching + LLM-assisted disambiguation
 - **Configurable stop conditions** — target row count, max cost, max duration

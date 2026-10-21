@@ -118,6 +118,7 @@ Android’de indirilen APK’yı açın ve sorulduğunda tarayıcınızdan veya 
 - **Araştırma yanıtlarında formüller ve resimler** — LaTeX formülleri çizilir (MathJax, çevrimdışı); ajan görsel arayabilir, onlara bakabilir ve uygun olanları yanıtına yerleştirebilir; bunlar çalıştırmayla birlikte saklanır
 - **Araştırma yanıtlarında diyagramlar ve grafikler** — Mermaid diyagramları ile çubuk, çizgi, alan, pasta, dağılım, radar ve ısı haritası grafikleri, uygulama temasında çevrimdışı çizilir; SVG veya PNG olarak kaydedilir, tam ekran açılır
 - **Kullanım istatistikleri** — ay, yıl ve tüm zamanlar için para, token, model çağrıları, Brave ve Serper aramaları ve veri hacmi; modele ve moda göre dökümler, en pahalı çalıştırmalar, disk kullanımı, CSV dışa aktarma ve uyarılı aylık bütçe
+- **13 arayüz dili** — İngilizce, Rusça, Almanca, Fransızca, İspanyolca, İtalyanca, Portekizce (Brezilya), Lehçe, Ukraynaca, Türkçe, Çince (basitleştirilmiş), Japonca ve Korece; varsayılan olarak sistem dili seçilir
 - **Satır düzeyinde kaynaklar** — her satır, çıkarıldığı sayfalara bağlantı verir
 - **Varlık yinelemelerini ayıklama** — bulanık eşleştirme + LLM destekli ayrıştırma
 - **Ayarlanabilir durdurma koşulları** — hedef satır sayısı, en yüksek maliyet, en uzun süre

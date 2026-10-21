@@ -118,6 +118,7 @@ Um Ihre Einrichtung vom Computer auf das Telefon zu übertragen, verwenden Sie *
 - **Formeln und Bilder in Rechercheantworten** – LaTeX-Formeln werden gezeichnet (MathJax, offline); der Agent kann nach Bildern suchen, sie ansehen und passende in seine Antwort aufnehmen, die mit dem Durchlauf gespeichert werden
 - **Diagramme in Rechercheantworten** – Mermaid-Diagramme sowie Balken-, Linien-, Flächen-, Kreis-, Streu-, Netzdiagramme und Heatmaps, offline im Design der App gezeichnet; als SVG oder PNG speicherbar, im Vollbild zu öffnen
 - **Nutzungsstatistik** – Geld, Token, Modellaufrufe, Brave- und Serper-Suchen und Datenvolumen nach Monat, Jahr und gesamtem Zeitraum, mit Aufschlüsselung nach Modell und Modus, den teuersten Durchläufen, Speicherbelegung, CSV-Export und einem Monatsbudget mit Warnungen
+- **13 Sprachen der Oberfläche** – Englisch, Russisch, Deutsch, Französisch, Spanisch, Italienisch, Portugiesisch (Brasilien), Polnisch, Ukrainisch, Türkisch, Chinesisch (vereinfacht), Japanisch und Koreanisch; standardmäßig wird die Systemsprache verwendet
 - **Quellen pro Zeile** – jede Zeile verlinkt auf die Seiten, aus denen sie extrahiert wurde
 - **Deduplizierung von Objekten** – unscharfer Abgleich + LLM-gestützte Unterscheidung
 - **Einstellbare Abbruchbedingungen** – Zielzahl der Zeilen, maximale Kosten, maximale Dauer
