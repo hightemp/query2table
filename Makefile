@@ -19,6 +19,7 @@ test:
 
 bump-version:
 	@echo "Bumping version to $(VERSION) in all files..."
+	@echo "$(VERSION)" > VERSION
 	@sed -i 's/"version": "[^"]*"/"version": "$(VERSION)"/' package.json
 	@sed -i 's/"version": "[^"]*"/"version": "$(VERSION)"/' src-tauri/tauri.conf.json
 	@sed -i 's/^version = "[^"]*"/version = "$(VERSION)"/' src-tauri/Cargo.toml
