@@ -17,7 +17,7 @@ Research finds and watches videos: it searches every video site yt-dlp knows, re
 
 - yt-dlp and Deno (the JavaScript engine YouTube needs) download for your system the first time a video is read, through the app's proxy, checked against their release checksums and tried before use. yt-dlp updates itself at most once a week.
 - **Settings → Application → Components** shows their versions and downloads, updates or removes them; on desktop you can run your own yt-dlp instead.
-- On Android, Python and QuickJS come with the app, which makes the APK about 15 MB larger per architecture; only yt-dlp is downloaded.
+- On Android, Python and QuickJS come with the app; only yt-dlp is downloaded. Native libraries are now stored compressed, so the APK is smaller than before (103 MB instead of 142 MB).
 
 ### Browser cookies
 
