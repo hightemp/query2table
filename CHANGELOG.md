@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.12.0 — 2026-10-28
+
+Research finds and watches videos: it searches every video site yt-dlp knows, reads subtitles, and shows videos in answers as cards.
+
+### Videos in research
+
+- The research agent searches for videos across the web (Brave and Serper video search) or on one site: YouTube, Bilibili, Niconico, SoundCloud.
+- It reads a video's details, chapters, description and subtitles: people's subtitles first, then automatic ones, in the video's language or the one asked for. Long subtitles come as pages with time marks, or whole when the agent needs all of it.
+- Answers cite moments with links that open the video at that time.
+- Answers show videos as cards with the thumbnail, duration, channel and site; clicking one opens the video in the browser. Thumbnails are kept with the run, and only for videos the agent actually came across.
+- Sources list videos in their own group.
+- Turn videos off in Settings → Runs → Research.
+
+### Components
+
+- yt-dlp and Deno (the JavaScript engine YouTube needs) download for your system the first time a video is read, through the app's proxy, checked against their release checksums and tried before use. yt-dlp updates itself at most once a week.
+- **Settings → Application → Components** shows their versions and downloads, updates or removes them; on desktop you can run your own yt-dlp instead.
+- On Android, Python and QuickJS come with the app, which makes the APK about 15 MB larger per architecture; only yt-dlp is downloaded.
+
+### Browser cookies
+
+- Some videos need you to be signed in, and YouTube sometimes asks to confirm you are not a bot. On desktop, research can use the cookies of your browser or a `cookies.txt` file (Settings → Runs → Research), with step-by-step instructions next to the setting.
+
 ## 0.11.0 — 2026-10-21
 
 More model providers, diagrams and charts in research answers, a Statistics section, and the interface in 13 languages.
