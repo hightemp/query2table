@@ -2249,3 +2249,62 @@ The app and the README speak the basic European and Asian languages besides Engl
   - Rust `every_interface_language_is_known_to_the_backend`, `every_language_has_its_notifications_and_tray`.
   - Playwright `tests/ui/locales.spec.ts`: all 13 languages on the query, history, statistics and settings pages at 1280 and 390 px, with no page scroll and no control whose text does not fit. It found the Ukrainian mode button on phones; the modes now go two a row there.
   - New catalogs need `vitest --fsModuleCache=false` (or a cleared `node_modules/.vitest-cache`) the first time, because vitest caches the list of catalog files.
+
+## Videos in research
+
+Let the research agent find videos on any host, read their subtitles, look at their thumbnails, and put videos in its answer as cards. yt-dlp does the work. The app downloads it for the user's OS.
+
+### Decisions (agreed with the user)
+
+- **Finding videos:** the agent chooses between two ways, through one action `video_search`.
+  - Without `site`, it uses a web video search: Brave Videos or Serper Videos, whichever provider is set. This finds videos on any host. With no search key, it falls back to YouTube through yt-dlp.
+  - With `site` (youtube, bilibili, niconico, soundcloud, …), it uses yt-dlp's own search on that host (`ytsearchN:`, `bilisearchN:`, …).
+- **Reading a video:** `video` takes the address of a video on any of the ~1800 sites yt-dlp supports. It returns the metadata (title, channel, date, duration, views, description, chapters) and the subtitles. The agent picks how much text it gets:
+  - **page:** paragraphs with `[mm:ss]` marks, the first part of a long video, and a later part on request (`"from": "40:00"`);
+  - **full:** the whole text within the context limit.
+  - The agent cites a moment by a link with the time (`?t=754` or the host's form).
+- **Subtitles:** the video's own language first, manual before automatic. The agent can ask for another language (`"lang": "en"`), including YouTube's automatic translation. Automatic subtitles are marked as such in the result.
+- **Thumbnails:** the agent looks at them with `view_image`, when the model sees images. It puts a video in its answer as a thumbnail linking to the video, and the app draws that as a **video card**:
+  - the downloaded thumbnail, kept with the run;
+  - title, channel, duration and a play mark;
+  - a click opens the video in the browser, at the cited time if there is one.
+  - Copies and Markdown exports keep the plain image link.
+- **Sources:** the videos the answer uses are a group of their own in Sources, with small thumbnails.
+- **yt-dlp and Deno:** downloaded **automatically the first time** a run needs them, with progress shown in the run. Deno is the JavaScript engine YouTube now needs.
+  - Assets are picked per OS and architecture, as in Cliprigo (`components/platform.rs`).
+  - yt-dlp is checked against `SHA2-256SUMS`, Deno against its `.sha256sum`.
+  - Both are kept in `<data>/tools`. yt-dlp is updated in the background at most once a week.
+- **Android:** the APK carries Python and QuickJS from youtubedl-android (`library` aar only, no ffmpeg, SHA-256 pinned in Gradle), as in Cliprigo.
+  - The yt-dlp zipapp is downloaded on first use and run as `libpython.so yt-dlp …`, with `--js-runtimes quickjs:<libqjs.so>`.
+  - Only the executables are taken from youtubedl-android, never its Kotlin code.
+- **Settings:**
+  - Settings › Application › **Components** lists the yt-dlp and Deno versions, with Update and Remove, and an optional path to the user's own yt-dlp.
+  - Settings › Runs › Research gets **Videos** (on/off).
+- **Network and accounting:** yt-dlp uses the app's proxy (`--proxy`). Its output and subtitles are counted as downloaded bytes in the usage journal. Each yt-dlp call has a timeout and is killed when the run stops.
+
+### Tasks
+
+- [ ] **V1** Components module (`src-tauri/src/components/`, ported from Cliprigo):
+  - platform assets;
+  - release lookup, download with progress, SHA-256 check;
+  - manifest of installed versions;
+  - weekly update check;
+  - Android bundled Python/QuickJS paths.
+  - Tests cover asset choice per platform, checksum parsing (including Deno's PowerShell format), a refused download with a wrong checksum, and the manifest.
+- [ ] **V2** `YtDlp` runner (`providers/video/`): builds arguments (proxy, JS runtime, `--skip-download`, `--dump-single-json`, subtitle choice), runs with a timeout, kills on stop, and parses the info JSON into `VideoInfo` (metadata, chapters, thumbnails, subtitle tracks). Tests use a fake yt-dlp script and recorded JSON.
+- [ ] **V3** Subtitles: choose the track (own language, manual before automatic, requested language), fetch it (json3, then vtt, then srt), and turn it into timed text. YouTube's rolling automatic lines are de-duplicated. Paragraphs carry `[mm:ss]` marks. Also: page and full modes, `from`, and time links per host. Tests use recorded subtitle files.
+- [ ] **V4** Web video search: Brave `/videos/search` and Serper `/videos` (`SearchProvider::search_videos`, counted bytes). yt-dlp search on a host (`<prefix>N:query`, `--flat-playlist`). Tests use mock servers and the fake yt-dlp.
+- [ ] **V5** Research agent actions `video_search` and `video` (`Tools.videos`).
+  - The prompt rule covers when to use them, citing moments, and the card form.
+  - New step types are shown in the timeline.
+  - Videos it came across are remembered per turn like `SeenImage`.
+  - Thumbnails are open to `view_image`.
+  - Tests: action parsing, prompt, pipeline with fakes.
+- [ ] **V6** Video cards: `keep_answer_images` also keeps the thumbnails of videos the answer shows, with the video's details (`research_images` gains video fields).
+  - `Markdown.svelte` draws a thumbnail linking to a known video as a card.
+  - Videos used by the answer go into Sources as their own group.
+  - Exports keep the image link.
+  - Tests: Rust storage, vitest, Playwright.
+- [ ] **V7** First-use install inside a run: progress as a run step, a clear error when it fails or the platform is not supported, and the run continuing without videos. Commands `get_components`, `install_component`, `remove_component`, with Settings › Application › Components and Settings › Runs › Research › Videos. Tests: Rust commands, Playwright.
+- [ ] **V8** Android: Gradle `bundledTools` (youtubedl-android `library` aar, pinned SHA-256); `MainActivity` exports the native library and package paths; the Python libraries are unpacked once per app version; yt-dlp runs through the bundled Python and QuickJS. Checked on a phone or emulator.
+- [ ] **V9** Translations of the new texts in all 13 catalogs. Also: AGENTS.md section, README (all languages), CHANGELOG.
