@@ -46,6 +46,8 @@
 	import ModelPricing from '$lib/components/settings/ModelPricing.svelte';
 	import AppFiles from '$lib/components/settings/AppFiles.svelte';
 	import AppUpdates from '$lib/components/settings/AppUpdates.svelte';
+	import AppComponents from '$lib/components/settings/AppComponents.svelte';
+	import VideoCookiesHelp from '$lib/components/settings/VideoCookiesHelp.svelte';
 	import SettingField from '$lib/components/settings/SettingField.svelte';
 	import {
 		exportSettings,
@@ -658,12 +660,14 @@
 							!searching &&
 							((section.id === 'llm' && group === 'Pricing') ||
 								section.id === 'network' ||
-								(section.id === 'app' && (group === 'Appearance' || group === 'Files' || group === 'Updates')))}
+								(section.id === 'app' && (group === 'Appearance' || group === 'Files' || group === 'Updates' || group === 'Components')))}
 						{#if groupFields.length || custom}
 							<div class="group">
 								<h3>{groupLabel(group)}</h3>
 								{#if custom && section.id === 'app' && group === 'Updates'}<AppUpdates />{/if}
+								{#if custom && section.id === 'app' && group === 'Components'}<AppComponents />{/if}
 								{#each groupFields as field (field.key)}{@render fieldView(field)}{/each}
+								{#if section.id === 'runs' && group === 'Research' && groupFields.some((f) => f.key === 'video_cookies')}<VideoCookiesHelp />{/if}
 								{#if custom && section.id === 'llm'}
 									<ModelPricing
 										provider={provider}

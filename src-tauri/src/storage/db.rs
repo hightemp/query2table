@@ -405,6 +405,13 @@ impl Database {
         )
         .execute(&self.pool)
         .await?;
+        // A video card's thumbnail keeps the video it shows.
+        for column in ["video_url TEXT", "channel TEXT", "duration INTEGER", "site TEXT"] {
+            sqlx::query(&format!("ALTER TABLE research_images ADD COLUMN {column}"))
+                .execute(&self.pool)
+                .await
+                .ok(); // ok() — ignore error if column already exists
+        }
         // Research runs saved before conversations become one-turn conversations.
         sqlx::query(
             "INSERT INTO research_turns (id, run_id, turn_index, question, answer_markdown, status, created_at)

@@ -2280,31 +2280,116 @@ Let the research agent find videos on any host, read their subtitles, look at th
 - **Settings:**
   - Settings › Application › **Components** lists the yt-dlp and Deno versions, with Update and Remove, and an optional path to the user's own yt-dlp.
   - Settings › Runs › Research gets **Videos** (on/off).
+- **Browser cookies (desktop, optional):** some sites read more when signed in. YouTube asks datacenter addresses to "sign in to confirm you're not a bot", and Vimeo wants a login.
+  - Settings › Runs › Research › Videos offers **Cookies**: Off (default), a browser (Firefox, Chrome, Edge, Brave, Opera, Vivaldi, Chromium, Safari), or a `cookies.txt` file. yt-dlp gets `--cookies-from-browser` or `--cookies`.
+  - Settings show a short instruction:
+    - sign in to the site in that browser;
+    - Firefox works most reliably; on Windows, Chrome and Edge encrypt cookies in a way yt-dlp often cannot read, so use Firefox or a `cookies.txt` exported with a browser extension;
+    - a separate account is safer, since sites may limit accounts used by programs.
+  - When a site refuses without a login, the agent gets a clear error and moves on, and the run step suggests cookies.
 - **Network and accounting:** yt-dlp uses the app's proxy (`--proxy`). Its output and subtitles are counted as downloaded bytes in the usage journal. Each yt-dlp call has a timeout and is killed when the run stops.
 
 ### Tasks
 
-- [ ] **V1** Components module (`src-tauri/src/components/`, ported from Cliprigo):
-  - platform assets;
-  - release lookup, download with progress, SHA-256 check;
-  - manifest of installed versions;
-  - weekly update check;
-  - Android bundled Python/QuickJS paths.
-  - Tests cover asset choice per platform, checksum parsing (including Deno's PowerShell format), a refused download with a wrong checksum, and the manifest.
-- [ ] **V2** `YtDlp` runner (`providers/video/`): builds arguments (proxy, JS runtime, `--skip-download`, `--dump-single-json`, subtitle choice), runs with a timeout, kills on stop, and parses the info JSON into `VideoInfo` (metadata, chapters, thumbnails, subtitle tracks). Tests use a fake yt-dlp script and recorded JSON.
-- [ ] **V3** Subtitles: choose the track (own language, manual before automatic, requested language), fetch it (json3, then vtt, then srt), and turn it into timed text. YouTube's rolling automatic lines are de-duplicated. Paragraphs carry `[mm:ss]` marks. Also: page and full modes, `from`, and time links per host. Tests use recorded subtitle files.
-- [ ] **V4** Web video search: Brave `/videos/search` and Serper `/videos` (`SearchProvider::search_videos`, counted bytes). yt-dlp search on a host (`<prefix>N:query`, `--flat-playlist`). Tests use mock servers and the fake yt-dlp.
-- [ ] **V5** Research agent actions `video_search` and `video` (`Tools.videos`).
-  - The prompt rule covers when to use them, citing moments, and the card form.
-  - New step types are shown in the timeline.
-  - Videos it came across are remembered per turn like `SeenImage`.
-  - Thumbnails are open to `view_image`.
-  - Tests: action parsing, prompt, pipeline with fakes.
-- [ ] **V6** Video cards: `keep_answer_images` also keeps the thumbnails of videos the answer shows, with the video's details (`research_images` gains video fields).
-  - `Markdown.svelte` draws a thumbnail linking to a known video as a card.
-  - Videos used by the answer go into Sources as their own group.
-  - Exports keep the image link.
-  - Tests: Rust storage, vitest, Playwright.
-- [ ] **V7** First-use install inside a run: progress as a run step, a clear error when it fails or the platform is not supported, and the run continuing without videos. Commands `get_components`, `install_component`, `remove_component`, with Settings › Application › Components and Settings › Runs › Research › Videos. Tests: Rust commands, Playwright.
-- [ ] **V8** Android: Gradle `bundledTools` (youtubedl-android `library` aar, pinned SHA-256); `MainActivity` exports the native library and package paths; the Python libraries are unpacked once per app version; yt-dlp runs through the bundled Python and QuickJS. Checked on a phone or emulator.
-- [ ] **V9** Translations of the new texts in all 13 catalogs. Also: AGENTS.md section, README (all languages), CHANGELOG.
+- [x] **V1** Components module (`src-tauri/src/components/`, ported from Cliprigo without ffmpeg):
+  - platform files (`platform.rs`);
+  - GitHub release lookup through the `releases/latest` redirect, download through the app's proxy with progress, SHA-256 check (`fetch.rs`);
+  - the new tool is tried with `--version` before it replaces the working one; on Windows a running one is moved aside (`fsutil.rs`);
+  - manifest of versions, `ensure` (installs what is missing), `remove`, `check_updates`, weekly `auto_update_ytdlp`;
+  - Android: Python and QuickJS from the APK (`bundled.rs`, folders from `Q2T_NATIVE_LIB_DIR` and `Q2T_PACKAGES_DIR`).
+  - Tests:
+    - `tests/components.rs` installs from a fake GitHub (wiremock) and covers a wrong checksum, a tool that does not run, an archive without the tool, removal, the weekly update, the update check and two installs at once;
+    - unit tests cover platforms, checksum formats, a stalled download and the Android layout;
+    - ignored network tests `checksums_for_every_system` and `live_install` pass against the real releases (yt-dlp 2026.10.26, Deno 2.9.8).
+  - Probe from this machine:
+    - YouTube is not reachable without the proxy;
+    - through the datacenter proxy it sometimes asks to "sign in to confirm you're not a bot", and translated subtitles get HTTP 429;
+    - manual and automatic English subtitles came as json3;
+    - TED works directly with vtt subtitles;
+    - Vimeo now wants a login, and Bilibili search answered 412 through the proxy.
+- [x] **V2** yt-dlp runner `YtDlp` (`providers/video/ytdlp.rs`).
+  - Arguments:
+    - `--ignore-config`;
+    - `--no-js-runtimes --js-runtimes deno:<path>` (`quickjs:` on Android);
+    - `--proxy`: the app's proxy, or an empty value so the environment is not used;
+    - cookies, `--cookies-from-browser` or `--cookies`;
+    - the address after `--`.
+  - Only http(s) addresses are accepted.
+  - A timeout applies, and the process is killed with the run.
+  - `info` reads `--dump-single-json` into `VideoInfo` (`providers/video/mod.rs`): site, channel, date, duration, views, language, live, thumbnail, description, chapters, and subtitle tracks with formats, manual and automatic, without YouTube's live chat.
+  - The full answer is kept in the work folder for `--load-info-json`. Fetching all languages at once fails on a single 429 and loses the details.
+  - Failures are told apart: login required, unsupported, 429, unavailable, geo-blocked, timeout.
+  - The answer's size is counted as downloaded.
+  - Tests in `tests/video_ytdlp.rs` use a fake yt-dlp with answers recorded from the real one (`tests/fixtures/video/`, signed addresses and IPs scrubbed). Ignored live tests read YouTube through `Q2T_VIDEO_PROXY`.
+- [x] **V3** Subtitles (`providers/video/subtitles.rs`).
+  - `choose_track` picks, in the language asked for or the video's own:
+    1. people's subtitles (exact key, then the same main language, so `de` gives `de-DE` and named tracks like `en-IU4AG2iTnVA` count);
+    2. speech recognition (`<lang>-orig`);
+    3. YouTube's machine translation.
+    - Without a language, any people's subtitles, then speech recognition.
+    - `track_kind` says Manual, Automatic or Translated.
+  - `YtDlp::subtitles` fetches one track from the saved details: `--load-info-json`, `--write-subs` or `--write-auto-subs`, `--sub-langs <escaped key>`, `--sub-format json3/vtt/srt/best`. The file's size is counted as downloaded.
+  - `parse` reads json3, vtt and srt, plus srv1 and TTML. YouTube's rolling vtt lines are read once. Tags and entities are removed.
+  - `Transcript` builds paragraphs (closed after 30 s at a sentence end, always after 60 s, and at a chapter) with `[m:ss]` marks and `## chapter` headings.
+    - `full(max)` gives the whole text, cut to the limit.
+    - `page(from, max)` gives the part from the paragraph holding `from`, with `next`.
+  - `clock`, `parse_clock`, and `time_link` (YouTube `t=754s`, Vimeo `#t=754s`, other sites `#t=754`).
+  - Tests: `tests/video_subtitles.rs` (recorded YouTube json3 by people and by speech recognition, TED vtt, rolling vtt, srt, track choice, pages, chapters) and `video_ytdlp.rs` (fetch arguments, 429). The ignored live test reads YouTube subtitles through the proxy.
+- [x] **V4** Video search.
+  - `VideoSearchProvider` / `VideoSearchResult` in `providers/search/types.rs`: address, title, thumbnail, channel, site, duration, date, views, description.
+  - Brave `/videos/search` (at most 50, `thumbnail.original` before Brave's copy, `page_age` as the date) and Serper `POST /videos` (`Mar 4, 2021` becomes `2021-03-04`).
+  - `SearchManager::search_videos_with_count` retries and falls back like image search, and is counted as "video search".
+  - `YtDlp::search(site, query, n)` uses yt-dlp's own search: youtube → `ytsearch`, bilibili → `bilisearch`, niconico → `nicosearch`, soundcloud → `scsearch`. It returns at most 20 results with `--flat-playlist`, the query on one line after `--`. Another site gives `UnknownSite` with the list.
+  - Tests: `tests/video_search.rs` (mock Brave and Serper, fallback, fake yt-dlp with the recorded YouTube search).
+- [x] **V5** Research agent actions `video_search` (`query`, optional `site`) and `video` (`url`, `from` as `40:00` or seconds, `full`, `lang`), offered when `Tools.videos` is on: web search plus the `research_videos` setting (default on).
+  - The prompt rule covers when to use videos, errors in automatic subtitles, citing moments with time links, and cards `[![Title](thumbnail)](video)`.
+  - `orchestrator/videos.rs` (`RunVideos`):
+    - yt-dlp is installed on first use through the shared `components::shared()`, so runs never install at once;
+    - videos read are kept per run, so later parts and other languages need no new requests;
+    - the work folder is removed when the run ends.
+  - The text the agent reads:
+    - the first part has the details, chapters, description, the subtitle kind and other languages;
+    - every part carries `[m:ss]` marks and the next `from`, with a sample time link.
+  - The web video search falls back to YouTube through yt-dlp when it fails. Thumbnails of found and read videos count as images the agent came across.
+  - New step types are `video_search` ("query (site)") and `video` (title, "· from m:ss").
+  - Settings `research_videos`, `video_cookies` (a browser or `file` with `video_cookies_file`).
+  - Tests:
+    - `tests/research_videos.rs`: the whole flow with a fake yt-dlp, the fallback, a refused address, videos off;
+    - unit tests of the agent's actions and prompt, the settings, and the text of `videos.rs`.
+- [x] **V6** Video cards.
+  - `keep_answer_images` also keeps the thumbnails of the answer's cards (`video_cards` in `roles/research_agent.rs`).
+    - They are kept only when the video or its thumbnail was found or read, and only from addresses the agent came across.
+    - At most 20 cards, not counted in "Images per answer". The thumbnail is downscaled to 960 px.
+    - `research_images` gains `video_url`, `channel`, `duration`, `site`.
+  - `Markdown.svelte` draws a link around one picture as a card: the kept thumbnail, a play mark, the length, then title, channel and site. A card without a kept thumbnail still links to its video. The click opens the video in the browser.
+  - Sources: videos are a group of their own (`ResearchSource.video`) with small thumbnails, from cards, time links (`t=` is ignored when matching) and `video` steps.
+  - Steps are labelled "Video search" and "Watched video". A copied card is "title (address)", and Markdown keeps the card.
+  - Tests:
+    - Rust `research_videos.rs` (kept thumbnail with the video's details, a made-up card not downloaded, no network);
+    - vitest `research.test.ts` (cards, durations, video sources, copying);
+    - Playwright `research-videos.spec.ts` (card, sources, activity, phone width), checked on screenshots.
+- [x] **V7** Install on first use, and settings.
+  - In a run, the first use of yt-dlp records a "Video tools" step (`tools`) while the shared manager downloads what is missing. A failure is an error step, and the run goes on without videos.
+  - Commands `get_components`, `install_component` (progress as `components:progress`), `remove_component`, `check_component_updates` (`commands/components.rs`).
+  - Settings › Application › Components (`AppComponents.svelte`) shows versions, Download, Update, Remove, Check for updates and the download bar. Its advanced field `ytdlp_path` sets your own yt-dlp, run with our Deno when it is installed (`JsRuntime::System` otherwise).
+  - Settings › Runs › Research:
+    - **Videos** (`research_videos`);
+    - **Browser cookies for videos** (`video_cookies`: off, eight browsers, or `cookies.txt` with `video_cookies_file`, shown only then);
+    - the instruction `VideoCookiesHelp.svelte`.
+  - Cookies and your own yt-dlp are desktop only. `FieldDef.when` and `desktopOnly` hide fields.
+  - 46 new texts in all 13 languages.
+  - Tests:
+    - Rust: command statuses, the settings, `JsRuntime::System`;
+    - vitest: schema, step label;
+    - Playwright `settings-videos.spec.ts`: components, a failed download, cookies with the instruction, phones.
+- [x] **V8** Android.
+  - Gradle `bundledTools`: youtubedl-android `library` 0.18.1 aar, SHA-256 pinned, unpacked by `unpackBundledTools` for arm64-v8a, armeabi-v7a and x86_64. `useLegacyPackaging` extracts the executables.
+  - `MainActivity` exports `Q2T_NATIVE_LIB_DIR`, `Q2T_PACKAGES_DIR` and `TMPDIR`.
+  - Checked on the emulator (x86_64 APK):
+    - Settings › Components shows QuickJS as part of the app;
+    - Download fetched the yt-dlp zipapp with its progress, checked it and ran it through the bundled Python (version 2026.10.26).
+  - The APK grows by about 15 MB per architecture. Reading a video in a real research run on Android was not checked, since it needs model and search keys on the emulator.
+- [x] **V9** Texts in all 13 languages:
+  - V6: 4 texts;
+  - V7: 46 texts, and the components button "Check tool updates", so it differs from the app's "Check for updates".
+  - Docs: the AGENTS.md sections "Videos in research" and "External tools", and the README bullet in all languages. The CHANGELOG entry is written with the release.

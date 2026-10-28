@@ -159,7 +159,20 @@ export const test = base.extend({
 				updateCheckError: null as Record<string, unknown> | null,
 				updateResult: 'restart' as string | Record<string, unknown>,
 				restarted: false,
-				researchImages: [] as { url: string; source_url: string | null; title: string; width: number; height: number }[],
+				researchImages: [] as Record<string, unknown>[],
+				components: {
+					supported: true,
+					error: null as string | null,
+					components: [
+						{ component: 'ytdlp', installed: false, version: null as string | null, bundled: false },
+						{ component: 'deno', installed: true, version: 'v2.9.8' as string | null, bundled: false },
+					],
+				},
+				componentUpdates: [
+					{ component: 'ytdlp', current: null as string | null, latest: '2026.10.26', update_available: true },
+					{ component: 'deno', current: 'v2.9.8' as string | null, latest: 'v2.9.9', update_available: true },
+				],
+				failInstall: null as string | null,
 				rowSources: null as unknown[] | null,
 				visionDetected: false as boolean | null,
 				dialogFiles: ['/docs/report.pdf', '/docs/prices.xlsx'] as string[] | null,
@@ -363,6 +376,24 @@ export const test = base.extend({
 							return new Date(new Date().getFullYear() - 1, 0, 15).getTime() / 1000;
 						case 'get_storage_usage':
 							return { database_bytes: 5 * 1024 * 1024, attachments_bytes: 1024 * 1024, answer_images_bytes: 200 * 1024 };
+						case 'get_components':
+							return fixture.components;
+						case 'check_component_updates':
+							return fixture.componentUpdates;
+						case 'install_component': {
+							const update = fixture.componentUpdates.find((u) => u.component === args.component)!;
+							fixture.emit('components:progress', { component: args.component, stage: 'download', file: 'yt-dlp_linux', downloaded: 15_000_000, total: 40_000_000 });
+							await new Promise((resolve) => setTimeout(resolve, 300));
+							if (fixture.failInstall) throw fixture.failInstall;
+							const status = fixture.components.components.find((c) => c.component === args.component)!;
+							Object.assign(status, { installed: true, version: update.latest });
+							return update.latest;
+						}
+						case 'remove_component': {
+							const status = fixture.components.components.find((c) => c.component === args.component)!;
+							Object.assign(status, { installed: false, version: null });
+							return;
+						}
 						case 'get_monthly_budget':
 							return fixture.budget;
 						case 'reprice_usage':

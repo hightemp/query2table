@@ -107,6 +107,12 @@ pub struct PipelineConfig {
     pub research_images: bool,
     /// Most pictures of one research answer that are downloaded and kept.
     pub research_max_images: usize,
+    /// Research may search for videos and read their subtitles.
+    pub research_videos: bool,
+    /// Cookies of a signed-in user for yt-dlp (desktop).
+    pub video_cookies: Option<crate::providers::video::Cookies>,
+    /// The user's own yt-dlp instead of the downloaded one (desktop).
+    pub ytdlp_path: Option<std::path::PathBuf>,
 }
 
 impl PipelineConfig {
@@ -166,6 +172,9 @@ impl PipelineConfig {
             web_search: true,
             research_images: settings.get("research_images").is_none_or(|v| v != "false"),
             research_max_images: bounded(settings, "research_max_images", 8, 1, 20),
+            research_videos: settings.get("research_videos").is_none_or(|v| v != "false"),
+            ytdlp_path: settings.get("ytdlp_path").map(|p| p.trim()).filter(|p| !p.is_empty()).map(std::path::PathBuf::from),
+            video_cookies: crate::providers::video::Cookies::from_settings(settings.get("video_cookies").map(String::as_str), settings.get("video_cookies_file").map(String::as_str)),
             llm_vision: settings.get("llm_vision").cloned().unwrap_or_else(|| "auto".into()),
             vision_model: settings.get("vision_model").map(|m| m.trim().to_string()).unwrap_or_default(),
             image_compare_max: bounded(settings, "image_compare_max", 30, 0, 200),
@@ -1103,6 +1112,25 @@ mod settings_tests {
         let config = PipelineConfig::from_settings(&odd);
         assert_eq!((config.image_compare_max, config.max_file_fragments, config.max_inline_images), (200, 400, 1));
         assert_eq!(config.context, defaults.context);
+    }
+
+    #[test]
+    fn research_videos_come_from_settings() {
+        use crate::providers::video::Cookies;
+        let defaults = PipelineConfig::from_settings(&HashMap::new());
+        assert!(defaults.research_videos);
+        assert_eq!(defaults.video_cookies, None);
+        let config = |pairs: &[(&str, &str)]| PipelineConfig::from_settings(&pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect());
+        assert!(!config(&[("research_videos", "false")]).research_videos);
+        assert_eq!(config(&[("video_cookies", "firefox")]).video_cookies, Some(Cookies::Browser("firefox".into())));
+        assert_eq!(config(&[("video_cookies", "file"), ("video_cookies_file", " /home/me/cookies.txt ")]).video_cookies, Some(Cookies::File("/home/me/cookies.txt".into())));
+        // A file without a path, or an unknown browser, means no cookies.
+        assert_eq!(config(&[("video_cookies", "file")]).video_cookies, None);
+        assert_eq!(config(&[("video_cookies", "netscape-navigator")]).video_cookies, None);
+        assert_eq!(config(&[("video_cookies", "off")]).video_cookies, None);
+        assert_eq!(defaults.ytdlp_path, None);
+        assert_eq!(config(&[("ytdlp_path", "  ")]).ytdlp_path, None);
+        assert_eq!(config(&[("ytdlp_path", " /usr/bin/yt-dlp ")]).ytdlp_path, Some("/usr/bin/yt-dlp".into()));
     }
 
     #[test]

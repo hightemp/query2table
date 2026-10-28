@@ -1,5 +1,6 @@
 import { t, type MessageKey } from '$lib/i18n';
 import { LLM_PRESETS, LLM_PROVIDERS, presetOf, type LlmPreset } from './llmProviders';
+import { isAndroid } from '$lib/utils/platform';
 
 /** What each setting is, where it lives on the Settings page and which values it accepts. */
 
@@ -39,6 +40,10 @@ export interface FieldDef {
 	keywords?: string;
 	/** A preset's own setting: labelled from the shared preset texts. */
 	preset?: LlmPreset;
+	/** Shown only while another setting has this value. */
+	when?: { key: string; value: string };
+	/** Not offered on Android (programs and browsers of the computer). */
+	desktopOnly?: boolean;
 }
 
 /** Connection and JSON-mode settings of each preset; cloud addresses are fixed. */
@@ -62,7 +67,7 @@ export const SECTIONS: SectionDef[] = [
 	{ id: 'search', groups: ['Provider', 'Pricing'] },
 	{ id: 'runs', groups: ['Spending', 'Fetching', 'Quality', 'Content', 'Research'] },
 	{ id: 'network', groups: ['Proxies'] },
-	{ id: 'app', groups: ['Appearance', 'Notifications', 'Updates', 'Files'] },
+	{ id: 'app', groups: ['Appearance', 'Notifications', 'Updates', 'Components', 'Files'] },
 ];
 
 export const FIELDS: FieldDef[] = [
@@ -144,10 +149,18 @@ export const FIELDS: FieldDef[] = [
 	{ key: 'max_file_fragments', section: 'runs', group: 'Content', kind: 'number', default: '400', min: 10, max: 5000, step: 1, advanced: true, keywords: 'attached files table rows cost' },
 	{ key: 'research_images', section: 'runs', group: 'Research', kind: 'switch', default: 'true', keywords: 'pictures photos images answer' },
 	{ key: 'research_max_images', section: 'runs', group: 'Research', kind: 'number', default: '8', min: 1, max: 20, step: 1, keywords: 'pictures photos images answer kept storage' },
+	{ key: 'research_videos', section: 'runs', group: 'Research', kind: 'switch', default: 'true', keywords: 'video youtube subtitles captions transcript yt-dlp' },
+	{
+		key: 'video_cookies', section: 'runs', group: 'Research', kind: 'select', default: 'off', desktopOnly: true,
+		options: ['off', 'firefox', 'chrome', 'edge', 'brave', 'opera', 'vivaldi', 'chromium', 'safari', 'file'],
+		keywords: 'video youtube vimeo cookies sign in login account browser yt-dlp',
+	},
+	{ key: 'video_cookies_file', section: 'runs', group: 'Research', kind: 'text', default: '', placeholder: 'cookies.txt', desktopOnly: true, when: { key: 'video_cookies', value: 'file' }, keywords: 'video cookies netscape file' },
 	{ key: 'attachment_max_mb', section: 'runs', group: 'Content', kind: 'number', default: '50', min: 1, max: 500, step: 1, unit: 'MB', advanced: true, keywords: 'attach files upload size' },
 	// Application
 	{ key: 'notifications_enabled', section: 'app', group: 'Notifications', kind: 'switch', default: 'true' },
 	{ key: 'update_check', section: 'app', group: 'Updates', kind: 'switch', default: 'true', keywords: 'updates new version upgrade' },
+	{ key: 'ytdlp_path', section: 'app', group: 'Components', kind: 'text', default: '', placeholder: '/usr/bin/yt-dlp', desktopOnly: true, advanced: true, keywords: 'yt-dlp youtube video program path components' },
 	{ key: 'show_site_icons', section: 'app', group: 'Appearance', kind: 'switch', default: 'true', keywords: 'favicon' },
 ];
 
@@ -206,8 +219,14 @@ function provider(settings: Map<string, string>): LlmProvider {
 }
 
 /** Fields shown for a section with the current provider. */
-export function fieldsIn(section: SectionId, settings: Map<string, string>): FieldDef[] {
-	return FIELDS.filter((f) => f.section === section && (!f.provider || f.provider === provider(settings)));
+export function fieldsIn(section: SectionId, settings: Map<string, string>, android = isAndroid()): FieldDef[] {
+	return FIELDS.filter(
+		(f) =>
+			f.section === section &&
+			(!f.provider || f.provider === provider(settings)) &&
+			(!f.when || (settings.get(f.when.key) ?? fieldByKey(f.when.key)?.default) === f.when.value) &&
+			!(f.desktopOnly && android)
+	);
 }
 
 function numeric(field: FieldDef) {

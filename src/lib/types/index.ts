@@ -355,6 +355,11 @@ export interface ResearchImage {
 	media_type: string;
 	width: number;
 	height: number;
+	/** A video card's thumbnail: the video, its channel, length in seconds and site. */
+	video_url?: string | null;
+	channel?: string | null;
+	duration?: number | null;
+	site?: string | null;
 }
 
 export interface ResearchTurnInfo {
@@ -532,4 +537,37 @@ export interface MonthlyBudget {
 	limit_usd: number;
 	spent_usd: number;
 	month_start: number;
+}
+
+/** A downloaded tool for videos. */
+export type ComponentName = 'ytdlp' | 'deno';
+
+export interface ComponentStatus {
+	component: ComponentName;
+	installed: boolean;
+	version: string | null;
+	/** Comes with the app (Android: QuickJS in place of Deno). */
+	bundled: boolean;
+}
+
+export interface ComponentsInfo {
+	/** Tools can be downloaded for this system. */
+	supported: boolean;
+	error: string | null;
+	components: ComponentStatus[];
+}
+
+export interface ComponentProgress {
+	component: ComponentName;
+	stage: 'download' | 'verify' | 'install';
+	file: string;
+	downloaded: number;
+	total: number | null;
+}
+
+export interface ComponentUpdate {
+	component: ComponentName;
+	current: string | null;
+	latest: string;
+	update_available: boolean;
 }

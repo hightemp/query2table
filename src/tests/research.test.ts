@@ -8,6 +8,8 @@ import {
 	markdownToText,
 	answerWithSources,
 	answerImages,
+	answerVideoCards,
+	formatDuration,
 } from '$lib/utils/research';
 
 const step = (overrides: Partial<ResearchStep>): ResearchStep => ({
@@ -207,5 +209,75 @@ describe('answer images', () => {
 		const answer = 'Pandas:\n\n![Panda](https://img.example.com/p.jpg)';
 		expect(answerWithSources(answer, [])).toBe(answer);
 		expect(markdownToText(answer)).toBe('Pandas:\n\nPanda (https://img.example.com/p.jpg)');
+	});
+});
+
+describe('videos', () => {
+	const VIDEO = 'https://www.youtube.com/watch?v=abc';
+	const card = (overrides: Partial<ResearchImage> = {}): ResearchImage => ({
+		run_id: 'r',
+		turn_index: 0,
+		url: 'https://i.ytimg.com/vi/abc/hq.jpg',
+		source_url: VIDEO,
+		title: 'A talk',
+		media_type: 'image/jpeg',
+		width: 480,
+		height: 270,
+		video_url: VIDEO,
+		channel: 'Speaker',
+		duration: 3723,
+		site: 'Youtube',
+		...overrides,
+	});
+
+	it('names video steps', () => {
+		expect(describeStep(step({ step_type: 'video_search', content: 'rust async (youtube)' }), 0)).toMatchObject({ label: 'Video search', summary: 'rust async (youtube)' });
+		const view = describeStep(step({ step_type: 'video', content: 'A talk · from 1:00', url: VIDEO }), 1);
+		expect(view).toMatchObject({ label: 'Watched video', summary: 'A talk · from 1:00', domain: 'youtube.com' });
+	});
+
+	it('names the download of the video tools', () => {
+		expect(describeStep(step({ step_type: 'tools', content: 'yt-dlp, Deno' }), 0)).toMatchObject({ label: 'Video tools', summary: 'yt-dlp, Deno' });
+	});
+
+	it('formats video lengths', () => {
+		expect(formatDuration(0)).toBe('0:00');
+		expect(formatDuration(213)).toBe('3:33');
+		expect(formatDuration(3723)).toBe('1:02:03');
+		expect(formatDuration(null)).toBe('');
+	});
+
+	it('finds video cards in the answer once each', () => {
+		const answer = `See [![A talk](https://i.ytimg.com/vi/abc/hq.jpg)](${VIDEO}) and [ ![B](<https://i.ytimg.com/b.jpg>) ](https://youtu.be/b) [![A](https://i.ytimg.com/vi/abc/hq.jpg)](${VIDEO}). ![Not a card](https://x.com/c.jpg)`;
+		expect(answerVideoCards(answer)).toEqual([
+			{ title: 'A talk', thumbnail: 'https://i.ytimg.com/vi/abc/hq.jpg', video: VIDEO },
+			{ title: 'B', thumbnail: 'https://i.ytimg.com/b.jpg', video: 'https://youtu.be/b' },
+		]);
+	});
+
+	it('lists videos shown, cited at a moment, and watched as video sources', () => {
+		const answer = `[![A talk](https://i.ytimg.com/vi/abc/hq.jpg)](${VIDEO})\n\nThe point is made at [12:34](${VIDEO}&t=754s). A page: [docs](https://docs.example/x).`;
+		const steps = [
+			step({ step_type: 'video', content: 'A talk', url: VIDEO }),
+			step({ step_type: 'video', content: 'A talk · from 12:00', url: VIDEO }),
+			step({ step_type: 'video', content: 'Other talk', url: 'https://vimeo.com/1' }),
+		];
+		const sources = collectSources(steps, answer, [card()]);
+		expect(sources.map((s) => s.url)).toEqual(['https://docs.example/x', VIDEO, 'https://vimeo.com/1']);
+		expect(sources[1]).toEqual({
+			url: VIDEO,
+			title: 'A talk',
+			domain: 'youtube.com',
+			read: true,
+			cited: true,
+			video: { thumbnail: 'https://i.ytimg.com/vi/abc/hq.jpg', channel: 'Speaker', duration: 3723 },
+		});
+		expect(sources[2]).toMatchObject({ title: 'Other talk', read: true, cited: false, video: { thumbnail: null, channel: null, duration: null } });
+	});
+
+	it('copies a card as its title and video address', () => {
+		const answer = `Watch:\n\n[![A talk](https://i.ytimg.com/vi/abc/hq.jpg)](${VIDEO})`;
+		expect(markdownToText(answer)).toBe(`Watch:\n\nA talk (${VIDEO})`);
+		expect(answerWithSources(answer, [])).toBe(answer);
 	});
 });

@@ -2,6 +2,10 @@ import { isAndroid } from '$lib/utils/platform';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
+	ComponentName,
+	ComponentProgress,
+	ComponentsInfo,
+	ComponentUpdate,
 	MonthlyBudget,
 	StorageUsage,
 	UsageReport,
@@ -581,4 +585,27 @@ export function clearUsage(): Promise<void> {
 /** The monthly budget reached 80% or 100% after a run. */
 export function onUsageBudget(cb: (budget: MonthlyBudget) => void): Promise<UnlistenFn> {
 	return listen<MonthlyBudget>('usage:budget', (event) => cb(event.payload));
+}
+
+// --- Components (yt-dlp and Deno for videos) ---
+
+export function getComponents(): Promise<ComponentsInfo> {
+	return invoke('get_components');
+}
+
+/** Downloads the latest release of a tool; resolves with its version. */
+export function installComponent(component: ComponentName): Promise<string> {
+	return invoke('install_component', { component });
+}
+
+export function removeComponent(component: ComponentName): Promise<void> {
+	return invoke('remove_component', { component });
+}
+
+export function checkComponentUpdates(): Promise<ComponentUpdate[]> {
+	return invoke('check_component_updates');
+}
+
+export function onComponentProgress(callback: (progress: ComponentProgress) => void): Promise<UnlistenFn> {
+	return listen<ComponentProgress>('components:progress', (event) => callback(event.payload));
 }

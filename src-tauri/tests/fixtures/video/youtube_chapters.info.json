@@ -1,0 +1,328 @@
+{
+ "id": "ThjvMReOXYM",
+ "title": "Crust of Rust: async/await",
+ "thumbnails": [
+  {
+   "url": "https://i.ytimg.com/vi/ThjvMReOXYM/hq720.jpg",
+   "height": 720,
+   "width": 1280,
+   "preference": -3,
+   "id": "38",
+   "resolution": "1280x720"
+  },
+  {
+   "url": "https://i.ytimg.com/vi_webp/ThjvMReOXYM/hq720.webp",
+   "preference": -2,
+   "id": "39"
+  },
+  {
+   "url": "https://i.ytimg.com/vi/ThjvMReOXYM/maxresdefault.jpg",
+   "height": 1080,
+   "width": 1920,
+   "preference": -1,
+   "id": "40",
+   "resolution": "1920x1080"
+  },
+  {
+   "url": "https://i.ytimg.com/vi_webp/ThjvMReOXYM/maxresdefault.webp",
+   "preference": 0,
+   "id": "41"
+  }
+ ],
+ "thumbnail": "https://i.ytimg.com/vi/ThjvMReOXYM/maxresdefault.jpg",
+ "description": "Finally, we tackle the topic of async/await in Rust, and specifically looking at how to use and think about async/await more so than how it works under the hood. My hope with this video is to convey the mental model and intuition you should use when using async/await in your own code, without getting bogged down in the details of Future, Pin, and Wakers.\n\n0:00:00 Introduction\n0:04:49 Fixing the video title\n0:05:28 What is async fn?\n0:10:40 awaiting futures\n0:17:00 Yielding\n0:20:03 Awaiting one of multiple futures\n0:34:46 Cancellation\n0:37:58 Executing futures\n0:50:50 Select arms with side-effe",
+ "channel_id": "UC_iD0xppBwwsrM9DegC5cQQ",
+ "channel_url": "https://www.youtube.com/channel/UC_iD0xppBwwsrM9DegC5cQQ",
+ "duration": 9241,
+ "view_count": 245960,
+ "average_rating": null,
+ "age_limit": 0,
+ "webpage_url": "https://www.youtube.com/watch?v=ThjvMReOXYM",
+ "categories": [
+  "Science & Technology"
+ ],
+ "tags": [
+  "rust",
+  "live-coding",
+  "async",
+  "await",
+  "concurrency",
+  "asynchrony"
+ ],
+ "playable_in_embed": true,
+ "live_status": "not_live",
+ "media_type": "video",
+ "release_timestamp": null,
+ "automatic_captions": {
+  "en-orig": [
+   {
+    "ext": "json3",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&kind=asr&lang=en&fmt=json3",
+    "name": "English (Original)",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   },
+   {
+    "ext": "srv1",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&kind=asr&lang=en&fmt=srv1",
+    "name": "English (Original)",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   },
+   {
+    "ext": "srt",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&kind=asr&lang=en&fmt=srt",
+    "name": "English (Original)",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   },
+   {
+    "ext": "vtt",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&kind=asr&lang=en&fmt=vtt",
+    "name": "English (Original)",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   }
+  ],
+  "ru": [
+   {
+    "ext": "json3",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&kind=asr&lang=en&tlang=ru&fmt=json3",
+    "name": "Russian",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   },
+   {
+    "ext": "srv1",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&kind=asr&lang=en&tlang=ru&fmt=srv1",
+    "name": "Russian",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   },
+   {
+    "ext": "srt",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&kind=asr&lang=en&tlang=ru&fmt=srt",
+    "name": "Russian",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   },
+   {
+    "ext": "vtt",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&kind=asr&lang=en&tlang=ru&fmt=vtt",
+    "name": "Russian",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   }
+  ]
+ },
+ "subtitles": {
+  "en-IU4AG2iTnVA": [
+   {
+    "ext": "json3",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&lang=en&name=AI+%28Gladia%29&fmt=json3",
+    "name": "English - AI (Gladia)",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   },
+   {
+    "ext": "srv1",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&lang=en&name=AI+%28Gladia%29&fmt=srv1",
+    "name": "English - AI (Gladia)",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   },
+   {
+    "ext": "srt",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&lang=en&name=AI+%28Gladia%29&fmt=srt",
+    "name": "English - AI (Gladia)",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   },
+   {
+    "ext": "vtt",
+    "url": "https://www.youtube.com/api/timedtext?v=ThjvMReOXYM&ei=x&caps=asr&opi=x&xoaf=x&xoadf=4&xowf=x&hl=en&ip=0.0.0.0&ipbits=0&expire=x&sparams=x&signature=x&key=x&lang=en&name=AI+%28Gladia%29&fmt=vtt",
+    "name": "English - AI (Gladia)",
+    "impersonate": true,
+    "__yt_dlp_client": "tv_samsung"
+   }
+  ]
+ },
+ "comment_count": 197,
+ "chapters": [
+  {
+   "start_time": 0,
+   "title": "Introduction",
+   "end_time": 289
+  },
+  {
+   "start_time": 289,
+   "title": "Fixing the video title",
+   "end_time": 328
+  },
+  {
+   "start_time": 328,
+   "title": "What is async fn?",
+   "end_time": 640
+  },
+  {
+   "start_time": 640,
+   "title": "awaiting futures",
+   "end_time": 1020
+  },
+  {
+   "start_time": 1020,
+   "title": "Yielding",
+   "end_time": 1203
+  },
+  {
+   "start_time": 1203,
+   "title": "Awaiting one of multiple futures",
+   "end_time": 2086
+  },
+  {
+   "start_time": 2086,
+   "title": "Cancellation",
+   "end_time": 2278
+  },
+  {
+   "start_time": 2278,
+   "title": "Executing futures",
+   "end_time": 3050
+  },
+  {
+   "start_time": 3050,
+   "title": "Select arms with side-effects",
+   "end_time": 3335
+  },
+  {
+   "start_time": 3335,
+   "title": "Cooperative scheduling",
+   "end_time": 3518
+  },
+  {
+   "start_time": 3518,
+   "title": "Selects with many arms",
+   "end_time": 3711
+  },
+  {
+   "start_time": 3711,
+   "title": "Fused futures",
+   "end_time": 3875
+  },
+  {
+   "start_time": 3875,
+   "title": "Overhead of async",
+   "end_time": 4076
+  },
+  {
+   "start_time": 4076,
+   "title": "Is select a future?",
+   "end_time": 4160
+  },
+  {
+   "start_time": 4160,
+   "title": "Awaiting multiple futures",
+   "end_time": 4757
+  },
+  {
+   "start_time": 4757,
+   "title": "Parallelism and spawning",
+   "end_time": 5437
+  },
+  {
+   "start_time": 5437,
+   "title": "Sharing across spawn",
+   "end_time": 5783
+  },
+  {
+   "start_time": 5783,
+   "title": "Runtime discovery",
+   "end_time": 6125
+  },
+  {
+   "start_time": 6125,
+   "title": "Stack variables in async",
+   "end_time": 6945
+  },
+  {
+   "start_time": 6945,
+   "title": "Async fn in traits",
+   "end_time": 7686
+  },
+  {
+   "start_time": 7686,
+   "title": "Asynchronous Mutexes",
+   "end_time": 8463
+  },
+  {
+   "start_time": 8463,
+   "title": "Do futures stay on a thread?",
+   "end_time": 8651
+  },
+  {
+   "start_time": 8651,
+   "title": "Async stack traces",
+   "end_time": 9184
+  },
+  {
+   "start_time": 9184,
+   "title": "Wrapping up",
+   "end_time": 9241
+  }
+ ],
+ "location": "LOS ANGELES",
+ "like_count": 4856,
+ "channel": "Jon Gjengset",
+ "channel_follower_count": 111000,
+ "creators": null,
+ "license": "Creative Commons Attribution license (reuse allowed)",
+ "uploader": "Jon Gjengset",
+ "uploader_id": "@jonhoo",
+ "uploader_url": "https://www.youtube.com/@jonhoo",
+ "upload_date": "20210831",
+ "timestamp": 1630452564,
+ "availability": "public",
+ "original_url": "https://www.youtube.com/watch?v=ThjvMReOXYM",
+ "webpage_url_basename": "watch",
+ "webpage_url_domain": "youtube.com",
+ "extractor": "youtube",
+ "extractor_key": "Youtube",
+ "playlist": null,
+ "playlist_index": null,
+ "display_id": "ThjvMReOXYM",
+ "fulltitle": "Crust of Rust: async/await",
+ "duration_string": "2:34:01",
+ "release_year": null,
+ "is_live": false,
+ "was_live": false,
+ "_has_drm": null,
+ "epoch": 1793181355,
+ "format": "399 - 1920x1080 (1080p)+251 - audio only (medium)",
+ "format_id": "399+251",
+ "ext": "webm",
+ "protocol": "https+https",
+ "language": "en",
+ "format_note": "1080p+medium",
+ "filesize_approx": 561582827,
+ "tbr": 486.17,
+ "width": 1920,
+ "height": 1080,
+ "resolution": "1920x1080",
+ "fps": 30,
+ "dynamic_range": "SDR",
+ "vcodec": "av01.0.08M.08",
+ "vbr": 370.579,
+ "stretched_ratio": null,
+ "aspect_ratio": 1.78,
+ "acodec": "opus",
+ "abr": 115.591,
+ "asr": 48000,
+ "audio_channels": 2,
+ "_type": "video",
+ "_version": {
+  "version": "2026.10.26",
+  "current_git_head": null,
+  "release_git_head": null,
+  "repository": "yt-dlp/yt-dlp"
+ }
+}

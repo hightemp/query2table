@@ -11,14 +11,16 @@ use crate::providers::http::images::picture;
 use crate::providers::llm::capabilities::VisionPlan;
 use crate::providers::llm::types::{ImageInput, Message};
 use crate::providers::search::manager::SearchManager;
+use crate::providers::search::types::SearchError;
 use crate::storage::repository::Repository;
 
 use crate::roles::chart;
 use crate::roles::pdf_parser::PdfParser;
-use crate::roles::research_agent::{markdown_images, AgentAction, PriorTurn, ResearchAgent, Tools};
+use crate::roles::research_agent::{markdown_images, video_cards, AgentAction, PriorTurn, ResearchAgent, Tools};
 use crate::storage::repository::ResearchImageRow;
 
 use super::files::RunFiles;
+use super::videos::{format_video_results, RunVideos, SeenVideo, TextBudget};
 
 use super::control::{RunControl, RunSupervisor};
 use super::budget_tracker::BudgetTracker;
@@ -44,7 +46,13 @@ const PREVIEW_SIDE: u32 = 384;
 const VIEW_SIDE: u32 = 1024;
 /// Longest side of the pictures kept with an answer.
 const KEEP_SIDE: u32 = 1600;
+/// Longest side of a kept video thumbnail.
+const THUMBNAIL_SIDE: u32 = 960;
+/// Most video cards of one answer whose thumbnails are kept.
+const MAX_VIDEO_CARDS: usize = 20;
 const IMAGE_BYTES: usize = 15 * 1024 * 1024;
+/// Video results shown to the agent from one video search.
+const VIDEO_RESULTS: u32 = 10;
 
 /// An image address the agent came across: in image results, on a page it read, or one it looked at.
 #[derive(Debug, Clone)]
@@ -78,12 +86,20 @@ pub struct ResearchPipeline {
     start_time: Instant,
     /// Search used instead of one built from the settings (tests).
     search_override: Option<SearchManager>,
+    /// yt-dlp used instead of the installed one (tests).
+    video_tools: Option<crate::components::Tools>,
 }
 
 impl ResearchPipeline {
     /// Uses this search manager instead of building one from the settings.
     pub fn with_search(mut self, search: SearchManager) -> Self {
         self.search_override = Some(search);
+        self
+    }
+
+    /// Runs this yt-dlp instead of the installed one.
+    pub fn with_video_tools(mut self, tools: crate::components::Tools) -> Self {
+        self.video_tools = Some(tools);
         self
     }
 
@@ -139,6 +155,7 @@ impl ResearchPipeline {
             budget,
             start_time: Instant::now(),
             search_override: None,
+            video_tools: None,
         };
 
         (pipeline, cmd_tx)
@@ -248,8 +265,18 @@ impl ResearchPipeline {
         let images = search.is_some() && self.config.research_images;
         let view = images
             && VisionPlan::for_config(&self.config.llm, &self.config.llm_vision, &self.config.vision_model).await.main_sees;
-        let tools = Tools { web: search.is_some(), files: files.is_some(), images, view };
+        let videos_on = search.is_some() && self.config.research_videos;
+        let tools = Tools { web: search.is_some(), files: files.is_some(), images, view, videos: videos_on };
         let mut seen: HashMap<String, SeenImage> = HashMap::new();
+        let mut seen_videos: HashMap<String, SeenVideo> = HashMap::new();
+        let videos = videos_on.then(|| {
+            let videos = RunVideos::new(&self.run_id, self.config.video_cookies.clone()).with_observer(self.budget.observer());
+            match self.video_tools.take() {
+                Some(tools) => videos.with_tools(tools),
+                None => videos.with_custom_ytdlp(self.config.ytdlp_path.clone()),
+            }
+        });
+        let text_budget = TextBudget { page_chars: self.config.context.page_chars, full_chars: self.config.context.page_chars * 4 };
         let mut messages = vec![Message::system(ResearchAgent::system_prompt_with(max_steps as usize, tools))];
         if let Some(context) = ResearchAgent::conversation_context(&self.history, self.config.context.history_chars) {
             messages.push(Message::user(context));
@@ -470,6 +497,92 @@ impl ResearchPipeline {
                     messages.push(Message::assistant(serde_json::json!({ "action": "view_image", "url": url }).to_string()));
                     messages.push(reply);
                 }
+                AgentAction::VideoSearch { query, site } => {
+                    let action = serde_json::json!({ "action": "video_search", "query": query, "site": site }).to_string();
+                    let reply = match (&search, &videos) {
+                        (Some(search), Some(videos)) => {
+                            search_count += 1;
+                            let label = match &site {
+                                Some(site) => format!("{query} ({site})"),
+                                None => query.clone(),
+                            };
+                            self.log("INFO", "research", &format!("Video search: {label}")).await;
+                            if site.is_some() && videos.needs_install() {
+                                self.record_tools_step(step_index).await;
+                            }
+                            let found = match &site {
+                                Some(site) => videos.search_site(site, &query, VIDEO_RESULTS).await.map(|r| (r, None)),
+                                None => match search.search_videos_with_count(&query, VIDEO_RESULTS).await {
+                                    Ok(results) => Ok((results, None)),
+                                    Err(SearchError::BudgetExceeded) => Err(SearchError::BudgetExceeded.to_string()),
+                                    Err(e) => {
+                                        self.log("WARN", "research", &format!("Web video search failed, searching YouTube instead: {e}")).await;
+                                        videos.search_site("youtube", &query, VIDEO_RESULTS).await.map(|r| (r, Some(e.to_string())))
+                                    }
+                                },
+                            };
+                            match found {
+                                Ok((results, failure)) => {
+                                    for r in &results {
+                                        seen_videos.entry(r.url.clone()).or_insert_with(|| SeenVideo::from(r));
+                                        if let Some(thumbnail) = &r.thumbnail {
+                                            seen.entry(thumbnail.clone()).or_insert(SeenImage { source_url: Some(r.url.clone()), title: r.title.clone(), thumbnail: None });
+                                        }
+                                    }
+                                    self.record_step(step_index, "video_search", &label, None).await;
+                                    let list = format_video_results(&results);
+                                    match failure {
+                                        Some(e) => format!("The web video search failed ({e}); these are YouTube results:\n{list}"),
+                                        None => format!("Video results:\n{list}"),
+                                    }
+                                }
+                                Err(e) => {
+                                    self.record_error(step_index, &format!("Video search failed for \"{label}\": {e}")).await;
+                                    format!("Video search failed: {e}")
+                                }
+                            }
+                        }
+                        _ => "Videos are turned off for this run.".to_string(),
+                    };
+                    messages.push(Message::assistant(action));
+                    messages.push(Message::user(reply));
+                }
+                AgentAction::Video { url, from, full, lang } => {
+                    let action = serde_json::json!({ "action": "video", "url": url, "from": from, "full": full, "lang": lang }).to_string();
+                    let reply = match &videos {
+                        Some(videos) => {
+                            self.log("INFO", "research", &format!("Video: {url}")).await;
+                            if videos.needs_install() {
+                                self.record_tools_step(step_index).await;
+                            }
+                            match videos.read(&url, lang.as_deref(), from, full, text_budget).await {
+                                Ok(read) => {
+                                    fetch_count += 1;
+                                    let seen_video = SeenVideo::from(&read.info);
+                                    if let Some(thumbnail) = &seen_video.thumbnail {
+                                        seen.entry(thumbnail.clone()).or_insert(SeenImage { source_url: Some(read.info.url.clone()), title: read.info.title.clone(), thumbnail: None });
+                                    }
+                                    // The address the agent used and the site's own both lead to this video.
+                                    seen_videos.insert(url.clone(), seen_video.clone());
+                                    seen_videos.insert(read.info.url.clone(), seen_video);
+                                    let mut summary = read.info.title.clone();
+                                    if let Some(from) = from.filter(|f| *f > 0 && !full) {
+                                        summary.push_str(&format!(" · from {}", crate::providers::video::subtitles::clock(from)));
+                                    }
+                                    self.record_step(step_index, "video", &summary, Some(&url)).await;
+                                    read.text
+                                }
+                                Err(e) => {
+                                    self.record_error(step_index, &format!("Could not read the video {url}: {e}")).await;
+                                    format!("Could not read the video: {e}")
+                                }
+                            }
+                        }
+                        None => "Videos are turned off for this run.".to_string(),
+                    };
+                    messages.push(Message::assistant(action));
+                    messages.push(Message::user(reply));
+                }
                 AgentAction::Think { thought } => {
                     self.log("INFO", "research", &format!("Think: {thought}")).await;
                     self.record_step(step_index, "think", &thought, None).await;
@@ -481,7 +594,7 @@ impl ResearchPipeline {
                 AgentAction::Answer { markdown, follow_ups } => {
                     self.log("INFO", "research", "Agent produced final answer").await;
                     let (markdown, follow_ups) = self.checked_answer(&llm, &mut messages, markdown, follow_ups).await;
-                    self.keep_answer_images(&markdown, &seen).await;
+                    self.keep_answer_images(&markdown, &seen, &seen_videos).await;
                     self.store_answer(&markdown, &follow_ups).await;
                     answered = true;
                     break;
@@ -508,7 +621,7 @@ impl ResearchPipeline {
             match ResearchAgent::decide_next_step(&llm, messages.clone()).await {
                 Ok((AgentAction::Answer { markdown, follow_ups }, _p, _c)) => {
                     let (markdown, follow_ups) = self.checked_answer(&llm, &mut messages, markdown, follow_ups).await;
-                    self.keep_answer_images(&markdown, &seen).await;
+                    self.keep_answer_images(&markdown, &seen, &seen_videos).await;
                     self.store_answer(&markdown, &follow_ups).await;
                 }
                 _ => {
@@ -585,9 +698,10 @@ impl ResearchPipeline {
         }
     }
 
-    /// Downloads the web images the answer shows and keeps them with the run, so the answer
-    /// does not load them from the web. Only images the agent came across are kept.
-    async fn keep_answer_images(&self, markdown: &str, seen: &HashMap<String, SeenImage>) {
+    /// Downloads the web images the answer shows, and the thumbnails of its video cards, and
+    /// keeps them with the run, so the answer does not load them from the web. Only images and
+    /// videos the agent came across are kept.
+    async fn keep_answer_images(&self, markdown: &str, seen: &HashMap<String, SeenImage>, seen_videos: &HashMap<String, SeenVideo>) {
         let kept: Vec<String> = match self.repo.get_research_images(&self.run_id).await {
             Ok(rows) => rows.into_iter().map(|r| r.url).collect(),
             Err(e) => {
@@ -595,13 +709,47 @@ impl ResearchPipeline {
                 Vec::new()
             }
         };
+        // (address in the answer, addresses to download from, what it shows, the video of a card)
+        let mut cards: Vec<(String, Vec<String>, SeenImage, Option<SeenVideo>)> = Vec::new();
+        let cards_found = video_cards(markdown);
+        for (title, thumbnail, video) in &cards_found {
+            if kept.contains(thumbnail) || !thumbnail.starts_with("http") {
+                continue;
+            }
+            let known_thumbnail = seen.get(thumbnail);
+            let known_video = seen_videos.get(video).cloned().or_else(|| {
+                let image = known_thumbnail?;
+                Some(SeenVideo { url: video.clone(), title: image.title.clone(), thumbnail: Some(thumbnail.clone()), channel: None, duration: None, site: None })
+            });
+            let Some(found) = known_video else {
+                self.log("WARN", "research", &format!("Not keeping a video card the agent did not find or read: {video}")).await;
+                continue;
+            };
+            // Only addresses the agent came across are downloaded.
+            let mut sources: Vec<String> = known_thumbnail.map(|_| thumbnail.clone()).into_iter().collect();
+            sources.extend(found.thumbnail.clone().filter(|t| !sources.contains(t)));
+            if sources.is_empty() {
+                continue;
+            }
+            let image = SeenImage { source_url: Some(found.url.clone()), title: if found.title.is_empty() { title.clone() } else { found.title.clone() }, thumbnail: None };
+            cards.push((thumbnail.clone(), sources, image, Some(found)));
+        }
+        if cards.len() > MAX_VIDEO_CARDS {
+            self.log("WARN", "research", &format!("Keeping the thumbnails of the first {MAX_VIDEO_CARDS} of {} video cards", cards.len())).await;
+            cards.truncate(MAX_VIDEO_CARDS);
+        }
+
         let mut wanted = Vec::new();
         for (url, _) in markdown_images(markdown) {
-            if kept.contains(&url) || !url.starts_with("http") {
+            if kept.contains(&url) || !url.starts_with("http") || cards_found.iter().any(|(_, thumbnail, _)| *thumbnail == url) {
                 continue;
             }
             match seen.get(&url) {
-                Some(found) => wanted.push((url, found.clone())),
+                Some(found) => {
+                    let mut sources = vec![url.clone()];
+                    sources.extend(found.thumbnail.clone());
+                    wanted.push((url, sources, found.clone(), None));
+                }
                 None => self.log("WARN", "research", &format!("Not keeping an image the agent did not find or read: {url}")).await,
             }
         }
@@ -610,14 +758,18 @@ impl ResearchPipeline {
             self.log("WARN", "research", &format!("Keeping the first {most} of {} images of the answer", wanted.len())).await;
             wanted.truncate(most);
         }
-        let downloads = futures::future::join_all(wanted.iter().map(|(url, found)| {
-            let mut sources = vec![url.as_str()];
-            sources.extend(found.thumbnail.as_deref());
-            async move { picture(&sources, KEEP_SIDE, IMAGE_BYTES).await }
+        wanted.extend(cards);
+
+        let downloads = futures::future::join_all(wanted.iter().map(|(_, sources, _, video)| {
+            let side = if video.is_some() { THUMBNAIL_SIDE } else { KEEP_SIDE };
+            async move {
+                let sources: Vec<&str> = sources.iter().map(String::as_str).collect();
+                picture(&sources, side, IMAGE_BYTES).await
+            }
         }))
         .await;
         let mut count = 0;
-        for ((url, found), result) in wanted.into_iter().zip(downloads) {
+        for ((url, _, found, video), result) in wanted.into_iter().zip(downloads) {
             match result {
                 Ok(p) => {
                     self.budget.downloaded(p.downloaded as u64);
@@ -630,6 +782,10 @@ impl ResearchPipeline {
                         media_type: p.media_type.to_string(),
                         width: p.width as i64,
                         height: p.height as i64,
+                        video_url: video.as_ref().map(|v| v.url.clone()),
+                        channel: video.as_ref().and_then(|v| v.channel.clone()),
+                        duration: video.as_ref().and_then(|v| v.duration).map(|d| d as i64),
+                        site: video.as_ref().and_then(|v| v.site.clone()),
                     };
                     match self.repo.add_research_image(&row, &p.bytes).await {
                         Ok(()) => count += 1,
@@ -672,6 +828,12 @@ impl ResearchPipeline {
         if let Some(ref events) = self.events {
             events.emit_research_step(&step_id, self.turn_index, step_index, step_type, content, url);
         }
+    }
+
+    /// The video tools are downloaded for their first use: a step of its own, since it takes a while.
+    async fn record_tools_step(&self, step_index: u32) {
+        self.log("INFO", "research", "Downloading the video tools (yt-dlp and Deno) for their first use").await;
+        self.record_step(step_index, "tools", "yt-dlp, Deno", None).await;
     }
 
     /// Record a visible error step so the user can see what went wrong, and log it.

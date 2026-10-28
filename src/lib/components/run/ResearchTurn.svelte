@@ -278,7 +278,7 @@
 				{/if}
 			</div>
 		{:else if tab === 'sources'}
-			<ResearchSources {sources} />
+			<ResearchSources {sources} {loadImage} />
 		{:else}
 			<ResearchSteps {steps} {running} />
 		{/if}

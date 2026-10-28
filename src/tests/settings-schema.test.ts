@@ -33,6 +33,21 @@ describe('settings schema', () => {
 		expect(keys('openrouter')).not.toContain('openai_json_mode');
 	});
 
+	it('offers the video settings, the cookies file only when chosen, and no desktop tools on Android', () => {
+		const keys = (section: 'runs' | 'app', values: Record<string, string>, android = false) => fieldsIn(section, map(values), android).map((f) => f.key);
+		expect(keys('runs', {})).toEqual(expect.arrayContaining(['research_videos', 'video_cookies']));
+		expect(keys('runs', {})).not.toContain('video_cookies_file');
+		expect(keys('runs', { video_cookies: 'file' })).toContain('video_cookies_file');
+		expect(keys('runs', {}, true)).toContain('research_videos');
+		expect(keys('runs', { video_cookies: 'file' }, true)).not.toContain('video_cookies');
+		expect(keys('runs', { video_cookies: 'file' }, true)).not.toContain('video_cookies_file');
+		expect(keys('app', {})).toContain('ytdlp_path');
+		expect(keys('app', {}, true)).not.toContain('ytdlp_path');
+		expect(fieldByKey('video_cookies')!.options).toEqual(['off', 'firefox', 'chrome', 'edge', 'brave', 'opera', 'vivaldi', 'chromium', 'safari', 'file']);
+		expect(fieldByKey('research_videos')!.default).toBe('true');
+		expect(SECTIONS.find((s) => s.id === 'app')!.groups).toEqual(['Appearance', 'Notifications', 'Updates', 'Components', 'Files']);
+	});
+
 	it('checks numbers against their ranges and URLs for a scheme', () => {
 		const temperature = fieldByKey('llm_temperature')!;
 		expect(validateField(temperature, '0.4')).toBeNull();

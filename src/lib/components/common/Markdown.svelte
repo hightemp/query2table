@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { t } from '$lib/i18n';
-	import { Renderer } from 'marked';
+	import { Renderer, type Tokens } from 'marked';
 	import DOMPurify from 'dompurify';
 	import { openExternal } from '$lib/utils/links';
 	import { toast } from '$lib/stores/toasts';
 	import { showContextMenu } from '$lib/stores/contextMenu';
 	import { linkMenuItems } from '$lib/utils/linkMenu';
 	import { webUrl } from '$lib/utils/values';
-	import { isAttachmentUrl, plainInline, uniqueSlugger } from '$lib/utils/research';
+	import { formatDuration, isAttachmentUrl, plainInline, uniqueSlugger } from '$lib/utils/research';
 	import { showAttachment } from '$lib/stores/attachmentPreview';
 	import { markdown } from '$lib/utils/math';
 	import { displayHost } from '$lib/utils/hosts';
@@ -51,6 +51,16 @@
 			const caption = escapeHtml(text.trim());
 			if (!/^https?:\/\//i.test(href)) return caption;
 			return `<span class="answer-image" data-image="${escapeHtml(href)}" data-caption="${caption}"><span class="answer-image-caption">${caption}</span></span>`;
+		};
+		// A link around one picture is a video card: the kept thumbnail is put in below.
+		renderer.link = function (token) {
+			const inner = token.tokens.filter((part) => !(part.type === 'text' && !String(part.text).trim()));
+			const picture = inner.length === 1 && inner[0].type === 'image' ? (inner[0] as Tokens.Image) : null;
+			if (picture && /^https?:\/\//i.test(token.href) && /^https?:\/\//i.test(picture.href)) {
+				const title = escapeHtml(picture.text.trim());
+				return `<a class="video-card" href="${escapeHtml(token.href)}" data-thumbnail="${escapeHtml(picture.href)}" data-title="${title}"><span class="video-card-text"><span class="video-card-title">${title}</span></span></a>`;
+			}
+			return Renderer.prototype.link.call(this, token);
 		};
 		// Mermaid and chart blocks become placeholders showing their source; drawn below.
 		renderer.code = function (token) {
@@ -115,6 +125,80 @@
 			current = false;
 		};
 	});
+
+	// Video cards: the kept thumbnail with a play mark and the length, then the title, channel and site.
+	$effect(() => {
+		void html;
+		const known = images;
+		const load = loadImage;
+		let current = true;
+		for (const card of root.querySelectorAll<HTMLAnchorElement>('a.video-card[data-thumbnail]')) {
+			const thumbnail = card.dataset.thumbnail ?? '';
+			const kept = known?.find((item) => item.url === thumbnail && item.video_url);
+			const title = kept?.title || card.dataset.title || card.href;
+			card.setAttribute('aria-label', t('research.playVideo', { title }));
+			const frame = document.createElement('span');
+			frame.className = 'video-card-thumb';
+			frame.append(playMark());
+			const length = formatDuration(kept?.duration);
+			if (length) {
+				const badge = document.createElement('span');
+				badge.className = 'video-card-duration';
+				badge.textContent = length;
+				frame.append(badge);
+			}
+			const text = document.createElement('span');
+			text.className = 'video-card-text';
+			const name = document.createElement('span');
+			name.className = 'video-card-title';
+			name.textContent = title;
+			text.append(name);
+			let host = '';
+			try {
+				host = displayHost(new URL(card.href).hostname);
+			} catch {
+				host = '';
+			}
+			const meta = [kept?.channel, host].filter(Boolean).join(' · ');
+			if (meta) {
+				const line = document.createElement('span');
+				line.className = 'video-card-meta';
+				line.textContent = meta;
+				text.append(line);
+			}
+			card.replaceChildren(frame, text);
+			if (!kept || !load) continue;
+			load(thumbnail).then(
+				(src) => {
+					if (!current || !src) return;
+					const picture = document.createElement('img');
+					picture.src = src;
+					picture.alt = '';
+					picture.width = kept.width;
+					picture.height = kept.height;
+					frame.prepend(picture);
+				},
+				() => {}
+			);
+		}
+		return () => {
+			current = false;
+		};
+	});
+
+	/** A round play mark drawn over a video thumbnail. */
+	function playMark(): HTMLElement {
+		const mark = document.createElement('span');
+		mark.className = 'video-card-play';
+		mark.setAttribute('aria-hidden', 'true');
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('viewBox', '0 0 24 24');
+		const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path.setAttribute('d', 'M8 5.5v13l11-6.5z');
+		svg.append(path);
+		mark.append(svg);
+		return mark;
+	}
 
 	/** "Caption · site" with the site linking to the page; a picture without a copy links to itself. */
 	function captionLine(caption: string, link: string | null, page: string | null): HTMLElement {
@@ -463,6 +547,81 @@
 		color: var(--app-muted);
 		font-size: var(--app-text-sm);
 		line-height: 1.5;
+	}
+	.markdown :global(a.video-card) {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		width: min(100%, 420px);
+		margin: 16px 0;
+		color: var(--app-text);
+		text-decoration: none;
+	}
+	.markdown :global(.video-card-thumb) {
+		position: relative;
+		display: block;
+		aspect-ratio: 16 / 9;
+		overflow: hidden;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius);
+		background: var(--app-subtle);
+	}
+	.markdown :global(.video-card-thumb img) {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		border-radius: 0;
+	}
+	.markdown :global(.video-card-play) {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		display: grid;
+		place-items: center;
+		width: 48px;
+		height: 48px;
+		border-radius: 50%;
+		transform: translate(-50%, -50%);
+		background: color-mix(in srgb, var(--app-bg) 82%, transparent);
+		color: var(--app-text);
+		box-shadow: var(--app-shadow-popover);
+	}
+	.markdown :global(.video-card-play svg) {
+		width: 22px;
+		height: 22px;
+		margin-left: 3px;
+		fill: currentColor;
+	}
+	.markdown :global(.video-card-duration) {
+		position: absolute;
+		right: 6px;
+		bottom: 6px;
+		padding: 1px 6px;
+		border-radius: 4px;
+		background: color-mix(in srgb, var(--app-bg) 85%, transparent);
+		color: var(--app-text);
+		font-size: var(--app-text-xs);
+		font-variant-numeric: tabular-nums;
+	}
+	.markdown :global(.video-card-text) {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+	.markdown :global(.video-card-title) {
+		font-weight: 600;
+		color: var(--app-accent);
+		overflow-wrap: anywhere;
+	}
+	.markdown :global(a.video-card:hover .video-card-title) {
+		text-decoration: underline;
+	}
+	.markdown :global(.video-card-meta) {
+		color: var(--app-muted);
+		font-size: var(--app-text-sm);
 	}
 	.markdown :global(.answer-image.missing .answer-image-caption) {
 		margin-top: 0;

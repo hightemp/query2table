@@ -6,9 +6,9 @@ import { displayHost } from './hosts';
 import { markdownLink } from './linkMenu';
 import { attachmentPlace, placeLabel } from './attachments';
 
-export type StepKind = 'search' | 'image_search' | 'view_image' | 'fetch' | 'read' | 'think' | 'error';
+export type StepKind = 'search' | 'image_search' | 'view_image' | 'video_search' | 'video' | 'tools' | 'fetch' | 'read' | 'think' | 'error';
 
-const STEP_KINDS = ['search', 'image_search', 'view_image', 'fetch', 'read', 'think', 'error'];
+const STEP_KINDS = ['search', 'image_search', 'view_image', 'video_search', 'video', 'tools', 'fetch', 'read', 'think', 'error'];
 
 /** A place in an attached file: `attachment://<id>?page=3`. */
 export function isAttachmentUrl(url: string | null | undefined): boolean {
@@ -100,11 +100,45 @@ export interface ResearchSource {
 	file?: boolean;
 	/** Pictures of the answer that come from this page. */
 	images?: string[];
+	/** A video: its kept thumbnail (the address the answer uses), channel and length. */
+	video?: { thumbnail: string | null; channel: string | null; duration: number | null };
 }
 
 /** Comparable form of a URL: no fragment, lower-case host, no trailing slash. */
 function sourceKey(url: URL): string {
 	return `${url.protocol}//${url.host.toLowerCase()}${url.pathname.replace(/\/+$/, '')}${url.search}`;
+}
+
+/** A video's key: its source key without the time to start at. */
+function videoKey(url: URL): string {
+	const copy = new URL(url.href);
+	for (const name of ['t', 'start', 'time_continue']) copy.searchParams.delete(name);
+	copy.hash = '';
+	return sourceKey(copy);
+}
+
+/** `3:33`, or `1:02:03` from an hour; empty when unknown. */
+export function formatDuration(seconds: number | null | undefined): string {
+	if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '';
+	const total = Math.max(0, Math.round(seconds));
+	const [h, m, s] = [Math.floor(total / 3600), Math.floor(total / 60) % 60, total % 60];
+	const pad = (n: number) => String(n).padStart(2, '0');
+	return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+export interface VideoCard {
+	title: string;
+	thumbnail: string;
+	video: string;
+}
+
+/** Video cards in Markdown, in order: `[![title](thumbnail)](video)`, each thumbnail once. */
+export function answerVideoCards(markdown: string): VideoCard[] {
+	const found: VideoCard[] = [];
+	const card = /\[\s*!\[([^\]]*)\]\(\s*<?([^\s)>]+)>?(?:\s+"[^"]*")?\s*\)\s*\]\(\s*<?([^\s)>]+)>?(?:\s+"[^"]*")?\s*\)/g;
+	for (const match of markdown.matchAll(card))
+		if (!found.some((c) => c.thumbnail === match[2])) found.push({ title: match[1].trim(), thumbnail: match[2], video: match[3] });
+	return found;
 }
 
 /** The address as written, without its fragment. */
@@ -118,6 +152,8 @@ export function answerLinks(markdown: string): { url: URL; raw: string; title: s
 	// Pictures (`![alt](url)`) are not links; their pages come from the kept images.
 	const linked = /(?<!!)\[([^\]]*)\]\(((?:https?|attachment):\/\/[^)\s]+)\)/g;
 	for (const match of markdown.matchAll(linked)) {
+		// The outer brackets of a card: `[![title](thumbnail)](video)`.
+		if (match[1].trimStart().startsWith('![')) continue;
 		const url = parseUrl(match[2]);
 		if (url) found.push({ url, raw: match[2], title: match[1].trim(), at: match.index ?? 0 });
 	}
@@ -145,7 +181,46 @@ export function answerImages(markdown: string): string[] {
 
 export function collectSources(steps: ResearchStep[], answer: string | null, images: ResearchImage[] = []): ResearchSource[] {
 	const sources = new Map<string, ResearchSource>();
+	// Videos come after the pages: shown as cards, cited at a moment, or watched.
+	const videos = new Map<string, ResearchSource>();
+	for (const card of answer ? answerVideoCards(answer) : []) {
+		const url = parseUrl(card.video);
+		if (!url || videos.has(videoKey(url))) continue;
+		const kept = images.find((image) => image.url === card.thumbnail && image.video_url);
+		videos.set(videoKey(url), {
+			url: withoutHash(card.video),
+			title: card.title,
+			domain: displayHost(url.hostname),
+			read: false,
+			cited: true,
+			video: { thumbnail: kept ? kept.url : null, channel: kept?.channel ?? null, duration: kept?.duration ?? null },
+		});
+	}
+	for (const step of steps) {
+		if (step.step_type !== 'video') continue;
+		const url = parseUrl(step.url);
+		if (!url) continue;
+		const title = step.content.replace(/ · from [\d:]+$/, '').trim();
+		const existing = videos.get(videoKey(url));
+		if (existing) {
+			existing.read = true;
+			if (title) existing.title = title;
+		} else
+			videos.set(videoKey(url), {
+				url: withoutHash(step.url!),
+				title,
+				domain: displayHost(url.hostname),
+				read: true,
+				cited: false,
+				video: { thumbnail: null, channel: null, duration: null },
+			});
+	}
 	for (const { url, raw, title } of answer ? answerLinks(answer) : []) {
+		const video = videos.get(videoKey(url));
+		if (video) {
+			video.cited = true;
+			continue;
+		}
 		const key = sourceKey(url);
 		const existing = sources.get(key);
 		if (existing) {
@@ -166,7 +241,7 @@ export function collectSources(steps: ResearchStep[], answer: string | null, ima
 	for (const address of answer ? answerImages(answer) : []) {
 		const image = images.find((item) => item.url === address);
 		const page = parseUrl(image?.source_url);
-		if (!image?.source_url || !page) continue;
+		if (!image?.source_url || !page || image.video_url) continue;
 		const key = sourceKey(page);
 		const existing = sources.get(key);
 		if (existing) existing.images = [...(existing.images ?? []), address];
@@ -213,7 +288,7 @@ export function collectSources(steps: ResearchStep[], answer: string | null, ima
 				cited: false,
 			});
 	}
-	return [...sources.values()].map((source) => ({
+	return [...sources.values(), ...videos.values()].map((source) => ({
 		...source,
 		title: source.title || source.domain,
 	}));
@@ -273,6 +348,12 @@ function inlineText(tokens: Token[] | undefined): string {
 			switch (token.type) {
 				case 'link': {
 					const link = token as Tokens.Link;
+					// A video card: its title and the video.
+					const only = link.tokens?.filter((t) => !(t.type === 'text' && !String(t.text).trim()));
+					if (only?.length === 1 && only[0].type === 'image') {
+						const title = (only[0] as Tokens.Image).text.trim();
+						return title ? `${title} (${link.href})` : link.href;
+					}
 					const label = inlineText(link.tokens);
 					return label && label !== link.href ? `${label} (${link.href})` : link.href;
 				}

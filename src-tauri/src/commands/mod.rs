@@ -5,3 +5,4 @@ pub mod export;
 pub mod images;
 pub mod connection;
 pub mod usage;
+pub mod components;

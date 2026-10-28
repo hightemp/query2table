@@ -1,0 +1,519 @@
+{
+ "id": "66",
+ "title": "Do schools kill creativity?",
+ "uploader": "Sir Ken Robinson",
+ "thumbnail": "https://pe.tedcdn.com/images/ted/0fa21bf9f73bd5815bf7fcc9f95682ff4e80c6db_2400x1800.jpg",
+ "description": "Sir Ken Robinson makes an entertaining and profoundly moving case for creating an education system that nurtures (rather than undermines) creativity.",
+ "subtitles": {
+  "pt-br": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/pt-br.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "mfe": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/mfe.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "el": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/el.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "eo": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/eo.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "en": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/en.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "vi": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/vi.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "ca": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/ca.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "it": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/it.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "sv": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/sv.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "cs": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/cs.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "ar": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/ar.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "inh": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/inh.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "eu": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/eu.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "et": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/et.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "az": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/az.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "id": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/id.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "es": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/es.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "ru": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/ru.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "gl": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/gl.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "nl": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/nl.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "pt": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/pt.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "zh-cn": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/zh-cn.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "lo": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/lo.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "nb": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/nb.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "af": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/af.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "tr": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/tr.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "ne": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/ne.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "lv": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/lv.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "hr": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/hr.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "lt": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/lt.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "th": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/th.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "ro": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/ro.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "fil": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/fil.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "be": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/be.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "fr": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/fr.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "bg": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/bg.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "uk": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/uk.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "sl": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/sl.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "fr-ca": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/fr-ca.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "bn": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/bn.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "de": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/de.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "uz": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/uz.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "da": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/da.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "fa": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/fa.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "fi": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/fi.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "hy": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/hy.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "hu": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/hu.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "ja": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/ja.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "zh-tw": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/zh-tw.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "he": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/he.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "ka": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/ka.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "sr": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/sr.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "sq": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/sq.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "mn": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/mn.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "ko": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/ko.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "mk": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/mk.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "ur": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/ur.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "sk": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/sk.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "pl": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/pl.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "mr": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/mr.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "kmr": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/kmr.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "kn": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/kn.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "si": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/si.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ],
+  "ckb": [
+   {
+    "url": "https://hls.ted.com/project_masters/1253/subtitles/ckb.m3u8?intro_master_id=9294",
+    "ext": "vtt",
+    "protocol": "m3u8_native"
+   }
+  ]
+ },
+ "duration": 1151,
+ "view_count": 80692929,
+ "upload_date": "20060627",
+ "release_date": "20060225",
+ "tags": [
+  "creativity",
+  "culture",
+  "dance",
+  "education",
+  "parenting",
+  "teaching",
+  "kids"
+ ],
+ "webpage_url": "https://www.ted.com/talks/sir_ken_robinson_do_schools_kill_creativity",
+ "original_url": "https://www.ted.com/talks/sir_ken_robinson_do_schools_kill_creativity",
+ "webpage_url_basename": "sir_ken_robinson_do_schools_kill_creativity",
+ "webpage_url_domain": "ted.com",
+ "extractor": "TedTalk",
+ "extractor_key": "TedTalk",
+ "playlist": null,
+ "playlist_index": null,
+ "thumbnails": [
+  {
+   "url": "https://pe.tedcdn.com/images/ted/0fa21bf9f73bd5815bf7fcc9f95682ff4e80c6db_2400x1800.jpg",
+   "id": "0"
+  }
+ ],
+ "display_id": "66",
+ "fulltitle": "Do schools kill creativity?",
+ "duration_string": "19:11",
+ "release_year": 2006,
+ "_has_drm": null,
+ "epoch": 1793181333,
+ "format": "hls-1017 - 640x480+hls-audio0-medium - audio only (medium)",
+ "format_id": "hls-1017+hls-audio0-medium",
+ "ext": "mp4",
+ "protocol": "m3u8_native+m3u8_native",
+ "language": "en",
+ "format_note": "medium",
+ "filesize_approx": null,
+ "tbr": 1017.657,
+ "width": 640,
+ "height": 480,
+ "resolution": "640x480",
+ "fps": 29.97,
+ "dynamic_range": "SDR",
+ "vcodec": "avc1.64001f",
+ "vbr": 1017.657,
+ "stretched_ratio": null,
+ "aspect_ratio": 1.33,
+ "acodec": null,
+ "abr": null,
+ "asr": null,
+ "audio_channels": null,
+ "_type": "video",
+ "_version": {
+  "version": "2026.10.26",
+  "current_git_head": null,
+  "release_git_head": null,
+  "repository": "yt-dlp/yt-dlp"
+ },
+ "automatic_captions": {}
+}

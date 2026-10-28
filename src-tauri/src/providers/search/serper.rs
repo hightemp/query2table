@@ -54,6 +54,25 @@ struct SerperImageResult {
     link: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SerperVideoResponse {
+    videos: Option<Vec<SerperVideoResult>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SerperVideoResult {
+    title: Option<String>,
+    link: Option<String>,
+    snippet: Option<String>,
+    image_url: Option<String>,
+    duration: Option<String>,
+    source: Option<String>,
+    channel: Option<String>,
+    date: Option<String>,
+}
+
 impl SerperProvider {
     pub fn new(api_key: impl Into<String>) -> Self {
         let client = crate::providers::http::apply_proxy(Client::builder())
@@ -230,6 +249,64 @@ impl ImageSearchProvider for SerperProvider {
             .collect();
 
         Ok(results)
+    }
+}
+
+#[async_trait]
+impl VideoSearchProvider for SerperProvider {
+    fn received_bytes(&self) -> u64 {
+        self.received.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    async fn search_videos(&self, query: SearchQuery) -> Result<Vec<VideoSearchResult>, SearchError> {
+        let url = format!("{}/videos", self.base_url);
+        debug!(query = %query.query, num_results = query.num_results, "Serper video search");
+        let body = SerperRequest { q: query.query, num: query.num_results, gl: query.country, hl: query.language };
+        let response = self
+            .client
+            .post(&url)
+            .header("X-API-KEY", &self.api_key)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| if e.is_connect() { SearchError::ConnectionError(e.to_string()) } else { SearchError::RequestFailed(e.to_string()) })?;
+
+        let status = response.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            return Err(SearchError::AuthError("Invalid Serper API key".to_string()));
+        }
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let retry_after = response.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
+            return Err(SearchError::RateLimited { retry_after_secs: retry_after });
+        }
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(SearchError::RequestFailed(format!("Serper Videos API error {}: {}", status, body)));
+        }
+
+        let serper_response: SerperVideoResponse = super::types::counted_json(response, &self.received)
+            .await
+            .map_err(|e| SearchError::ParseError(format!("Failed to parse Serper video response: {}", e)))?;
+        Ok(serper_response
+            .videos
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|r| {
+                let url = r.link.filter(|u| !u.trim().is_empty())?;
+                Some(VideoSearchResult {
+                    title: r.title.unwrap_or_else(|| url.clone()),
+                    thumbnail: r.image_url,
+                    channel: r.channel,
+                    site: r.source.or_else(|| host_of(&url)),
+                    duration: r.duration.as_deref().and_then(duration_secs),
+                    published: r.date.as_deref().and_then(published_date),
+                    views: None,
+                    description: r.snippet.filter(|d| !d.trim().is_empty()),
+                    url,
+                })
+            })
+            .collect())
     }
 }
 

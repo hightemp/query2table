@@ -105,6 +105,65 @@ pub trait ImageSearchProvider: Send + Sync {
     }
 }
 
+/// A video found by a web video search.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VideoSearchResult {
+    pub url: String,
+    pub title: String,
+    pub thumbnail: Option<String>,
+    pub channel: Option<String>,
+    /// The site: `YouTube`, `vimeo.com`…
+    pub site: Option<String>,
+    /// Seconds.
+    pub duration: Option<u64>,
+    /// `YYYY-MM-DD` when known, else the provider's words ("2 years ago").
+    pub published: Option<String>,
+    pub views: Option<u64>,
+    pub description: Option<String>,
+}
+
+/// Trait for video search providers.
+#[async_trait]
+pub trait VideoSearchProvider: Send + Sync {
+    async fn search_videos(&self, query: SearchQuery) -> Result<Vec<VideoSearchResult>, SearchError>;
+
+    /// Bytes of responses received so far, for the usage statistics.
+    fn received_bytes(&self) -> u64 {
+        0
+    }
+}
+
+/// `19:15` or `1:02:03` in seconds.
+pub(crate) fn duration_secs(text: &str) -> Option<u64> {
+    let text = text.trim();
+    if text.is_empty() || text.split(':').count() > 3 {
+        return None;
+    }
+    text.split(':').try_fold(0u64, |total, part| Some(total * 60 + part.trim().parse::<u64>().ok()?))
+}
+
+/// `2023-03-14T16:00:00` or `Mar 4, 2021` as `YYYY-MM-DD`; other words are kept as they are.
+pub(crate) fn published_date(text: &str) -> Option<String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    if let Some(day) = text.get(..10).filter(|day| chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").is_ok()) {
+        return Some(day.to_string());
+    }
+    for format in ["%b %d, %Y", "%B %d, %Y", "%d %b %Y"] {
+        if let Ok(date) = chrono::NaiveDate::parse_from_str(text, format) {
+            return Some(date.format("%Y-%m-%d").to_string());
+        }
+    }
+    Some(text.to_string())
+}
+
+/// The host of an address, without `www.`.
+pub(crate) fn host_of(url: &str) -> Option<String> {
+    url::Url::parse(url).ok()?.host_str().map(|h| h.trim_start_matches("www.").to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

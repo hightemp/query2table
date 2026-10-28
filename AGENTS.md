@@ -30,6 +30,7 @@ query2table/
 │       ├── lib.rs              # Module declarations
 │       ├── attachments/        # Attached files: parsing (parse/), fragments, storage, FTS search
 │       ├── commands/           # Tauri IPC command handlers (run, settings, history, export, attachments)
+│       ├── components/         # Downloaded tools: yt-dlp and Deno (bundled Python/QuickJS on Android)
 │       ├── orchestrator/       # Pipeline state machines (table, images, links, research), stop controller, budget tracker
 │       ├── roles/              # Fixed pipeline roles (interpreter, planner, executor, extractor, link_ranker, etc.)
 │       ├── providers/          # External API clients (llm/, search/, http/)
@@ -109,6 +110,24 @@ On the frontend, `diagramPlaceholder` (`src/lib/utils/diagrams.ts`) turns the bl
 - `chartRender.ts`: ECharts core with the SVG renderer, using `chartOption`/`chartColors` from `chart.ts`. Series take a fixed categorical palette validated for color-vision deficiencies; text and grid take theme tokens.
 Pictures are redrawn when the theme changes. A block that cannot be drawn keeps its source with a note. The figure menu offers full screen (`DiagramViewer.svelte`), Save as SVG/PNG (`diagramFiles.ts` → `save_file_data`) and Copy source. Copies and Markdown exports keep the blocks as written.
 
+## Videos in research
+The research agent has `video_search` (`site` optional) and `video` (`url`, `from`, `full`, `lang`) when `Tools.videos` is on: web search plus the `research_videos` setting.
+
+Finding and reading videos:
+- Without `site`, `video_search` uses the web video search (`SearchManager::search_videos_with_count`: Brave `/videos/search`, Serper `/videos`) and falls back to YouTube through yt-dlp. With `site`, it uses yt-dlp's own search (`YtDlp::search`, `SEARCHABLE_SITES`).
+- `video` reads through `orchestrator/videos.rs` (`RunVideos`):
+  - details come in one call (`YtDlp::info`, `--dump-single-json`), kept in a work folder of the run;
+  - one subtitle track is fetched from them (`YtDlp::subtitles`, `--load-info-json`), because a single failed language makes a combined call lose everything;
+  - `subtitles.rs` chooses the track (people's, then speech recognition, then machine translation), reads json3/vtt/srt and builds the `Transcript` (paragraphs with `[m:ss]`, chapters, pages);
+  - videos read are cached per run.
+- yt-dlp runs with the app's proxy (`--proxy`, empty for none) and optional cookies (`video_cookies`, desktop). Its output and subtitle files count as downloaded bytes.
+
+Cards and sources:
+- The answer shows a video as a card `[![title](thumbnail)](video)`. `keep_answer_images` keeps card thumbnails with `video_url`, `channel`, `duration` and `site` in `research_images`, only for videos or thumbnails the agent came across.
+- `Markdown.svelte` draws the card; `collectSources` puts videos in their own group.
+
+Tests use a fake yt-dlp with recorded answers in `src-tauri/tests/fixtures/video/` (scrub signed addresses and IPs when re-recording). Ignored live tests take a proxy from `Q2T_VIDEO_PROXY`.
+
 ## Usage statistics
 Spending is kept in the usage journal (`storage/usage.rs`):
 - `usage_events` holds one row per call or group of calls: time, run, mode, kind `llm|search|download`, provider, model answered and asked for, tokens, reported and estimated cost, calls without a price, bytes. It has no cascade, so deleting runs keeps the spending.
@@ -125,6 +144,15 @@ The `/usage` page (`src/routes/usage/+page.svelte`, `utils/usage.ts`):
 - The chart reuses `chartRender.ts`.
 - Other commands: `get_storage_usage`, `reprice_usage` (prices calls without a price with today's manual rates), `clear_usage`, `get_monthly_budget` and `get_usage_first_at`.
 - The monthly budget (`monthly_budget_usd`) is checked after each run (`budget_alert`: 80% and 100%, once a month), with a notification, the `usage:budget` event and a notice on the query page.
+
+## External tools
+`src-tauri/src/components/` downloads yt-dlp and Deno (its JavaScript engine for YouTube) for the user's system into `<data>/tools`.
+- `ComponentManager`: `ensure` installs what is missing; `remove`, `check_updates`, and `auto_update_ytdlp` (at most weekly); `tools()` says how to run yt-dlp (`Tools`: program, prefix, env, `JsRuntime`).
+- Every download goes through the app's proxy and is checked against the release's SHA-256 sums, then tried with `--version` before it replaces the working copy.
+- On Android, Python and QuickJS come with the APK: youtubedl-android's `library` aar, SHA-256 pinned, unpacked by the Gradle task `unpackBundledTools` for the release architectures, with `useLegacyPackaging`. `MainActivity` exports `Q2T_NATIVE_LIB_DIR`, `Q2T_PACKAGES_DIR` and `TMPDIR`; `bundled.rs` unpacks Python's libraries once per app version. Only the yt-dlp zipapp is downloaded.
+- Settings › Application › Components (`commands/components.rs`, `AppComponents.svelte`) shows and manages them; `ytdlp_path` runs your own yt-dlp (desktop).
+- Tests install from a fake GitHub (`tests/components.rs`). The real releases are checked by the ignored tests `checksums_for_every_system` and `live_install`.
+- Run external programs with `components::process::command` (no console window on Windows, killed when dropped).
 
 ## UI controls
 Do not use the browser's own controls. Use `Select` (lists; search appears from 8 options), `Checkbox`, `Radio`, `NumberInput` and `Slider` from `src/lib/components/common/`, and `use:tooltip` from `src/lib/actions/tooltip.ts` instead of `title` (`{ text, whenTruncated: true }` for clipped text). `<details>`, scrollbars and number spinners are styled globally in `src/app.css`. Right-click on text fields and selected text opens the app's menu (`src/lib/utils/textMenu.ts`). In Playwright tests pick list options with `choose()` from `tests/ui/fixtures.ts`.

@@ -15,6 +15,10 @@ pub enum AgentAction {
     ImageSearch { query: String },
     /// Look at one image (models that see images).
     ViewImage { url: String },
+    /// Search for videos: on every site through web search, or on one site with yt-dlp.
+    VideoSearch { query: String, site: Option<String> },
+    /// Read a video's details and subtitles: a part from `from` seconds, or the whole text.
+    Video { url: String, from: Option<u64>, full: bool, lang: Option<String> },
     /// Read an attached file: a page, sheet rows, a section, the fragments matching a query, or
     /// its beginning.
     ReadFile { file: String, place: crate::attachments::Locator, query: Option<String> },
@@ -53,11 +57,13 @@ pub struct Tools {
     pub images: bool,
     /// Looking at images: the model sees them.
     pub view: bool,
+    /// Video search and reading videos.
+    pub videos: bool,
 }
 
 impl Default for Tools {
     fn default() -> Self {
-        Self { web: true, files: false, images: false, view: false }
+        Self { web: true, files: false, images: false, view: false, videos: false }
     }
 }
 
@@ -80,6 +86,19 @@ impl ResearchAgent {
         }
         if tools.images && tools.view {
             list.push(r#"view_image — look at one image.         JSON: {"action": "view_image", "url": "<image address>"}"#.to_string());
+        }
+        if tools.videos {
+            list.push(
+                r#"video_search — search for videos.      JSON: {"action": "video_search", "query": "<search query>"}
+             Finds videos on every site; add "site" (youtube, bilibili, niconico, soundcloud) to search that site itself."#
+                    .to_string(),
+            );
+            list.push(
+                r#"video     — read a video's details and subtitles. JSON: {"action": "video", "url": "<video address>"}
+             The text comes a part at a time with [m:ss] marks: add "from": "40:00" for a later part, "full": true
+             for the whole text at once, or "lang": "en" for subtitles in another language."#
+                    .to_string(),
+            );
         }
         if tools.files {
             list.push(
@@ -118,6 +137,11 @@ impl ResearchAgent {
             } else {
                 rules.push("You cannot see images: judge them by their captions, sites and the text around them on the page.".into());
             }
+        }
+        if tools.videos {
+            rules.push("Use videos when they help (talks, lectures, tutorials, reviews, interviews) or the user asks for them. Read a video with \"video\" before relying on it; subtitles made by speech recognition or machine translation may contain errors.".into());
+            rules.push("Cite a moment of a video as a link with its time from the [m:ss] marks, in the form the video result shows, e.g. [12:34](https://www.youtube.com/watch?v=ID&t=754s).".into());
+            rules.push("Show a video in the answer as a card on a line of its own: [![Title](thumbnail address)](video address), with the thumbnail address from video_search or video results. Never make addresses up.".into());
         }
         if !tools.web {
             rules.push("Answer from only the attached files. If they do not contain the answer, say so.".into());
@@ -292,6 +316,21 @@ pub fn markdown_images(markdown: &str) -> Vec<(String, String)> {
     found
 }
 
+/// Video cards in Markdown, in order: `[![title](thumbnail)](video)` as (title, thumbnail, video),
+/// each thumbnail once.
+pub fn video_cards(markdown: &str) -> Vec<(String, String, String)> {
+    static CARD: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r#"\[\s*!\[([^\]]*)\]\(\s*<?([^\s)>]+)>?(?:\s+"[^"]*")?\s*\)\s*\]\(\s*<?([^\s)>]+)>?(?:\s+"[^"]*")?\s*\)"#).unwrap()
+    });
+    let mut found: Vec<(String, String, String)> = Vec::new();
+    for caps in CARD.captures_iter(markdown) {
+        if !found.iter().any(|(_, thumbnail, _)| *thumbnail == caps[2]) {
+            found.push((caps[1].trim().to_string(), caps[2].to_string(), caps[3].to_string()));
+        }
+    }
+    found
+}
+
 /// Page images with addresses the agent can use: relative and lazy-loaded sources become
 /// absolute `http(s)` addresses; inline `data:` images and tracking pixels are dropped.
 fn absolute_images(html: &str, page_url: &str) -> String {
@@ -405,6 +444,14 @@ fn parse_json_action(json_str: &str) -> Result<AgentAction, String> {
         markdown: Option<String>,
         #[serde(default)]
         follow_ups: Option<Vec<String>>,
+        #[serde(default)]
+        site: Option<String>,
+        #[serde(default)]
+        from: Option<serde_json::Value>,
+        #[serde(default)]
+        full: Option<serde_json::Value>,
+        #[serde(default)]
+        lang: Option<String>,
     }
 
     let parsed: RawAction = serde_json::from_str(json_str)
@@ -438,6 +485,28 @@ fn parse_json_action(json_str: &str) -> Result<AgentAction, String> {
                 .filter(|u| !u.trim().is_empty())
                 .ok_or_else(|| "view_image action missing 'url'".to_string())?;
             Ok(AgentAction::ViewImage { url: url.trim().to_string() })
+        }
+        "video_search" => {
+            let query = parsed
+                .query
+                .filter(|q| !q.trim().is_empty())
+                .ok_or_else(|| "video_search action missing 'query'".to_string())?;
+            let site = parsed.site.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+            Ok(AgentAction::VideoSearch { query, site })
+        }
+        "video" | "watch_video" | "read_video" => {
+            let url = parsed
+                .url
+                .filter(|u| !u.trim().is_empty())
+                .ok_or_else(|| "video action missing 'url'".to_string())?;
+            let from = parsed.from.as_ref().and_then(|value| match value {
+                serde_json::Value::Number(n) => n.as_u64(),
+                serde_json::Value::String(text) => crate::providers::video::subtitles::parse_clock(text),
+                _ => None,
+            });
+            let full = parsed.full.as_ref().is_some_and(|value| value.as_bool().unwrap_or_else(|| value.as_str() == Some("true")));
+            let lang = parsed.lang.map(|l| l.trim().to_string()).filter(|l| !l.is_empty());
+            Ok(AgentAction::Video { url: url.trim().to_string(), from, full, lang })
         }
         "read_file" | "read" => {
             let file = parsed
@@ -621,7 +690,7 @@ mod tests {
 
     #[test]
     fn the_prompt_describes_diagrams_and_charts() {
-        for tools in [Tools { web: true, files: false, images: true, view: true }, Tools { web: false, files: true, images: false, view: false }] {
+        for tools in [Tools { web: true, files: false, images: true, view: true, videos: true }, Tools { web: false, files: true, images: false, view: false, videos: false }] {
             let prompt = ResearchAgent::system_prompt_with(16, tools);
             assert!(prompt.contains("```mermaid"), "{prompt}");
             assert!(prompt.contains("```chart"));
@@ -847,6 +916,18 @@ mod tests {
     }
 
     #[test]
+    fn video_cards_are_found_once_in_order() {
+        let md = "Watch [![A talk](https://i.ytimg.com/a.jpg)](https://youtu.be/a) and [ ![B](<https://i.ytimg.com/b.jpg> \"t\") ](https://youtu.be/b), again [![A](https://i.ytimg.com/a.jpg)](https://youtu.be/a). Not a card: ![C](https://x.com/c.jpg)";
+        assert_eq!(
+            video_cards(md),
+            vec![
+                ("A talk".to_string(), "https://i.ytimg.com/a.jpg".to_string(), "https://youtu.be/a".to_string()),
+                ("B".to_string(), "https://i.ytimg.com/b.jpg".to_string(), "https://youtu.be/b".to_string()),
+            ]
+        );
+    }
+
+    #[test]
     fn markdown_images_are_found_once_in_order() {
         let md = r#"Look ![A panda](https://x.com/p.jpg "Panda") and [a link](https://x.com/page) ![](<https://x.com/q.png>) ![again](https://x.com/p.jpg)"#;
         assert_eq!(
@@ -883,4 +964,51 @@ mod tests {
             _ => panic!("expected salvaged answer"),
         }
     }
+
+    #[test]
+    fn video_actions_are_read() {
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"video_search","query":"rust async"}"#).unwrap(),
+            AgentAction::VideoSearch { query: "rust async".into(), site: None }
+        );
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"video_search","query":"rust","site":" YouTube "}"#).unwrap(),
+            AgentAction::VideoSearch { query: "rust".into(), site: Some("YouTube".into()) }
+        );
+        assert!(ResearchAgent::parse_action(r#"{"action":"video_search","query":" "}"#).is_err());
+
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"video","url":"https://youtu.be/x"}"#).unwrap(),
+            AgentAction::Video { url: "https://youtu.be/x".into(), from: None, full: false, lang: None }
+        );
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"video","url":"https://youtu.be/x","from":"40:00","lang":"de"}"#).unwrap(),
+            AgentAction::Video { url: "https://youtu.be/x".into(), from: Some(2400), full: false, lang: Some("de".into()) }
+        );
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"video","url":"https://youtu.be/x","from":754,"full":true}"#).unwrap(),
+            AgentAction::Video { url: "https://youtu.be/x".into(), from: Some(754), full: true, lang: None }
+        );
+        assert_eq!(
+            ResearchAgent::parse_action(r#"{"action":"video","url":"https://youtu.be/x","full":"true","from":"soon"}"#).unwrap(),
+            AgentAction::Video { url: "https://youtu.be/x".into(), from: None, full: true, lang: None }
+        );
+        assert!(ResearchAgent::parse_action(r#"{"action":"video"}"#).is_err());
+    }
+
+    #[test]
+    fn video_tools_are_offered_when_the_run_has_them() {
+        let without = ResearchAgent::system_prompt_with(10, Tools::default());
+        assert!(!without.contains("video_search") && !without.contains(r#""action": "video""#));
+
+        let with = ResearchAgent::system_prompt_with(10, Tools { videos: true, ..Default::default() });
+        assert!(with.contains(r#"{"action": "video_search", "query": "<search query>"}"#));
+        assert!(with.contains(r#""site""#) && with.contains("youtube, bilibili, niconico, soundcloud"));
+        assert!(with.contains(r#"{"action": "video", "url": "<video address>"}"#));
+        assert!(with.contains(r#""from": "40:00""#) && with.contains(r#""full": true"#) && with.contains(r#""lang""#));
+        // Moments are cited with time links, and videos shown as cards.
+        assert!(with.contains("[![Title](thumbnail address)](video address)"));
+        assert!(with.contains("t=754"));
+    }
 }
+

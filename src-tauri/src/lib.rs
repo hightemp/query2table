@@ -7,6 +7,7 @@ pub mod storage;
 pub mod export;
 pub mod utils;
 pub mod updates;
+pub mod components;
 
 use storage::db::Database;
 use std::sync::Arc;
@@ -203,6 +204,10 @@ pub fn run() {
             commands::usage::clear_usage,
             commands::usage::get_monthly_budget,
             commands::usage::get_usage_first_at,
+            commands::components::get_components,
+            commands::components::install_component,
+            commands::components::remove_component,
+            commands::components::check_component_updates,
             commands::export::export_run,
             commands::export::export_runs,
             commands::settings::update_settings,

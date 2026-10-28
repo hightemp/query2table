@@ -987,8 +987,8 @@ impl Repository {
     /// Keeps a picture of a research answer; a picture already kept for the run is left as is.
     pub async fn add_research_image(&self, image: &ResearchImageRow, data: &[u8]) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT OR IGNORE INTO research_images (run_id, turn_index, url, source_url, title, media_type, width, height, data, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())"
+            "INSERT OR IGNORE INTO research_images (run_id, turn_index, url, source_url, title, media_type, width, height, video_url, channel, duration, site, data, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())"
         )
         .bind(&image.run_id)
         .bind(image.turn_index)
@@ -998,6 +998,10 @@ impl Repository {
         .bind(&image.media_type)
         .bind(image.width)
         .bind(image.height)
+        .bind(&image.video_url)
+        .bind(&image.channel)
+        .bind(image.duration)
+        .bind(&image.site)
         .bind(data)
         .execute(&self.pool)
         .await?;
@@ -1007,7 +1011,7 @@ impl Repository {
     /// The pictures kept for a run's answers, without their data.
     pub async fn get_research_images(&self, run_id: &str) -> Result<Vec<ResearchImageRow>, sqlx::Error> {
         sqlx::query_as::<_, ResearchImageRow>(
-            "SELECT run_id, turn_index, url, source_url, title, media_type, width, height FROM research_images WHERE run_id = ? ORDER BY turn_index, created_at"
+            "SELECT run_id, turn_index, url, source_url, title, media_type, width, height, video_url, channel, duration, site FROM research_images WHERE run_id = ? ORDER BY turn_index, created_at"
         )
         .bind(run_id)
         .fetch_all(&self.pool)
@@ -1272,6 +1276,11 @@ pub struct ResearchImageRow {
     pub media_type: String,
     pub width: i64,
     pub height: i64,
+    /// A video card's thumbnail: the video, and its channel, length (seconds) and site.
+    pub video_url: Option<String>,
+    pub channel: Option<String>,
+    pub duration: Option<i64>,
+    pub site: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]

@@ -58,12 +58,50 @@ struct BraveImageProperties {
     height: Option<u32>,
 }
 
+#[derive(Debug, Deserialize)]
+struct BraveVideoResponse {
+    results: Option<Vec<BraveVideoResult>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BraveVideoResult {
+    url: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+    age: Option<String>,
+    page_age: Option<String>,
+    thumbnail: Option<BraveVideoThumbnail>,
+    video: Option<BraveVideoData>,
+    meta_url: Option<BraveMetaUrl>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BraveVideoThumbnail {
+    src: Option<String>,
+    original: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BraveVideoData {
+    duration: Option<String>,
+    views: Option<serde_json::Value>,
+    creator: Option<String>,
+    publisher: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BraveMetaUrl {
+    hostname: Option<String>,
+}
+
 impl BraveSearchProvider {
     // Endpoint-specific public contracts, rather than the shared Results per Query setting:
     // https://api-dashboard.search.brave.com/api-reference/web/search/get
     // https://api-dashboard.search.brave.com/documentation/services/image-search
     const MAX_WEB_RESULTS: u32 = 20;
     const MAX_IMAGE_RESULTS: u32 = 200;
+    // https://api-dashboard.search.brave.com/documentation/services/video-search
+    const MAX_VIDEO_RESULTS: u32 = 50;
 
     fn result_count(requested: u32, maximum: u32, mode: &str) -> u32 {
         let effective = requested.clamp(1, maximum);
@@ -267,6 +305,71 @@ impl ImageSearchProvider for BraveSearchProvider {
             .collect();
 
         Ok(results)
+    }
+}
+
+#[async_trait]
+impl VideoSearchProvider for BraveSearchProvider {
+    fn received_bytes(&self) -> u64 {
+        self.received.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    async fn search_videos(&self, query: SearchQuery) -> Result<Vec<VideoSearchResult>, SearchError> {
+        let url = format!("{}/videos/search", self.base_url);
+        let count = Self::result_count(query.num_results, Self::MAX_VIDEO_RESULTS, "videos");
+        debug!(query = %query.query, num_results = query.num_results, "Brave video search");
+
+        let mut request = self
+            .client
+            .get(&url)
+            .header("Accept", "application/json")
+            .header("Accept-Encoding", "gzip")
+            .header("X-Subscription-Token", &self.api_key)
+            .query(&[("q", query.query.as_str()), ("count", &count.to_string())]);
+        if let Some(ref lang) = query.language {
+            request = request.query(&[("search_lang", lang.as_str())]);
+        }
+        if let Some(ref country) = query.country {
+            request = request.query(&[("country", country.as_str())]);
+        }
+        let response = request.send().await.map_err(|e| if e.is_connect() { SearchError::ConnectionError(e.to_string()) } else { SearchError::RequestFailed(e.to_string()) })?;
+
+        let status = response.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(SearchError::AuthError("Invalid Brave API key".to_string()));
+        }
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let retry_after = response.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
+            return Err(SearchError::RateLimited { retry_after_secs: retry_after });
+        }
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(SearchError::RequestFailed(format!("Brave Videos API error {}: {}", status, body)));
+        }
+
+        let brave_response: BraveVideoResponse = super::types::counted_json(response, &self.received)
+            .await
+            .map_err(|e| SearchError::ParseError(format!("Failed to parse Brave video response: {}", e)))?;
+        Ok(brave_response
+            .results
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|r| {
+                let url = r.url.filter(|u| !u.trim().is_empty())?;
+                let video = r.video.as_ref();
+                Some(VideoSearchResult {
+                    title: r.title.unwrap_or_else(|| url.clone()),
+                    thumbnail: r.thumbnail.and_then(|t| t.original.or(t.src)),
+                    channel: video.and_then(|v| v.creator.clone()),
+                    site: video.and_then(|v| v.publisher.clone()).or_else(|| r.meta_url.and_then(|m| m.hostname)).map(|h| h.trim_start_matches("www.").to_string()),
+                    duration: video.and_then(|v| v.duration.as_deref()).and_then(duration_secs),
+                    published: r.page_age.or(r.age).as_deref().and_then(published_date),
+                    views: video.and_then(|v| v.views.as_ref()).and_then(|v| v.as_u64().or_else(|| v.as_str()?.replace([',', ' '], "").parse().ok())),
+                    description: r.description.filter(|d| !d.trim().is_empty()),
+                    url,
+                })
+            })
+            .collect())
     }
 }
 

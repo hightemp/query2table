@@ -21,6 +21,16 @@ impl ImageSearchProvider for NoopImageProvider {
     }
 }
 
+/// No-op video provider for testing with `with_providers`.
+struct NoopVideoProvider;
+
+#[async_trait::async_trait]
+impl VideoSearchProvider for NoopVideoProvider {
+    async fn search_videos(&self, _query: SearchQuery) -> Result<Vec<VideoSearchResult>, SearchError> {
+        Ok(vec![])
+    }
+}
+
 /// Which search backend to use.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SearchBackend {
@@ -61,12 +71,21 @@ pub struct SearchManager {
     fallback: Option<Arc<dyn SearchProvider>>,
     image_primary: Arc<dyn ImageSearchProvider>,
     image_fallback: Option<Arc<dyn ImageSearchProvider>>,
+    video_primary: Arc<dyn VideoSearchProvider>,
+    video_fallback: Option<Arc<dyn VideoSearchProvider>>,
     config: SearchConfig,
     accounting: Option<Arc<dyn UsageObserver>>,
 }
 
 impl SearchManager {
     pub fn from_config(config: SearchConfig) -> Result<Self, SearchError> {
+        let brave = (!config.brave_api_key.trim().is_empty()).then(|| Arc::new(BraveSearchProvider::new(config.brave_api_key.clone())));
+        let serper = (!config.serper_api_key.trim().is_empty()).then(|| Arc::new(SerperProvider::new(config.serper_api_key.clone())));
+        let (video_primary, video_fallback): (Option<Arc<dyn VideoSearchProvider>>, Option<Arc<dyn VideoSearchProvider>>) = match config.primary {
+            SearchBackend::Brave => (brave.map(|p| p as _), serper.filter(|_| config.fallback_enabled).map(|p| p as _)),
+            SearchBackend::Serper => (serper.map(|p| p as _), brave.filter(|_| config.fallback_enabled).map(|p| p as _)),
+        };
+        let video_primary = video_primary.unwrap_or_else(|| Arc::new(NoopVideoProvider));
         let (primary, fallback, image_primary, image_fallback) = match config.primary {
             SearchBackend::Brave => {
                 if config.brave_api_key.is_empty() {
@@ -118,6 +137,8 @@ impl SearchManager {
             fallback,
             image_primary,
             image_fallback,
+            video_primary,
+            video_fallback,
             config,
             accounting: None,
         })
@@ -265,6 +286,8 @@ impl SearchManager {
             fallback,
             image_primary,
             image_fallback: None,
+            video_primary: Arc::new(NoopVideoProvider),
+            video_fallback: None,
             config,
             accounting: None,
         }
@@ -350,6 +373,45 @@ impl SearchManager {
                     Err(e)
                 }
             }
+        }
+    }
+
+    /// Uses these video search providers (tests).
+    pub fn with_video_providers(mut self, primary: Arc<dyn VideoSearchProvider>, fallback: Option<Arc<dyn VideoSearchProvider>>) -> Self {
+        self.video_primary = primary;
+        self.video_fallback = fallback;
+        self
+    }
+
+    /// A web video search (videos on any site), with retry on transient errors, then falling back.
+    pub async fn search_videos_with_count(&self, query: &str, num_results: u32) -> Result<Vec<VideoSearchResult>, SearchError> {
+        let retry_config = RetryConfig { max_retries: 2, initial_delay: Duration::from_secs(2), max_delay: Duration::from_secs(30), multiplier: 2.0 };
+        let video_primary = self.video_primary.clone();
+        let primary_result = retry_with_backoff(&retry_config, "video_search_primary", || {
+            let video_primary = video_primary.clone();
+            let search_query = SearchQuery::new(query, num_results);
+            async move {
+                match self.accounted_search(self.primary_name(), "video search", || video_primary.received_bytes(), video_primary.search_videos(search_query)).await {
+                    Ok(results) => (Ok(results), RetryAction::Success, None),
+                    Err(SearchError::RateLimited { retry_after_secs }) => (Err(SearchError::RateLimited { retry_after_secs }), RetryAction::Retry, retry_after_secs.map(Duration::from_secs)),
+                    Err(SearchError::ConnectionError(msg)) => (Err(SearchError::ConnectionError(msg)), RetryAction::Retry, None),
+                    Err(e) => (Err(e), RetryAction::Fail, None),
+                }
+            }
+        })
+        .await;
+
+        match primary_result {
+            Ok(results) => Ok(results),
+            Err(SearchError::BudgetExceeded) => Err(SearchError::BudgetExceeded),
+            Err(e) => match &self.video_fallback {
+                Some(fallback) if self.config.fallback_enabled => {
+                    warn!(error = %e, "Primary video search failed after retries, trying fallback");
+                    let name = if self.config.primary == SearchBackend::Brave { "serper" } else { "brave" };
+                    self.accounted_search(name, "video search", || fallback.received_bytes(), fallback.search_videos(SearchQuery::new(query, num_results))).await
+                }
+                _ => Err(e),
+            },
         }
     }
 

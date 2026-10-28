@@ -1,0 +1,122 @@
+{
+ "id": "rust async tutorial",
+ "title": "rust async tutorial",
+ "_type": "playlist",
+ "entries": [
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "wXtngLBkK4Q",
+   "url": "https://www.youtube.com/watch?v=wXtngLBkK4Q",
+   "title": "Async Rust explained in 20 minutes",
+   "description": "Join the Rust Live Accelerator waitlist: https://letsgetrusty.com/join/lv-wXtngLBkK4Q If you're coming from languages like Go, ...",
+   "duration": 1155,
+   "channel_id": "UCSp-OaMpsO8K0KkOqyBl7_w",
+   "channel": "Let's Get Rusty",
+   "channel_url": "https://www.youtube.com/channel/UCSp-OaMpsO8K0KkOqyBl7_w",
+   "uploader": "Let's Get Rusty",
+   "uploader_id": "@letsgetrusty",
+   "uploader_url": "https://www.youtube.com/@letsgetrusty",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/wXtngLBkK4Q/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLC2c9qO0b04c-UtFLaxtBX1CsX_bg",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/wXtngLBkK4Q/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAfJdQ3-EVeAXpKmnp7mXxYVUIC4Q",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "timestamp": null,
+   "release_timestamp": null,
+   "availability": null,
+   "view_count": 91772,
+   "live_status": null,
+   "channel_is_verified": null
+  },
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "K8LNPYNvT-U",
+   "url": "https://www.youtube.com/watch?v=K8LNPYNvT-U",
+   "title": "Intro to async/.await in Rust",
+   "description": "Grab your Rust Job-Ready Roadmap (free): https://letsgetrusty.com/join The fastest way to become a Rust dev (limited seats): ...",
+   "duration": 837,
+   "channel_id": "UCSp-OaMpsO8K0KkOqyBl7_w",
+   "channel": "Let's Get Rusty",
+   "channel_url": "https://www.youtube.com/channel/UCSp-OaMpsO8K0KkOqyBl7_w",
+   "uploader": "Let's Get Rusty",
+   "uploader_id": "@letsgetrusty",
+   "uploader_url": "https://www.youtube.com/@letsgetrusty",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/K8LNPYNvT-U/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDZnlB5VGTGKcXMyhKrnkaqdnnoOQ",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/K8LNPYNvT-U/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLC69ydDUqnM0oYp5AupJPgb_dsdBA",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "timestamp": null,
+   "release_timestamp": null,
+   "availability": null,
+   "view_count": 125837,
+   "live_status": null,
+   "channel_is_verified": null
+  },
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "ThjvMReOXYM",
+   "url": "https://www.youtube.com/watch?v=ThjvMReOXYM",
+   "title": "Crust of Rust: async/await",
+   "description": "Finally, we tackle the topic of async/await in Rust, and specifically looking at how to use and think about async/await more so than ...",
+   "duration": 9241,
+   "channel_id": "UC_iD0xppBwwsrM9DegC5cQQ",
+   "channel": "Jon Gjengset",
+   "channel_url": "https://www.youtube.com/channel/UC_iD0xppBwwsrM9DegC5cQQ",
+   "uploader": "Jon Gjengset",
+   "uploader_id": "@jonhoo",
+   "uploader_url": "https://www.youtube.com/@jonhoo",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/ThjvMReOXYM/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBhKJj0rSqXocnHg8PzRHmHYRUlbA",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/ThjvMReOXYM/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAL4c1BVxlyoe7ue7kXvBgxWzO1SA",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "timestamp": null,
+   "release_timestamp": null,
+   "availability": null,
+   "view_count": 245958,
+   "live_status": null,
+   "channel_is_verified": null
+  }
+ ],
+ "webpage_url": "ytsearch3:rust async tutorial",
+ "original_url": "ytsearch3:rust async tutorial",
+ "webpage_url_basename": "rust async tutorial",
+ "webpage_url_domain": null,
+ "extractor": "youtube:search",
+ "extractor_key": "YoutubeSearch",
+ "release_year": null,
+ "playlist_count": 3,
+ "epoch": 1793181341,
+ "__files_to_move": {},
+ "_version": {
+  "version": "2026.10.26",
+  "current_git_head": null,
+  "release_git_head": null,
+  "repository": "yt-dlp/yt-dlp"
+ }
+}
